@@ -3,6 +3,7 @@ import { PhysicsEngine } from '../src/presenters/PhysicsEngine';
 import { GameState } from '../src/models/GameState';
 import { Worm } from '../src/models/Worm';
 import { Projectile } from '../src/models/Projectile';
+import { WEAPONS } from '../src/models/Weapon';
 
 describe('PhysicsEngine', () => {
   let engine: PhysicsEngine;
@@ -68,7 +69,7 @@ describe('PhysicsEngine', () => {
   });
 
   it('updates projectile and handles explosion', () => {
-    const proj = new Projectile(50, 50, 0, 50); // moving down
+    const proj = new Projectile(50, 50, 0, 50, WEAPONS['bazooka']); // moving down
     state.projectiles.push(proj);
     
     // Create thick ground

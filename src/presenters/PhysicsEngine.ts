@@ -68,6 +68,12 @@ export class PhysicsEngine {
       }
 
       prop.vy += this.gravity * dt;
+      
+      // Apply wind if not settled (in the air)
+      if (!prop.isSettled) {
+        prop.vx += state.wind * dt * (0.8 / prop.mass);
+      }
+
       prop.x += prop.vx * dt;
       prop.y += prop.vy * dt;
       prop.rotation += prop.angularVelocity * dt;
@@ -291,20 +297,21 @@ export class PhysicsEngine {
       worm.vy = 0; // stop falling
     }
 
-    // Apply friction
+    // Apply friction or wind
     if (!worm.isJumping) {
       // Ground friction
       worm.vx *= 0.8;
       if (Math.abs(worm.vx) < 5) worm.vx = 0; // complete stop
     } else {
-      // Air resistance
+      // Air resistance and WIND
       worm.vx *= 0.98;
+      worm.vx += state.wind * dt * 0.5; // Worms are slightly affected by wind in the air
     }
   }
 
   private updateProjectile(proj: Projectile, state: GameState, dt: number): void {
     proj.vy += this.gravity * dt;
-    proj.vx += state.wind * dt; // Apply wind
+    proj.vx += state.wind * dt * proj.windMultiplier; // Apply wind based on weapon stats
     
     proj.updatePosition(dt);
 

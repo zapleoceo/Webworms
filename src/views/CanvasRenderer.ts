@@ -250,49 +250,10 @@ export class CanvasRenderer {
 
   private drawProjectiles(state: GameState): void {
     for (const proj of state.projectiles) {
-      if (proj.active) {
-        this.ctx.save();
-        this.ctx.translate(proj.x, proj.y);
-        
-        // Calculate angle based on velocity vector
-        const angle = Math.atan2(proj.vy, proj.vx);
-        this.ctx.rotate(angle);
-        
-        // Draw retro rocket (facing right by default)
-        this.ctx.fillStyle = '#808080'; // grey body
-        this.ctx.fillRect(-6, -3, 12, 6);
-        
-        this.ctx.fillStyle = '#FF0000'; // red nose
-        this.ctx.beginPath();
-        this.ctx.moveTo(6, -3);
-        this.ctx.lineTo(12, 0);
-        this.ctx.lineTo(6, 3);
-        this.ctx.fill();
-
-        this.ctx.fillStyle = '#FF4500'; // red fins
-        this.ctx.beginPath();
-        this.ctx.moveTo(-6, -3);
-        this.ctx.lineTo(-9, -6);
-        this.ctx.lineTo(-2, -3);
-        this.ctx.fill();
-        this.ctx.beginPath();
-        this.ctx.moveTo(-6, 3);
-        this.ctx.lineTo(-9, 6);
-        this.ctx.lineTo(-2, 3);
-        this.ctx.fill();
-        
-        // Flicker exhaust flame
-        if (Math.random() > 0.5) {
-          this.ctx.fillStyle = '#FFA500';
-          this.ctx.beginPath();
-          this.ctx.moveTo(-6, -2);
-          this.ctx.lineTo(-12 + Math.random() * -4, 0);
-          this.ctx.lineTo(-6, 2);
-          this.ctx.fill();
-        }
-
-        this.ctx.restore();
-      }
+      this.ctx.fillStyle = proj.color || 'yellow';
+      this.ctx.beginPath();
+      this.ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+      this.ctx.fill();
     }
   }
 
@@ -410,11 +371,18 @@ export class CanvasRenderer {
     const player = state.getCurrentPlayer();
     if (!player) return;
 
+    // Weapon Info
+    const weapon = player.getCurrentWeapon();
+    if (weapon) {
+      this.ctx.fillStyle = weapon.color;
+      this.ctx.fillText(`WEAPON: ${weapon.name}`, 20, 50);
+    }
+
     // Power bar
     this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    this.ctx.fillRect(20, 50, 100, 10);
+    this.ctx.fillRect(20, 60, 100, 10);
 
     this.ctx.fillStyle = 'red';
-    this.ctx.fillRect(20, 50, player.aimPower, 10);
+    this.ctx.fillRect(20, 60, player.aimPower, 10);
   }
 }

@@ -42,17 +42,17 @@ export class GamePresenter {
     this.physics.onHeavyImpact = () => this.soundManager.playHeavyImpact();
   }
 
-  public reset(): void {
+  public reset(selectedWeapons: string[] = ['bazooka', 'blaster']): void {
     const worldWidth = this.initialWidth * 1.5;
     const worldHeight = this.initialHeight * 1.2;
     this.state = new GameState(worldWidth, worldHeight);
     this.state.cameraX = (worldWidth - this.initialWidth) / 2;
     this.state.cameraY = (worldHeight - this.initialHeight) / 2;
     this.activeInputs.clear();
-    this.init();
+    this.init(selectedWeapons);
   }
 
-  public init(): void {
+  public init(selectedWeapons: string[] = ['bazooka', 'blaster']): void {
     this.state.landscape.generateTerrain();
     
     // Add two worms for Phase 1 with Safe Spawn
@@ -60,11 +60,11 @@ export class GamePresenter {
     
     const s1 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
     spawnPoints.push(s1);
-    const p1 = new Worm(s1.x, s1.y, false, 'Player 1', '#FF69B4');
+    const p1 = new Worm(s1.x, s1.y, false, 'Player 1', '#FF69B4', selectedWeapons);
     
     const s2 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
     spawnPoints.push(s2);
-    const p2 = new Worm(s2.x, s2.y, true, 'Player 2', '#4169E1'); // Dummy
+    const p2 = new Worm(s2.x, s2.y, true, 'Player 2', '#4169E1', selectedWeapons); // Dummy
     
     this.state.addPlayer(p1);
     this.state.addPlayer(p2);
@@ -207,6 +207,11 @@ export class GamePresenter {
           this.fireWeapon(player);
         }
         break;
+      case 'switch':
+        if (isActive) {
+          player.switchWeapon();
+        }
+        break;
     }
   }
 
@@ -252,22 +257,33 @@ export class GamePresenter {
     if (player.aimPower <= 0) return;
     
     const power = Math.max(player.aimPower, 15); // Minimum power for a quick tap
-    
+    player.aimPower = 0; // Reset power
+
+    const weapon = player.getCurrentWeapon();
+    if (!weapon) return;
+
     // Calculate vector based on angle and power
-    const rad = player.aimAngle * (Math.PI / 180);
+    const baseRad = player.aimAngle * (Math.PI / 180);
     const speed = power * 6; // Adjust scalar for better arcs
     
-    // No direction multiplier needed because angle is 0-360
-    const vx = Math.cos(rad) * speed;
-    const vy = -Math.sin(rad) * speed; // Negative is up
-    
     // Spawn completely outside the worm's collision radius
-    const startX = player.x + Math.cos(rad) * (player.width / 2 + 5);
-    const startY = player.y - Math.sin(rad) * (player.height / 2 + 5);
+    const startX = player.x + Math.cos(baseRad) * (player.width / 2 + 5);
+    const startY = player.y - Math.sin(baseRad) * (player.height / 2 + 5);
 
-    const proj = new Projectile(startX, startY, vx, vy);
-    this.state.addProjectile(proj);
-    
-    player.aimPower = 0; // Reset power
+    // Fire multiple projectiles if weapon supports it (e.g. shotgun)
+    for (let i = 0; i < weapon.projectilesPerShot; i++) {
+      // Calculate spread
+      let rad = baseRad;
+      if (weapon.spread > 0) {
+        const spreadRad = weapon.spread * (Math.PI / 180);
+        rad += (Math.random() - 0.5) * spreadRad;
+      }
+
+      const vx = Math.cos(rad) * speed;
+      const vy = -Math.sin(rad) * speed; // Negative is up
+
+      const proj = new Projectile(startX, startY, vx, vy, weapon);
+      this.state.addProjectile(proj);
+    }
   }
 }

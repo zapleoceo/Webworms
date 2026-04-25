@@ -1,3 +1,5 @@
+import type { Weapon } from './Weapon';
+
 export class Projectile {
   public x: number;
   public y: number;
@@ -5,18 +7,27 @@ export class Projectile {
   public vy: number;
   public radius: number = 3;
   public active: boolean = true;
-  public explosionRadius: number = 30;
-  public damage: number = 25;
+  
+  public damage: number;
+  public explosionRadius: number;
+  public knockback: number;
+  public windMultiplier: number;
+  public color: string;
 
-  constructor(x: number, y: number, vx: number, vy: number) {
+  constructor(x: number, y: number, vx: number, vy: number, weapon: Weapon) {
     this.x = x;
     this.y = y;
     this.vx = vx;
     this.vy = vy;
+    
+    this.damage = weapon.damage;
+    this.explosionRadius = weapon.explosionRadius;
+    this.knockback = weapon.knockback;
+    this.windMultiplier = weapon.windMultiplier;
+    this.color = weapon.color;
   }
 
   public updatePosition(dt: number): void {
-    if (!this.active) return;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
   }

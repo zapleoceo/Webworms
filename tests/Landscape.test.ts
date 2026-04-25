@@ -30,11 +30,10 @@ describe('Landscape', () => {
     expect(landscape.isSolid(50, 99)).toBe(true); // bottom is solid
     
     // Middle of the sky might have floating islands now, so let's check a very specific empty spot 
-    // or just assume there's SOME empty space in the sky
+    // Because of our unbreakable top/bottom borders (10px), (50, 0) is actually solid!
+    // We should check inside the sky area (e.g. y=20)
     let foundEmpty = false;
-    for (let y = 0; y < 50; y++) {
-      if (!landscape.isSolid(50, y)) foundEmpty = true;
-    }
+    if (!landscape.isSolid(50, 20)) foundEmpty = true;
     expect(foundEmpty).toBe(true);
   });
 

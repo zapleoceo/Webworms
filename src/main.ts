@@ -8,6 +8,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <h1 class="game-title">WebWorms</h1>
     
     <div id="main-menu" class="screen active">
+      <div class="weapon-selection">
+        <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 10px;">Select 2 Weapons:</h3>
+        <label><input type="checkbox" class="weapon-cb" value="bazooka" checked> Bazooka</label>
+        <label><input type="checkbox" class="weapon-cb" value="blaster" checked> Plasma Blaster</label>
+        <label><input type="checkbox" class="weapon-cb" value="shotgun"> Shotgun</label>
+        <label><input type="checkbox" class="weapon-cb" value="sniper"> Railgun</label>
+      </div>
       <button class="retro-btn" id="btn-start-game">START GAME</button>
     </div>
 
@@ -57,14 +64,30 @@ const gameOverScreen = document.getElementById('game-over-screen')!;
 const winnerText = document.getElementById('winner-text')!;
 const mobileControls = document.getElementById('mobile-controls')!;
 
+// Weapon Selection Logic
+const weaponCheckboxes = document.querySelectorAll('.weapon-cb') as NodeListOf<HTMLInputElement>;
+weaponCheckboxes.forEach(cb => {
+  cb.addEventListener('change', () => {
+    const checked = document.querySelectorAll('.weapon-cb:checked');
+    if (checked.length > 2) {
+      cb.checked = false; // prevent checking more than 2
+    }
+  });
+});
+
 document.getElementById('btn-start-game')!.addEventListener('click', async () => {
+  // Gather selected weapons
+  const checked = document.querySelectorAll('.weapon-cb:checked') as NodeListOf<HTMLInputElement>;
+  const selectedWeapons = Array.from(checked).map(cb => cb.value);
+  if (selectedWeapons.length === 0) selectedWeapons.push('bazooka'); // Fallback
+
   menuScreen.classList.remove('active');
   loaderScreen.classList.add('active');
   
   // Allow UI to paint the loader
   await new Promise(resolve => setTimeout(resolve, 50));
   
-  presenter.reset();
+  presenter.reset(selectedWeapons);
   
   loaderScreen.classList.remove('active');
   gameScreen.classList.add('active');

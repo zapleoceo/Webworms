@@ -19,6 +19,7 @@ export class InputHandler {
     'Enter': 'fire',
     'f': 'fire',
     'F': 'fire',
+    'Shift': 'switch',
   };
 
   private mobileBtns: { id: string, action: string }[] = [
@@ -28,6 +29,7 @@ export class InputHandler {
     { id: 'btn-down', action: 'down' },
     { id: 'btn-jump', action: 'jump' },
     { id: 'btn-fire', action: 'fire' },
+    { id: 'btn-switch', action: 'switch' },
   ];
 
   private isDraggingCamera: boolean = false;

@@ -1,3 +1,6 @@
+import type { Weapon } from './Weapon';
+import { WEAPONS } from './Weapon';
+
 export class Worm {
   public x: number;
   public y: number;
@@ -19,8 +22,12 @@ export class Worm {
   // Visual/team identifier
   public teamColor: string;
   public name: string;
+  
+  // Weapons
+  public weapons: Weapon[] = [];
+  public currentWeaponIndex: number = 0;
 
-  constructor(x: number, y: number, isDummy: boolean = false, name: string = 'Player', color: string = '#FF69B4') {
+  constructor(x: number, y: number, isDummy: boolean = false, name: string = 'Player', color: string = '#FF69B4', selectedWeapons: string[] = ['bazooka', 'blaster']) {
     this.x = x;
     this.y = y;
     this.name = name;
@@ -28,6 +35,26 @@ export class Worm {
     if (isDummy) {
       // Dummy has high health and doesn't die easily for testing
       this.health = 10000;
+      this.maxHealth = 10000;
+    }
+    
+    // Load selected weapons
+    for (const wid of selectedWeapons) {
+      if (WEAPONS[wid]) this.weapons.push(WEAPONS[wid]);
+    }
+    // Fallback if none selected
+    if (this.weapons.length === 0) {
+      this.weapons.push(WEAPONS['bazooka']);
+    }
+  }
+
+  public getCurrentWeapon(): Weapon {
+    return this.weapons[this.currentWeaponIndex];
+  }
+
+  public switchWeapon(): void {
+    if (this.weapons.length > 0) {
+      this.currentWeaponIndex = (this.currentWeaponIndex + 1) % this.weapons.length;
     }
   }
 
