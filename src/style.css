@@ -8,6 +8,7 @@ body {
   background-color: #333;
   font-family: Arial, sans-serif;
   overflow: hidden;
+  touch-action: none; /* Prevent browser zoom/scroll on mobile */
 }
 
 #app {
@@ -18,15 +19,101 @@ body {
   height: 100%;
 }
 
+#game-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
 #game-container {
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
   border-radius: 10px;
   overflow: hidden;
-  background: white; /* Behind canvas */
+  background: white;
+  width: 800px;
+  height: 600px;
 }
 
 canvas {
   display: block;
-  /* Add crisp edges for retro feel */
+  width: 100%;
+  height: 100%;
   image-rendering: pixelated; 
 }
+
+/* Mobile Controls */
+#mobile-controls {
+  display: none; /* Hidden by default on desktop */
+  width: 100%;
+  max-width: 600px;
+  justify-content: space-between;
+  padding: 10px 20px;
+  box-sizing: border-box;
+  margin-top: 10px;
+}
+
+.d-pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.horizontal {
+  display: flex;
+  gap: 5px;
+}
+
+.action-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+}
+
+.control-btn {
+  width: 50px;
+  height: 50px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  color: white;
+  font-size: 20px;
+  font-weight: bold;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+
+.control-btn:active, .control-btn:focus {
+  background: rgba(255, 255, 255, 0.5);
+  outline: none;
+}
+
+.action-btn {
+  width: 60px;
+  height: 60px;
+  font-size: 14px;
+}
+
+.fire-btn {
+  background: rgba(255, 0, 0, 0.3);
+  border-color: rgba(255, 0, 0, 0.6);
+}
+
+.fire-btn:active {
+  background: rgba(255, 0, 0, 0.7);
+}
+
+/* Show controls only on small screens */
+@media (max-width: 768px) {
+  #mobile-controls {
+    display: flex;
+  }
+}
+
