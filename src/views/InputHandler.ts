@@ -52,41 +52,19 @@ export class InputHandler {
 
     // Camera panning and zooming events
     this.canvas.addEventListener('wheel', this.handleWheel.bind(this), { passive: false });
-    this.canvas.addEventListener('mousedown', this.handlePointerDown.bind(this));
-    window.addEventListener('mousemove', this.handlePointerMove.bind(this));
-    window.addEventListener('mouseup', this.handlePointerUp.bind(this));
     
+    // Prevent double firing if both touch and mouse happen
     this.canvas.addEventListener('touchstart', this.handlePointerDown.bind(this), { passive: false });
     window.addEventListener('touchmove', this.handlePointerMove.bind(this), { passive: false });
     window.addEventListener('touchend', this.handlePointerUp.bind(this));
 
-    // Bind mobile controls
-    this.mobileBtns.forEach(({ id, action }) => {
-      const btn = document.getElementById(id);
-      if (btn) {
-        // Touch events
-        btn.addEventListener('touchstart', (e) => {
-          e.preventDefault();
-          this.presenter.handleInput(action, true);
-        }, { passive: false });
-        
-        btn.addEventListener('touchend', (e) => {
-          e.preventDefault();
-          this.presenter.handleInput(action, false);
-        }, { passive: false });
-
-        // Mouse fallback for testing mobile layout on desktop
-        btn.addEventListener('mousedown', () => {
-          this.presenter.handleInput(action, true);
-        });
-        
-        btn.addEventListener('mouseup', () => {
-          this.presenter.handleInput(action, false);
-        });
-        
-        btn.addEventListener('mouseleave', () => {
-          this.presenter.handleInput(action, false);
-        });
+    // Mobile controls (using pointer events to support multi-touch and prevent defaults)
+    this.mobileBtns.forEach(btn => {
+      const el = document.getElementById(btn.id);
+      if (el) {
+        el.addEventListener('pointerdown', (e) => this.onPointerDown(e, btn.action));
+        el.addEventListener('pointerup', (e) => this.onPointerUp(e, btn.action));
+        el.addEventListener('pointerleave', (e) => this.onPointerUp(e, btn.action)); // handle finger sliding off
       }
     });
   }
@@ -94,8 +72,26 @@ export class InputHandler {
   public unbind(): void {
     window.removeEventListener('keydown', this.handleKeyDown.bind(this));
     window.removeEventListener('keyup', this.handleKeyUp.bind(this));
-    // Ideally we should unbind all mobile listeners too, but skipping for brevity
+
+    this.mobileBtns.forEach(btn => {
+      const el = document.getElementById(btn.id);
+      if (el) {
+        el.removeEventListener('pointerdown', (e) => this.onPointerDown(e as PointerEvent, btn.action));
+        el.removeEventListener('pointerup', (e) => this.onPointerUp(e as PointerEvent, btn.action));
+        el.removeEventListener('pointerleave', (e) => this.onPointerUp(e as PointerEvent, btn.action));
+      }
+    });
   }
+
+  private onPointerDown = (e: Event, action: string) => {
+    e.preventDefault(); // Prevent zoom/scroll
+    this.presenter.handleInput(action, true);
+  };
+
+  private onPointerUp = (e: Event, action: string) => {
+    e.preventDefault();
+    this.presenter.handleInput(action, false);
+  };
 
   private handleKeyDown(event: KeyboardEvent): void {
     const action = this.keyMap[event.key];

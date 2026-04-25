@@ -6,9 +6,11 @@ import { APIClient } from './network/APIClient';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div id="game-wrapper">
-    <h1 class="game-title">WebWorms</h1>
-    
     <div id="auth-screen" class="screen active">
+      <div class="logo-container">
+        <img src="https://pngimg.com/uploads/worms_game/worms_game_PNG52123.png" alt="Worms Logo" class="game-logo-img">
+        <h1 class="game-title">WebWorms</h1>
+      </div>
       <h2 class="retro-text blink" style="margin-bottom: 30px;">LOGIN</h2>
       <input type="email" id="auth-email" class="retro-input" placeholder="Email (Magic Link)">
       <input type="text" id="auth-username" class="retro-input" placeholder="Username">
@@ -16,10 +18,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
 
     <div id="main-menu" class="screen">
+      <div class="logo-container">
+        <h1 class="game-title" style="font-size: 2.5rem; margin-top: 10px;">WebWorms</h1>
+      </div>
       <div id="time-balance" class="retro-text" style="color: #32CD32; margin-bottom: 20px; font-size: 1.2rem;">Time Left: 1h 0m</div>
       <div class="weapon-selection">
         <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 5px;">Select Class:</h3>
-        <select id="class-select" style="margin-bottom: 15px; padding: 5px; font-size: 1rem; font-family: Courier New;">
+        <select id="class-select" style="margin-bottom: 15px; padding: 5px; font-size: 1rem; font-family: Courier New; width: 100%; box-sizing: border-box;">
           <option value="soldier">Soldier (Balanced)</option>
           <option value="heavy">Heavy (Tank)</option>
           <option value="scout">Scout (Fast)</option>
@@ -43,12 +48,43 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <h2 class="retro-text blink">GENERATING WORLD...</h2>
     </div>
 
-    <div id="game-container" class="screen">
-      <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <!-- The actual game area, fully responsive -->
+    <div id="game-screen" class="screen">
+      <div class="game-layout">
+        <div id="game-container">
+          <canvas id="gameCanvas" width="800" height="600"></canvas>
+        </div>
+        
+        <div id="desktop-hints">
+          <p><b>Arrows:</b> Move / Aim</p>
+          <p><b>Space:</b> Jump</p>
+          <p><b>Enter:</b> Fire</p>
+          <p><b>Shift:</b> Switch Weapon</p>
+        </div>
+
+        <div id="mobile-controls">
+          <div class="d-pad">
+            <button class="control-btn" id="btn-up">⟲</button>
+            <div class="horizontal">
+              <button class="control-btn" id="btn-left">←</button>
+              <button class="control-btn" id="btn-down">⟳</button>
+              <button class="control-btn" id="btn-right">→</button>
+            </div>
+          </div>
+          <div class="action-pad">
+            <button class="control-btn action-btn" id="btn-jump">Jump</button>
+            <button class="control-btn action-btn switch-btn" id="btn-switch">Switch</button>
+            <button class="control-btn action-btn fire-btn" id="btn-fire">Fire</button>
+          </div>
+        </div>
+      </div>
     </div>
     
     <div id="game-over-screen" class="screen">
-      <h2 class="retro-text" id="winner-text" style="margin-bottom: 20px; font-size: 3rem;">PLAYER WINS!</h2>
+      <div class="logo-container">
+        <h1 class="game-title" style="font-size: 2.5rem; margin-top: 10px;">WebWorms</h1>
+      </div>
+      <h2 class="retro-text" id="winner-text" style="margin-bottom: 20px; font-size: clamp(2rem, 5vw, 3rem);">PLAYER WINS!</h2>
       <div id="stats-panel" class="stats-panel">
         <h3 style="color: #00ffff; text-align: center; margin-bottom: 15px;">MATCH STATS</h3>
         <p id="stat-p1-dmg">P1 Damage: 0</p>
@@ -56,22 +92,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div id="stat-reward" class="reward-text">+10 MINUTES REWARD!</div>
       </div>
       <button class="retro-btn" id="btn-return-menu">RETURN TO MENU</button>
-    </div>
-    
-    <div id="mobile-controls">
-      <div class="d-pad">
-        <button class="control-btn" id="btn-up">⟲</button>
-        <div class="horizontal">
-          <button class="control-btn" id="btn-left">←</button>
-          <button class="control-btn" id="btn-down">⟳</button>
-          <button class="control-btn" id="btn-right">→</button>
-        </div>
-      </div>
-      <div class="action-pad">
-        <button class="control-btn action-btn" id="btn-jump">Jump</button>
-        <button class="control-btn action-btn switch-btn" id="btn-switch">Switch</button>
-        <button class="control-btn action-btn fire-btn" id="btn-fire">Fire</button>
-      </div>
     </div>
   </div>
 `;
@@ -87,7 +107,7 @@ const inputHandler = new InputHandler(presenter, canvas);
 const authScreen = document.getElementById('auth-screen')!;
 const menuScreen = document.getElementById('main-menu')!;
 const loaderScreen = document.getElementById('loader-screen')!;
-const gameScreen = document.getElementById('game-container')!;
+const gameScreen = document.getElementById('game-screen')!;
 const gameOverScreen = document.getElementById('game-over-screen')!;
 const winnerText = document.getElementById('winner-text')!;
 const mobileControls = document.getElementById('mobile-controls')!;
@@ -241,38 +261,8 @@ presenter.onGameOver = (winner, stats) => {
   document.getElementById('stat-p2-dmg')!.innerText = `P2 Damage Dealt: ${stats.p2Dmg}`;
 };
 
-// Function to handle canvas scaling for mobile
-function resizeCanvas() {
-  const wrapper = document.getElementById('game-wrapper');
-  if (!wrapper) return;
-  
-  const windowWidth = window.innerWidth;
-  const windowHeight = window.innerHeight;
-  const gameRatio = 800 / 600;
-  
-  let newWidth, newHeight;
-  
-  // Leave some room for mobile controls if on portrait
-  const isMobile = windowWidth < 768;
-  const availableHeight = isMobile ? windowHeight - 150 : windowHeight;
-  
-  if (windowWidth / availableHeight < gameRatio) {
-    newWidth = windowWidth;
-    newHeight = windowWidth / gameRatio;
-  } else {
-    newHeight = availableHeight;
-    newWidth = availableHeight * gameRatio;
-  }
-  
-  const container = document.getElementById('game-container');
-  if (container) {
-    container.style.width = `${newWidth}px`;
-    container.style.height = `${newHeight}px`;
-  }
-}
-
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas(); // initial call
+// Remove old resizeCanvas as CSS handles aspect ratio now.
+// Add orientation check if needed.
 
 // Override render method to connect View layer
 presenter.render = () => {
@@ -291,7 +281,6 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     presenter.stop();
     inputHandler.unbind();
-    window.removeEventListener('resize', resizeCanvas);
   });
 }
 
