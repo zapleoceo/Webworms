@@ -59,6 +59,7 @@ export class GamePresenter {
 
     const aimSpeed = 90; // degrees per second
     const chargeSpeed = 100; // max power per second
+    const moveSpeed = 100;
 
     if (this.activeInputs.has('up')) {
       player.updateAim(aimSpeed * dt);
@@ -68,6 +69,15 @@ export class GamePresenter {
     }
     if (this.activeInputs.has('fire')) {
       player.changePower(chargeSpeed * dt);
+    }
+    
+    // Apply movement continuously to overcome friction
+    if (this.activeInputs.has('left')) {
+      player.vx = -moveSpeed;
+      player.facingRight = false;
+    } else if (this.activeInputs.has('right')) {
+      player.vx = moveSpeed;
+      player.facingRight = true;
     }
   }
 
@@ -85,18 +95,9 @@ export class GamePresenter {
       this.activeInputs.delete(action);
     }
 
-    const moveSpeed = 100;
     const jumpForce = -250;
 
     switch (action) {
-      case 'left':
-        player.vx = isActive ? -moveSpeed : 0;
-        if (isActive) player.facingRight = false;
-        break;
-      case 'right':
-        player.vx = isActive ? moveSpeed : 0;
-        if (isActive) player.facingRight = true;
-        break;
       case 'jump':
         if (isActive && !player.isJumping) {
           player.vy = jumpForce;

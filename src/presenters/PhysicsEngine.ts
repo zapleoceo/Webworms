@@ -30,7 +30,7 @@ export class PhysicsEngine {
     worm.x += worm.vx * dt;
     worm.y += worm.vy * dt;
 
-    // Apply friction to x velocity
+    // Apply friction to x velocity (only if on ground and not actively moving)
     worm.vx *= 0.9;
 
     // Check landscape collision
