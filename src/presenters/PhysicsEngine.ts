@@ -15,6 +15,20 @@ export class PhysicsEngine {
   public onHeavyImpact?: () => void;
 
   public update(state: GameState, dt: number): void {
+    // Handle input (walking)
+    if (state.currentPlayerIndex >= 0 && state.currentPlayerIndex < state.players.length) {
+      const player = state.getCurrentPlayer();
+      if (player) {
+        // Decrease cooldowns
+        for (const weaponId in player.weaponCooldowns) {
+          if (player.weaponCooldowns[weaponId] > 0) {
+            player.weaponCooldowns[weaponId] -= dt;
+            if (player.weaponCooldowns[weaponId] < 0) player.weaponCooldowns[weaponId] = 0;
+          }
+        }
+      }
+    }
+
     // Update players
     for (const worm of state.players) {
       this.updateWorm(worm, state, dt);
@@ -201,9 +215,18 @@ export class PhysicsEngine {
   }
 
   private updateWorm(worm: any, state: GameState, dt: number): void {
+    if (worm.health <= 0) return;
+
     // Apply gravity
     worm.vy += this.gravity * dt;
     
+    // Update walk cycle animation
+    if (Math.abs(worm.vx) > 5 && !worm.isJumping) {
+      worm.walkCycle += Math.abs(worm.vx) * dt * 0.2;
+    } else {
+      worm.walkCycle = 0;
+    }
+
     // Attempt Horizontal Movement (with slope logic)
     const dx = worm.vx * dt;
     if (dx !== 0) {
@@ -268,7 +291,12 @@ export class PhysicsEngine {
       while (state.landscape.isSolid(cx, bottomY) && bottomY > 0) {
         bottomY--;
       }
-      worm.y = bottomY - worm.height / 2;
+      
+      const newY = bottomY - worm.height / 2;
+      // Anti-jitter: only adjust Y if the difference is significant
+      if (Math.abs(worm.y - newY) > 0.1) {
+        worm.y = newY;
+      }
 
       // Heavy impact check
       if (worm.vy > 300) {

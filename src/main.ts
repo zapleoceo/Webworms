@@ -9,11 +9,18 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     
     <div id="main-menu" class="screen active">
       <div class="weapon-selection">
+        <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 5px;">Select Class:</h3>
+        <select id="class-select" style="margin-bottom: 15px; padding: 5px; font-size: 1rem; font-family: Courier New;">
+          <option value="soldier">Soldier (Balanced)</option>
+          <option value="heavy">Heavy (Tank)</option>
+          <option value="scout">Scout (Fast)</option>
+        </select>
+
         <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 10px;">Select 2 Weapons:</h3>
-        <label><input type="checkbox" class="weapon-cb" value="bazooka" checked> Bazooka</label>
-        <label><input type="checkbox" class="weapon-cb" value="blaster" checked> Plasma Blaster</label>
-        <label><input type="checkbox" class="weapon-cb" value="shotgun"> Shotgun</label>
-        <label><input type="checkbox" class="weapon-cb" value="sniper"> Railgun</label>
+        <label><input type="checkbox" class="weapon-cb" value="bazooka" checked> Bazooka (2.0s)</label>
+        <label><input type="checkbox" class="weapon-cb" value="blaster" checked> Plasma (1.5s)</label>
+        <label><input type="checkbox" class="weapon-cb" value="shotgun"> Shotgun (2.5s)</label>
+        <label><input type="checkbox" class="weapon-cb" value="sniper"> Railgun (4.0s)</label>
       </div>
       <button class="retro-btn" id="btn-start-game">START GAME</button>
     </div>
@@ -34,10 +41,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     
     <div id="mobile-controls">
       <div class="d-pad">
-        <button class="control-btn" id="btn-up">↑</button>
+        <button class="control-btn" id="btn-up">⟲</button>
         <div class="horizontal">
           <button class="control-btn" id="btn-left">←</button>
-          <button class="control-btn" id="btn-down">↓</button>
+          <button class="control-btn" id="btn-down">⟳</button>
           <button class="control-btn" id="btn-right">→</button>
         </div>
       </div>
@@ -81,13 +88,17 @@ document.getElementById('btn-start-game')!.addEventListener('click', async () =>
   const selectedWeapons = Array.from(checked).map(cb => cb.value);
   if (selectedWeapons.length === 0) selectedWeapons.push('bazooka'); // Fallback
 
+  // Gather selected class
+  const classSelect = document.getElementById('class-select') as HTMLSelectElement;
+  const unitClass = classSelect.value as 'soldier' | 'heavy' | 'scout';
+
   menuScreen.classList.remove('active');
   loaderScreen.classList.add('active');
   
   // Allow UI to paint the loader
   await new Promise(resolve => setTimeout(resolve, 50));
   
-  presenter.reset(selectedWeapons);
+  presenter.reset(selectedWeapons, unitClass);
   
   loaderScreen.classList.remove('active');
   gameScreen.classList.add('active');

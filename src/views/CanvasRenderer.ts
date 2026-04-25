@@ -180,53 +180,78 @@ export class CanvasRenderer {
 
   private drawPlayers(state: GameState): void {
     for (const player of state.players) {
-      // Draw Worm Body
+      if (player.health <= 0) continue; // Don't draw dead worms
+      
+      this.ctx.save();
+      this.ctx.translate(player.x, player.y);
+
+      // Walk cycle squish animation
+      const squishY = Math.sin(player.walkCycle) * 2; // -2 to +2
+      const squishX = -squishY; // Conservation of volume
+      const renderWidth = player.width + squishX;
+      const renderHeight = player.height + squishY;
+      const yOffset = -squishY / 2; // keep bottom grounded
+
+      // Draw Worm Body (Ellipse for squishing)
       this.ctx.fillStyle = player.teamColor || '#FF69B4'; // Use team color
       this.ctx.beginPath();
-      this.ctx.arc(player.x, player.y, player.width / 2, 0, Math.PI * 2);
+      this.ctx.ellipse(0, yOffset, renderWidth / 2, renderHeight / 2, 0, 0, Math.PI * 2);
       this.ctx.fill();
 
-      // Equipment Layer (e.g. Helmet)
-      this.ctx.fillStyle = '#A0522D'; // Brown helmet
-      this.ctx.beginPath();
-      this.ctx.arc(player.x, player.y - 2, player.width / 2 + 1, Math.PI, Math.PI * 2);
-      this.ctx.fill();
+      // Equipment Layer (e.g. Helmet based on class)
+      if (player.unitClass === 'heavy') {
+        this.ctx.fillStyle = '#444'; // Heavy Iron Helmet
+        this.ctx.fillRect(-renderWidth/2 - 1, yOffset - renderHeight/2, renderWidth + 2, 4);
+      } else if (player.unitClass === 'scout') {
+        this.ctx.fillStyle = '#8B0000'; // Red Headband
+        this.ctx.fillRect(-renderWidth/2, yOffset - renderHeight/2 + 2, renderWidth, 2);
+        // Headband tails
+        if (player.facingRight) {
+          this.ctx.fillRect(-renderWidth/2 - 4, yOffset - renderHeight/2 + 2, 4, 2);
+        } else {
+          this.ctx.fillRect(renderWidth/2, yOffset - renderHeight/2 + 2, 4, 2);
+        }
+      } else {
+        this.ctx.fillStyle = '#A0522D'; // Brown helmet (Soldier)
+        this.ctx.beginPath();
+        this.ctx.arc(0, yOffset - 2, renderWidth / 2 + 1, Math.PI, Math.PI * 2);
+        this.ctx.fill();
+      }
 
       // Eyes
       this.ctx.fillStyle = 'white';
       const eyeOffset = player.facingRight ? 2 : -2;
       this.ctx.beginPath();
-      this.ctx.arc(player.x + eyeOffset, player.y - 2, 1.5, 0, Math.PI * 2);
+      this.ctx.arc(eyeOffset, yOffset - 2, 1.5, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.fillStyle = 'black';
       this.ctx.beginPath();
-      this.ctx.arc(player.x + eyeOffset + 0.5, player.y - 2, 0.5, 0, Math.PI * 2);
+      this.ctx.arc(eyeOffset + (player.facingRight ? 0.5 : -0.5), yOffset - 2, 0.5, 0, Math.PI * 2);
       this.ctx.fill();
 
       // Name and Health bar
       this.ctx.fillStyle = 'black';
       this.ctx.font = '10px Arial';
       this.ctx.textAlign = 'center';
-      this.ctx.fillText(player.name, player.x, player.y - 20);
+      this.ctx.fillText(player.name, 0, -20);
 
       this.ctx.fillStyle = 'red';
-      this.ctx.fillRect(player.x - 10, player.y - 15, 20, 3);
+      this.ctx.fillRect(-10, -15, 20, 3);
       this.ctx.fillStyle = '#32CD32'; // Lime green
-      this.ctx.fillRect(player.x - 10, player.y - 15, 20 * (player.health / 100), 3);
+      this.ctx.fillRect(-10, -15, 20 * (player.health / player.maxHealth), 3);
 
       // Aiming Reticle (only for current player)
       if (player === state.getCurrentPlayer() && !player.isJumping) {
         const rad = player.aimAngle * (Math.PI / 180);
-        // facingRight is now purely visual or derived from angle, no direction multiplier needed if angle is 360
-        const targetX = player.x + Math.cos(rad) * 30;
-        const targetY = player.y - Math.sin(rad) * 30;
+        const targetX = Math.cos(rad) * 30;
+        const targetY = -Math.sin(rad) * 30;
 
-        // Draw weapon barrel
+        // Draw weapon barrel rotating around player
         this.ctx.strokeStyle = '#555';
         this.ctx.lineWidth = 3;
         this.ctx.beginPath();
-        this.ctx.moveTo(player.x, player.y);
-        this.ctx.lineTo(player.x + Math.cos(rad) * 12, player.y - Math.sin(rad) * 12);
+        this.ctx.moveTo(0, yOffset);
+        this.ctx.lineTo(Math.cos(rad) * 12, yOffset - Math.sin(rad) * 12);
         this.ctx.stroke();
 
         // Draw aim line
@@ -234,7 +259,7 @@ export class CanvasRenderer {
         this.ctx.lineWidth = 1;
         this.ctx.setLineDash([2, 2]);
         this.ctx.beginPath();
-        this.ctx.moveTo(player.x, player.y);
+        this.ctx.moveTo(0, yOffset);
         this.ctx.lineTo(targetX, targetY);
         this.ctx.stroke();
         this.ctx.setLineDash([]);
@@ -245,6 +270,8 @@ export class CanvasRenderer {
         this.ctx.arc(targetX, targetY, 2, 0, Math.PI * 2);
         this.ctx.fill();
       }
+
+      this.ctx.restore();
     }
   }
 
@@ -376,13 +403,20 @@ export class CanvasRenderer {
     if (weapon) {
       this.ctx.fillStyle = weapon.color;
       this.ctx.fillText(`WEAPON: ${weapon.name}`, 20, 50);
+      
+      // Cooldown UI
+      const cd = player.weaponCooldowns[weapon.id] || 0;
+      if (cd > 0) {
+        this.ctx.fillStyle = 'red';
+        this.ctx.fillText(`RELOADING: ${cd.toFixed(1)}s`, 20, 65);
+      }
     }
 
     // Power bar
     this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    this.ctx.fillRect(20, 60, 100, 10);
+    this.ctx.fillRect(20, 75, 100, 10);
 
     this.ctx.fillStyle = 'red';
-    this.ctx.fillRect(20, 60, player.aimPower, 10);
+    this.ctx.fillRect(20, 75, player.aimPower, 10);
   }
 }

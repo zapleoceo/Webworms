@@ -5,7 +5,10 @@ export class SoundManager {
   private fallingOsc: OscillatorNode | null = null;
   private fallingGain: GainNode | null = null;
 
-  public init(): void {
+  // External audio buffers
+  private externalBuffers: Record<string, AudioBuffer | null> = {};
+
+  public async init(): Promise<void> {
     if (!this.ctx) {
       try {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -24,7 +27,38 @@ export class SoundManager {
     if (this.ctx && !this.explosionBuffer) {
       this.explosionBuffer = this.generateNoiseBuffer(0.3, true);
       this.impactBuffer = this.generateNoiseBuffer(0.15, false);
+      
+      // Try to load external sounds (will silently fail and fallback to synth if not found)
+      await this.loadExternalSound('jump', '/sounds/jump.wav');
+      await this.loadExternalSound('hurt', '/sounds/hurt.wav');
+      await this.loadExternalSound('explosion', '/sounds/explosion.wav');
     }
+  }
+
+  private async loadExternalSound(name: string, url: string): Promise<void> {
+    if (!this.ctx) return;
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer();
+        this.externalBuffers[name] = await this.ctx.decodeAudioData(arrayBuffer);
+      }
+    } catch (e) {
+      // Silently fail - we will use the synth fallback
+    }
+  }
+
+  private playExternal(name: string): boolean {
+    if (this.ctx && this.externalBuffers[name]) {
+      try {
+        const source = this.ctx.createBufferSource();
+        source.buffer = this.externalBuffers[name];
+        source.connect(this.ctx.destination);
+        source.start();
+        return true; // Played successfully
+      } catch (e) {}
+    }
+    return false; // Fallback needed
   }
 
   private generateNoiseBuffer(duration: number, crush: boolean): AudioBuffer | null {
@@ -40,6 +74,8 @@ export class SoundManager {
   }
 
   public playJump(): void {
+    if (this.playExternal('jump')) return;
+    
     if (!this.ctx) return;
     try {
       const osc = this.ctx.createOscillator();
@@ -59,6 +95,8 @@ export class SoundManager {
   }
 
   public playHurt(): void {
+    if (this.playExternal('hurt')) return;
+
     if (!this.ctx) return;
     try {
       const osc = this.ctx.createOscillator();
@@ -129,6 +167,8 @@ export class SoundManager {
   }
 
   public playExplosion(): void {
+    if (this.playExternal('explosion')) return;
+
     if (!this.ctx || !this.explosionBuffer) return;
 
     try {

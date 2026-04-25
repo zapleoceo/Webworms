@@ -42,17 +42,17 @@ export class GamePresenter {
     this.physics.onHeavyImpact = () => this.soundManager.playHeavyImpact();
   }
 
-  public reset(selectedWeapons: string[] = ['bazooka', 'blaster']): void {
+  public reset(selectedWeapons: string[] = ['bazooka', 'blaster'], unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier'): void {
     const worldWidth = this.initialWidth * 1.5;
     const worldHeight = this.initialHeight * 1.2;
     this.state = new GameState(worldWidth, worldHeight);
     this.state.cameraX = (worldWidth - this.initialWidth) / 2;
     this.state.cameraY = (worldHeight - this.initialHeight) / 2;
     this.activeInputs.clear();
-    this.init(selectedWeapons);
+    this.init(selectedWeapons, unitClass);
   }
 
-  public init(selectedWeapons: string[] = ['bazooka', 'blaster']): void {
+  public init(selectedWeapons: string[] = ['bazooka', 'blaster'], unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier'): void {
     this.state.landscape.generateTerrain();
     
     // Add two worms for Phase 1 with Safe Spawn
@@ -60,11 +60,11 @@ export class GamePresenter {
     
     const s1 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
     spawnPoints.push(s1);
-    const p1 = new Worm(s1.x, s1.y, false, 'Player 1', '#FF69B4', selectedWeapons);
+    const p1 = new Worm(s1.x, s1.y, false, 'Player 1', unitClass, selectedWeapons);
     
     const s2 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
     spawnPoints.push(s2);
-    const p2 = new Worm(s2.x, s2.y, true, 'Player 2', '#4169E1', selectedWeapons); // Dummy
+    const p2 = new Worm(s2.x, s2.y, true, 'Player 2', 'heavy', selectedWeapons); // Dummy
     
     this.state.addPlayer(p1);
     this.state.addPlayer(p2);
@@ -123,15 +123,15 @@ export class GamePresenter {
 
     const aimSpeed = 90; // degrees per second
     const chargeSpeed = 100; // max power per second
-    const moveForce = 800; // pixels per second squared (acceleration)
-    const maxSpeed = 100; // pixels per second
+    const moveForce = 800 * player.speedMultiplier; // pixels per second squared (acceleration)
+    const maxSpeed = 100 * player.speedMultiplier; // pixels per second
     const airControl = 0.5; // 50% control while in the air
 
     if (this.activeInputs.has('up')) {
-      player.updateAim(aimSpeed * dt);
+      player.updateAim(-aimSpeed * dt); // Rotate counter-clockwise
     }
     if (this.activeInputs.has('down')) {
-      player.updateAim(-aimSpeed * dt);
+      player.updateAim(aimSpeed * dt); // Rotate clockwise
     }
     if (this.activeInputs.has('fire')) {
       player.changePower(chargeSpeed * dt);
@@ -185,12 +185,10 @@ export class GamePresenter {
       this.activeInputs.delete(action);
     }
 
-    const jumpForce = -150;
-
     switch (action) {
       case 'jump':
         if (isActive && !player.isJumping) {
-          player.vy = jumpForce;
+          player.vy = player.jumpForce;
           player.isJumping = true;
           // Play jump sound
           if (this.physics.onJump) this.physics.onJump();
@@ -261,6 +259,15 @@ export class GamePresenter {
 
     const weapon = player.getCurrentWeapon();
     if (!weapon) return;
+    
+    // Check cooldown
+    if (player.weaponCooldowns[weapon.id] > 0) {
+      // Cooldown active, cannot shoot
+      return;
+    }
+    
+    // Apply cooldown
+    player.weaponCooldowns[weapon.id] = weapon.cooldown;
 
     // Calculate vector based on angle and power
     const baseRad = player.aimAngle * (Math.PI / 180);

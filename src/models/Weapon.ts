@@ -8,6 +8,7 @@ export interface Weapon {
   spread: number;
   projectilesPerShot: number;
   color: string;
+  cooldown: number; // in seconds
 }
 
 export const WEAPONS: Record<string, Weapon> = {
@@ -20,7 +21,8 @@ export const WEAPONS: Record<string, Weapon> = {
     windMultiplier: 1.0, 
     spread: 0, 
     projectilesPerShot: 1, 
-    color: '#FF4500' // OrangeRed
+    color: '#FF4500', // OrangeRed
+    cooldown: 2.0
   },
   blaster: { 
     id: 'blaster', 
@@ -31,7 +33,8 @@ export const WEAPONS: Record<string, Weapon> = {
     windMultiplier: 0.2, 
     spread: 5, 
     projectilesPerShot: 3, 
-    color: '#00FFFF' // Cyan
+    color: '#00FFFF', // Cyan
+    cooldown: 1.5
   },
   shotgun: { 
     id: 'shotgun', 
@@ -42,7 +45,8 @@ export const WEAPONS: Record<string, Weapon> = {
     windMultiplier: 0.5, 
     spread: 15, 
     projectilesPerShot: 5, 
-    color: '#FFFF00' // Yellow
+    color: '#FFFF00', // Yellow
+    cooldown: 2.5
   },
   sniper: { 
     id: 'sniper', 
@@ -53,6 +57,7 @@ export const WEAPONS: Record<string, Weapon> = {
     windMultiplier: 0.05, 
     spread: 0, 
     projectilesPerShot: 1, 
-    color: '#FF00FF' // Magenta
+    color: '#FF00FF', // Magenta
+    cooldown: 4.0
   }
 };
