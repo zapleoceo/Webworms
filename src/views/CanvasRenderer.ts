@@ -215,6 +215,35 @@ export class CanvasRenderer {
       }
       
       this.terrainCtx.globalCompositeOperation = 'source-over'; // Restore
+      
+      // Fix for unbreakable alloy: Redraw any indestructible pixels (255) that were visually erased
+      for (const crater of state.landscape.newCraters) {
+        // Expand the visual restoration area just in case physical radius was larger
+        const minX = Math.max(0, Math.floor(crater.x - crater.r - 4));
+        const maxX = Math.min(state.landscape.width - 1, Math.ceil(crater.x + crater.r + 4));
+        const minY = Math.max(0, Math.floor(crater.y - crater.r - 4));
+        const maxY = Math.min(state.landscape.height - 1, Math.ceil(crater.y + crater.r + 4));
+        const w = maxX - minX + 1;
+        const h = maxY - minY + 1;
+        
+        if (w > 0 && h > 0) {
+          const imgData = this.terrainCtx.getImageData(minX, minY, w, h);
+          const data = imgData.data;
+          
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const mapX = minX + x;
+              const mapY = minY + y;
+              if (state.landscape.getMaterial(mapX, mapY) === 255) {
+                const idx = (y * w + x) * 4;
+                data[idx] = 30; data[idx+1] = 30; data[idx+2] = 40; data[idx+3] = 255;
+                if ((mapX+mapY)%10 === 0) { data[idx] = 50; data[idx+1] = 50; data[idx+2] = 60; }
+              }
+            }
+          }
+          this.terrainCtx.putImageData(imgData, minX, minY);
+        }
+      }
     }
 
     // Draw the cached landscape onto the main canvas (SUPER FAST)

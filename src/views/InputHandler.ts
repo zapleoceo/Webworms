@@ -41,8 +41,8 @@ export class InputHandler {
   }
 
   public bind(): void {
-    window.addEventListener('keydown', this.handleKeyDown.bind(this));
-    window.addEventListener('keyup', this.handleKeyUp.bind(this));
+    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keyup', this.handleKeyUp);
 
     // Camera panning and zooming events
     this.canvas.addEventListener('wheel', this.handleWheel.bind(this), { passive: false });
@@ -64,8 +64,8 @@ export class InputHandler {
   }
 
   public unbind(): void {
-    window.removeEventListener('keydown', this.handleKeyDown.bind(this));
-    window.removeEventListener('keyup', this.handleKeyUp.bind(this));
+    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keyup', this.handleKeyUp);
 
     this.mobileBtns.forEach(btn => {
       const el = document.getElementById(btn.id);
@@ -89,17 +89,17 @@ export class InputHandler {
 
   private activeKeys = new Set<string>();
 
-  private handleKeyDown(event: KeyboardEvent): void {
+  private handleKeyDown = (event: KeyboardEvent): void => {
     const action = this.keyMap[event.key];
     if (action) {
-      event.preventDefault(); // Prevent scrolling
+      if (action !== 'fire') event.preventDefault(); // allow default space/enter if needed elsewhere? No, prevent scrolling.
       if (this.activeKeys.has(event.code)) return;
       this.activeKeys.add(event.code);
       this.presenter.handleInput(action, true);
     }
   }
 
-  private handleKeyUp(event: KeyboardEvent): void {
+  private handleKeyUp = (event: KeyboardEvent): void => {
     const action = this.keyMap[event.key];
     if (action) {
       event.preventDefault();

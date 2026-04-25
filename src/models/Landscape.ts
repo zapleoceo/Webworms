@@ -65,8 +65,8 @@ export class Landscape {
       }
     }
     // Inform renderer with original radius for visual effects, 
-    // or slightly larger so it clears the visual canvas properly too
-    this.newCraters.push({x: cx, y: cy, r: effectiveRadius});
+    // physics clears a slightly larger area to guarantee no invisible solid pixels
+    this.newCraters.push({x: cx, y: cy, r: radius});
   }
 
   public getTopSolidY(x: number): number {
