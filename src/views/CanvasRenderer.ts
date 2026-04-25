@@ -10,9 +10,7 @@ export class CanvasRenderer {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Canvas 2D context not supported');
-    this.ctx = context;
+    this.ctx = canvas.getContext('2d', { willReadFrequently: true })!;
 
     // Create an offscreen canvas for caching the landscape
     this.terrainCanvas = document.createElement('canvas');
@@ -465,29 +463,34 @@ export class CanvasRenderer {
     let cd = 0;
     let maxCd = 1;
     if (weapon) {
-      this.ctx.fillStyle = weapon.color;
-      this.ctx.fillText(`WEAPON: ${weapon.name}`, 20, 50);
-      
       cd = player.weaponCooldowns[weapon.id] || 0;
       maxCd = player.maxWeaponCooldowns[weapon.id] || 1;
+      
+      // Draw weapon name at bottom center (near switch button)
+      this.ctx.fillStyle = weapon.color;
+      this.ctx.textAlign = 'center';
+      this.ctx.font = 'bold 18px Courier New';
+      this.ctx.fillText(`WEAPON: ${weapon.name}`, this.canvas.width / 2, this.canvas.height - 20);
+      this.ctx.textAlign = 'left';
+      this.ctx.font = '14px Courier New';
     }
 
-    // Base background bar
+    // Base background bar (Power/Cooldown)
     this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    this.ctx.fillRect(20, 60, 100, 10);
+    this.ctx.fillRect(20, 50, 100, 10);
 
     if (cd > 0) {
       // Cooldown UI (Reverse charging bar)
       this.ctx.fillStyle = '#FFA500'; // Orange for reload
       const ratio = cd / maxCd;
-      this.ctx.fillRect(20, 60, 100 * ratio, 10); // shrinks to the left as cd approaches 0
+      this.ctx.fillRect(20, 50, 100 * ratio, 10); // shrinks to the left as cd approaches 0
       
       this.ctx.fillStyle = 'red';
-      this.ctx.fillText(`RELOADING: ${cd.toFixed(1)}s`, 20, 85);
+      this.ctx.fillText(`RELOADING: ${cd.toFixed(1)}s`, 20, 75);
     } else {
       // Power bar (Forward charging bar)
       this.ctx.fillStyle = 'red';
-      this.ctx.fillRect(20, 60, player.aimPower, 10);
+      this.ctx.fillRect(20, 50, player.aimPower, 10);
     }
   }
 }

@@ -19,9 +19,15 @@ export class GamePresenter {
   private matchTime: number = 0;
   private nextAirdropTime: number = 60;
   private brandAssets = ['/assets/brand_apple.png', '/assets/brand_windows.png', '/assets/brand_android.png'];
+  
+  // Camera delay after explosion
+  private cameraDelayTimer: number = 0;
+  private lastExplosionX: number = 0;
+  private lastExplosionY: number = 0;
 
   public onGameOver?: (winner: Worm | null, stats: {p1Dmg: number, p2Dmg: number}) => void;
   public onLocalAction?: (action: string, isActive: boolean) => void;
+
 
   constructor(width: number, height: number) {
     this.initialWidth = width;
@@ -42,7 +48,14 @@ export class GamePresenter {
     this.soundManager.loadSounds().catch(() => {}); // Load external files asynchronously
     
     // Connect physics events to sound manager
-    this.physics.onExplode = () => this.soundManager.playExplosion();
+    // Bind physics explosion event to trigger camera delay
+    this.physics.onExplode = (x, y) => {
+      this.soundManager.playExplosion();
+      // Set a 2-second delay focusing on the explosion site
+      this.cameraDelayTimer = 2.0;
+      this.lastExplosionX = x;
+      this.lastExplosionY = y;
+    };
     this.physics.onJump = () => this.soundManager.playJump();
     this.physics.onHurt = () => this.soundManager.playHurt();
     this.physics.onFallStart = () => this.soundManager.startFalling();
@@ -52,9 +65,22 @@ export class GamePresenter {
     this.physics.onHeavyImpact = () => this.soundManager.playHeavyImpact();
   }
 
-  public reset(selectedWeapons: string[] = ['bazooka', 'blaster'], unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier'): void {
-    const worldWidth = this.initialWidth * 1.5;
-    const worldHeight = this.initialHeight * 1.2;
+  public reset(
+    selectedWeapons: string[] = ['bazooka', 'blaster'], 
+    unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier',
+    mapSize: 'small' | 'medium' | 'large' = 'medium'
+  ): void {
+    let worldWidth = this.initialWidth * 1.5;
+    let worldHeight = this.initialHeight * 1.2;
+
+    if (mapSize === 'small') {
+      worldWidth = this.initialWidth * 1.0; // Fit screen
+      worldHeight = this.initialHeight * 1.0;
+    } else if (mapSize === 'large') {
+      worldWidth = this.initialWidth * 2.5;
+      worldHeight = this.initialHeight * 1.5;
+    }
+
     this.state = new GameState(worldWidth, worldHeight);
     this.state.cameraX = (worldWidth - this.initialWidth) / 2;
     this.state.cameraY = (worldHeight - this.initialHeight) / 2;
@@ -149,7 +175,15 @@ export class GamePresenter {
       hasTarget = true;
       this.cameraFreeMode = false; // Auto-follow projectiles always
     } 
-    // 2. Otherwise follow the current player if not in free mode
+    // 2. Or, if there's a camera delay timer, keep looking at the explosion
+    else if (this.cameraDelayTimer > 0) {
+      targetX = this.lastExplosionX;
+      targetY = this.lastExplosionY;
+      hasTarget = true;
+      this.cameraFreeMode = false;
+      this.cameraDelayTimer -= dt;
+    }
+    // 3. Otherwise follow the current player if not in free mode
     else if (!this.cameraFreeMode) {
       const player = this.state.getCurrentPlayer();
       if (player) {
@@ -255,11 +289,13 @@ export class GamePresenter {
   }
 
   public handleInput(action: string, isActive: boolean, isRemote: boolean = false): void {
-    // Only process remote inputs if they are marked remote, or local if marked local
-    // In a real game, you would check if the current turn belongs to the local player
-    
     if (!isRemote && this.onLocalAction) {
       this.onLocalAction(action, isActive);
+    }
+
+    // Cancel camera delay immediately if any action is pressed (move, fire, switch)
+    if (isActive) {
+      this.cameraDelayTimer = 0;
     }
 
     // Unlock Web Audio API on first user interaction
@@ -304,24 +340,28 @@ export class GamePresenter {
     }
   }
 
-  public changeZoom(multiplier: number, pointerX: number, pointerY: number, canvasWidth: number, canvasHeight: number): void {
-    const newZoom = Math.max(0.5, Math.min(3.0, this.state.zoom * multiplier));
-    this.setZoom(newZoom, pointerX, pointerY, canvasWidth, canvasHeight);
-  }
+  public changeZoom(delta: number, canvasWidth: number, canvasHeight: number, mouseX?: number, mouseY?: number): void {
+    const oldZoom = this.state.zoom;
+    this.state.zoom *= (1 - delta * 0.1);
 
-  public setZoom(newZoom: number, pointerX: number, pointerY: number, canvasWidth: number, canvasHeight: number): void {
-    // Calculate world coordinates of the pointer before zoom
-    const worldX = this.state.cameraX + pointerX / this.state.zoom;
-    const worldY = this.state.cameraY + pointerY / this.state.zoom;
+    // Calculate minimum zoom based on screen size so map is never smaller than window
+    const minZoomX = canvasWidth / this.state.width;
+    const minZoomY = canvasHeight / this.state.height;
+    const minZoom = Math.max(minZoomX, minZoomY, 0.5); // Allow max zooming out up to the edge of the map
 
-    // Set new zoom (clamp between 0.5 and 3.0)
-    this.state.zoom = Math.max(0.5, Math.min(3.0, newZoom));
+    if (this.state.zoom < minZoom) this.state.zoom = minZoom;
+    if (this.state.zoom > 3.0) this.state.zoom = 3.0; // Max zoom in
 
-    // Calculate new camera position to keep the world point under the pointer
-    this.state.cameraX = worldX - pointerX / this.state.zoom;
-    this.state.cameraY = worldY - pointerY / this.state.zoom;
+    // Adjust camera to zoom towards center of screen (or mouse if provided)
+    const targetX = mouseX !== undefined ? mouseX : canvasWidth / 2;
+    const targetY = mouseY !== undefined ? mouseY : canvasHeight / 2;
+    
+    const worldTargetX = this.state.cameraX + targetX / oldZoom;
+    const worldTargetY = this.state.cameraY + targetY / oldZoom;
+    
+    this.state.cameraX = worldTargetX - targetX / this.state.zoom;
+    this.state.cameraY = worldTargetY - targetY / this.state.zoom;
 
-    // Clamp camera
     this.clampCamera(canvasWidth, canvasHeight);
   }
 

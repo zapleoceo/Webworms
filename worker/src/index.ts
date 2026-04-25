@@ -23,7 +23,14 @@ export default {
       return handleDailyReset(request, env);
     }
 
-    // 3. Multiplayer Rooms (KV)
+    // 4. Admin Endpoints
+    if (url.pathname === '/api/admin/users' && request.method === 'GET') {
+      return getAdminUsers(env);
+    }
+    
+    if (url.pathname === '/api/admin/users' && request.method === 'POST') {
+      return updateAdminUser(request, env);
+    }
     if (url.pathname === '/api/rooms' && request.method === 'POST') {
       return createRoom(request, env);
     }
@@ -50,7 +57,25 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
     const { email, username, referred_by } = await request.json() as { email: string, username: string, referred_by?: string };
     
     if (!email || !username) {
-      return new Response('Missing required fields', { status: 400 });
+      return new Response(JSON.stringify({ error: 'Email and username are required' }), { status: 400 });
+    }
+
+    // Check if user exists
+    const existingUser = await env.DB.prepare('SELECT * FROM Users WHERE email = ?').bind(email).first<any>();
+
+    if (existingUser) {
+      if (existingUser.access_allowed === 0 || existingUser.access_allowed === false) {
+        return new Response(JSON.stringify({ error: 'Account suspended' }), { status: 403 });
+      }
+
+      // Update last login and username if changed
+      await env.DB.prepare('UPDATE Users SET last_login = CURRENT_TIMESTAMP, username = ? WHERE email = ?')
+        .bind(username, email)
+        .run();
+      
+      return new Response(JSON.stringify({ success: true, user: existingUser, message: 'Logged in' }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // Generate simple ID (In production, use UUID or similar)
@@ -102,6 +127,27 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
 
     return new Response(JSON.stringify({ success: true, user: { id, username }, referral_applied: !!parentRow }), { status: 201 });
 
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+async function getAdminUsers(env: Env): Promise<Response> {
+  try {
+    const { results } = await env.DB.prepare('SELECT id, email, username, play_time_balance, access_allowed, created_at, last_login FROM Users ORDER BY created_at DESC').all();
+    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+async function updateAdminUser(request: Request, env: Env): Promise<Response> {
+  const body = await request.json() as { id: string, access_allowed: boolean };
+  try {
+    await env.DB.prepare('UPDATE Users SET access_allowed = ? WHERE id = ?')
+      .bind(body.access_allowed ? 1 : 0, body.id)
+      .run();
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500 });
   }

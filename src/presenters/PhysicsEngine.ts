@@ -7,7 +7,7 @@ export class PhysicsEngine {
   public gravity: number = 300; // pixels per second squared
   public safeFallSpeed: number = 280; // Safe landing speed
   public fallDamageMultiplier: number = 0.15; // Damage per extra speed unit
-  public onExplode?: () => void;
+  public onExplode?: (x: number, y: number) => void;
   public onJump?: () => void;
   public onHurt?: () => void;
   public onFallStart?: () => void;
@@ -385,9 +385,16 @@ export class PhysicsEngine {
     proj.updatePosition(dt);
 
     // Collision with landscape
-    if (state.landscape.isSolid(Math.floor(proj.x), Math.floor(proj.y))) {
-      this.explode(proj, state);
-      return;
+    // We check a small line between previous and current position to prevent ghost collisions and passing through thin walls
+    // For simplicity, just check current position, but ensure we check EXACTLY the landscape grid
+    const px = Math.floor(proj.x);
+    const py = Math.floor(proj.y);
+    if (px >= 0 && px < state.width && py >= 0 && py < state.height) {
+      // isSolid checks if material > 0
+      if (state.landscape.isSolid(px, py)) {
+        this.explode(proj, state);
+        return;
+      }
     }
 
     // Collision with players
@@ -425,7 +432,7 @@ export class PhysicsEngine {
 
     // Trigger sound
     if (this.onExplode) {
-      this.onExplode();
+      this.onExplode(proj.x, proj.y);
     }
 
     // Damage nearby players and push props

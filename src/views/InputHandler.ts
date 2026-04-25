@@ -22,28 +22,22 @@ export class InputHandler {
     'Shift': 'switch',
   };
 
-  private mobileBtns: { id: string, action: string }[] = [
-    { id: 'btn-left', action: 'left' },
-    { id: 'btn-right', action: 'right' },
-    { id: 'btn-up', action: 'up' },
-    { id: 'btn-down', action: 'down' },
-    { id: 'btn-jump', action: 'jump' },
-    { id: 'btn-fire', action: 'fire' },
-    { id: 'btn-switch', action: 'switch' },
-  ];
+  private mobileBtns: { id: string, action: string }[];
 
   private isDraggingCamera: boolean = false;
   private lastMouseX: number = 0;
   private lastMouseY: number = 0;
   
   private initialPinchDistance: number | null = null;
-  private initialZoom: number = 1;
+
   
   private canvas: HTMLCanvasElement;
 
-  constructor(presenter: GamePresenter, canvas: HTMLCanvasElement) {
+  constructor(presenter: GamePresenter, canvas: HTMLCanvasElement, mobileBtns: { id: string, action: string }[]) {
     this.presenter = presenter;
     this.canvas = canvas;
+    this.mobileBtns = mobileBtns;
+    this.bind();
   }
 
   public bind(): void {
@@ -116,7 +110,6 @@ export class InputHandler {
       const dx = event.touches[0].clientX - event.touches[1].clientX;
       const dy = event.touches[0].clientY - event.touches[1].clientY;
       this.initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
-      this.initialZoom = this.presenter.state.zoom;
       return;
     }
 
@@ -132,11 +125,11 @@ export class InputHandler {
 
   private handlePointerMove(event: MouseEvent | TouchEvent): void {
     if ('touches' in event && event.touches.length === 2) {
-      if (this.initialPinchDistance) {
+      if (this.initialPinchDistance !== null) {
         const dx = event.touches[0].clientX - event.touches[1].clientX;
         const dy = event.touches[0].clientY - event.touches[1].clientY;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const ratio = dist / this.initialPinchDistance;
+        const pinchDelta = dist - this.initialPinchDistance;
         
         const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
         const centerY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
@@ -146,7 +139,9 @@ export class InputHandler {
         const localX = centerX - rect.left;
         const localY = centerY - rect.top;
 
-        this.presenter.setZoom(this.initialZoom * ratio, localX, localY, this.canvas.width, this.canvas.height);
+        // Pass negative delta because pinch out = positive delta = zoom in
+        this.presenter.changeZoom(-pinchDelta * 0.05, this.canvas.width, this.canvas.height, localX, localY);
+        this.initialPinchDistance = dist;
       }
       return;
     }

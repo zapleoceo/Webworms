@@ -5,7 +5,65 @@ import { InputHandler } from './views/InputHandler';
 import { APIClient } from './network/APIClient';
 import { MultiplayerSync } from './network/MultiplayerSync';
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
+declare global {
+  interface Window {
+    presenter: GamePresenter;
+    renderer: CanvasRenderer;
+    inputHandler: InputHandler;
+  }
+}
+
+// We initialize everything globally
+// 4. Admin Endpoints
+  if (window.location.pathname === '/admin') {
+    document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
+      <div style="color: white; font-family: Courier New; padding: 20px;">
+        <h1>Admin Panel</h1>
+        <button id="load-users" style="padding: 10px; margin-bottom: 20px;">Load Users</button>
+        <div id="users-list"></div>
+      </div>
+    `;
+
+    document.getElementById('load-users')!.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/admin/users');
+        const users = await res.json();
+        const list = document.getElementById('users-list')!;
+        list.innerHTML = users.map((u: any) => `
+          <div style="border: 1px solid #555; padding: 10px; margin-bottom: 10px;">
+            <p><b>ID:</b> ${u.id}</p>
+            <p><b>Email:</b> ${u.email}</p>
+            <p><b>Username:</b> ${u.username}</p>
+            <p><b>Balance:</b> ${u.play_time_balance}s</p>
+            <p><b>Created:</b> ${u.created_at}</p>
+            <label>
+              <input type="checkbox" class="access-cb" data-id="${u.id}" ${u.access_allowed ? 'checked' : ''}> 
+              Access Allowed
+            </label>
+            <button class="save-user-btn" data-id="${u.id}" style="margin-left: 10px;">Save</button>
+          </div>
+        `).join('');
+
+        document.querySelectorAll('.save-user-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const id = (e.target as HTMLButtonElement).dataset.id;
+            const cb = document.querySelector(`.access-cb[data-id="${id}"]`) as HTMLInputElement;
+            
+            await fetch('/api/admin/users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id, access_allowed: cb.checked })
+            });
+            alert('Saved!');
+          });
+        });
+      } catch (e) {
+        alert('Error loading users. Are you running the backend?');
+      }
+    });
+  } else {
+
+  document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div id="game-wrapper">
     <div id="auth-screen" class="screen active">
       <div class="logo-container">
@@ -28,6 +86,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <option value="soldier">Soldier (Balanced)</option>
           <option value="heavy">Heavy (Tank)</option>
           <option value="scout">Scout (Fast)</option>
+        </select>
+
+        <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 5px;">Map Size:</h3>
+        <select id="map-size-select" style="margin-bottom: 15px; padding: 5px; font-size: 1rem; font-family: Courier New; width: 100%; box-sizing: border-box;">
+          <option value="small">Small</option>
+          <option value="medium" selected>Medium</option>
+          <option value="large">Large</option>
         </select>
 
         <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 10px;">Select Weapons:</h3>
@@ -105,13 +170,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   </div>
 `;
 
-
-const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
-const presenter = new GamePresenter(canvas.width, canvas.height);
-
-const renderer = new CanvasRenderer(canvas);
-const inputHandler = new InputHandler(presenter, canvas);
-
 // Screen Management
 const authScreen = document.getElementById('auth-screen')!;
 const menuScreen = document.getElementById('main-menu')!;
@@ -180,16 +238,73 @@ weaponCheckboxes.forEach(cb => {
 
 let currentMode: 'training' | 'friend' | 'random' = 'training';
 
-// Start Game Helpers
-async function startGame(mode: 'training' | 'friend' | 'random') {
+
+const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
+window.presenter = new GamePresenter(800, 600);
+window.renderer = new CanvasRenderer(canvas);
+window.inputHandler = new InputHandler(window.presenter, canvas, [
+  { id: 'btn-left', action: 'left' },
+  { id: 'btn-right', action: 'right' },
+  { id: 'btn-up', action: 'up' },
+  { id: 'btn-down', action: 'down' },
+  { id: 'btn-jump', action: 'jump' },
+  { id: 'btn-fire', action: 'fire' },
+  { id: 'btn-switch', action: 'switch' }
+]);
+
+// Hook input to canvas for zooming and moving
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  // Pass canvas dimensions and the bounding client rect for zoom target calculation
+  const rect = canvas.getBoundingClientRect();
+  window.presenter.changeZoom(e.deltaY > 0 ? 1 : -1, canvas.width, canvas.height, e.clientX - rect.left, e.clientY - rect.top);
+});
+
+let isDragging = false;
+canvas.addEventListener('mousedown', () => isDragging = true);
+window.addEventListener('mouseup', () => isDragging = false);
+canvas.addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    window.presenter.moveCamera(e.movementX, e.movementY, canvas.width, canvas.height);
+  }
+});
+
+// Touch drag for camera
+let lastTouchX = 0;
+let lastTouchY = 0;
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) {
+    lastTouchX = e.touches[0].clientX;
+    lastTouchY = e.touches[0].clientY;
+  }
+});
+canvas.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 1) {
+    const dx = e.touches[0].clientX - lastTouchX;
+    const dy = e.touches[0].clientY - lastTouchY;
+    window.presenter.moveCamera(dx, dy, canvas.width, canvas.height);
+    lastTouchX = e.touches[0].clientX;
+    lastTouchY = e.touches[0].clientY;
+  }
+});
+
+
+
+
+  // Start Game Helpers
+  async function startGame(mode: 'training' | 'friend' | 'random') {
   currentMode = mode;
   
   const checked = document.querySelectorAll('.weapon-cb:checked') as NodeListOf<HTMLInputElement>;
   const selectedWeapons = Array.from(checked).map(cb => cb.value);
   if (selectedWeapons.length === 0) selectedWeapons.push('bazooka'); // Fallback
 
+
   const classSelect = document.getElementById('class-select') as HTMLSelectElement;
   const unitClass = classSelect.value as 'soldier' | 'heavy' | 'scout';
+
+  const mapSizeSelect = document.getElementById('map-size-select') as HTMLSelectElement;
+  const mapSize = mapSizeSelect.value as 'small' | 'medium' | 'large';
 
   menuScreen.classList.remove('active');
   loaderScreen.classList.add('active');
@@ -197,7 +312,7 @@ async function startGame(mode: 'training' | 'friend' | 'random') {
   // Allow UI to paint the loader
   await new Promise(resolve => setTimeout(resolve, 50));
   
-  presenter.reset(selectedWeapons, unitClass);
+  window.presenter.reset(selectedWeapons, unitClass, mapSize);
   
   loaderScreen.classList.remove('active');
   gameScreen.classList.add('active');
@@ -224,14 +339,14 @@ async function startGame(mode: 'training' | 'friend' | 'random') {
       invitePanel.style.display = 'none';
       loaderScreen.classList.remove('active');
       gameScreen.classList.add('active');
-      presenter.start();
+      window.presenter.start();
     };
 
     syncModule.onPlayerAction = (action, active) => {
-      presenter.handleInput(action, active, true); // true = from network
+      window.presenter.handleInput(action, active, true); // true = from network
     };
 
-    presenter.onLocalAction = (action, active) => {
+    window.presenter.onLocalAction = (action: string, active: boolean) => {
       syncModule?.sendAction(action, active);
     };
 
@@ -263,7 +378,7 @@ async function startGame(mode: 'training' | 'friend' | 'random') {
     // Training mode starts immediately
     loaderScreen.classList.remove('active');
     gameScreen.classList.add('active');
-    presenter.start();
+    window.presenter.start();
   }
 
   // Start time deduction interval ONLY if not training
@@ -278,16 +393,14 @@ async function startGame(mode: 'training' | 'friend' | 'random') {
   }
 }
 
+  // End Game Helpers
+
 document.getElementById('btn-mode-training')!.addEventListener('click', () => startGame('training'));
 document.getElementById('btn-mode-friend')!.addEventListener('click', () => startGame('friend'));
 document.getElementById('btn-mode-random')!.addEventListener('click', () => startGame('random'));
 
-// Assuming presenter has a way to notify on game over, but for now we'll just clear interval if we return to menu
-// e.g. on return to menu:
-// if (deductInterval) clearInterval(deductInterval);
-
 document.getElementById('btn-return-menu')!.addEventListener('click', () => {
-  if (deductInterval) clearInterval(deductInterval);
+    if (deductInterval) clearInterval(deductInterval);
   
   gameOverScreen.classList.remove('active');
   menuScreen.classList.add('active');
@@ -303,7 +416,7 @@ document.getElementById('btn-return-menu')!.addEventListener('click', () => {
   }
 });
 
-presenter.onGameOver = (winner, stats) => {
+window.presenter.onGameOver = (winner: any, stats: any) => {
   gameScreen.classList.remove('active');
   mobileControls.style.display = 'none';
   gameOverScreen.classList.add('active');
@@ -328,26 +441,37 @@ presenter.onGameOver = (winner, stats) => {
   document.getElementById('stat-p2-dmg')!.innerText = `P2 Damage Dealt: ${stats.p2Dmg}`;
 };
 
-// Remove old resizeCanvas as CSS handles aspect ratio now.
+} // End of else block for game init
+
+let lastTime = performance.now();
+  function gameLoop(time: number) {
+    const dt = (time - lastTime) / 1000;
+    lastTime = time;
+
+    window.presenter.update(dt);
+    window.renderer.render(window.presenter.state);
+
+    requestAnimationFrame(gameLoop);
+  }
+  requestAnimationFrame(gameLoop);
 // Add orientation check if needed.
 
 // Override render method to connect View layer
-presenter.render = () => {
-  renderer.render(presenter.state);
-  presenter.postRender();
+window.presenter.render = () => {
+  window.renderer.render(window.presenter.state);
+  window.presenter.postRender();
 };
 
 // Initialize and bind
-inputHandler.bind();
+window.inputHandler.bind();
 
 // Initial draw for background before start
-renderer.render(presenter.state);
+window.renderer.render(window.presenter.state);
 
-// Make sure cleanup is done (useful if hot-reloading)
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    presenter.stop();
-    inputHandler.unbind();
+    window.presenter.stop();
+    window.inputHandler.unbind();
   });
 }
 

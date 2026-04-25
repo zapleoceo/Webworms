@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS Users (
   email TEXT UNIQUE,
   username TEXT UNIQUE,
   play_time_balance INTEGER DEFAULT 3600, -- 1 hour in seconds
+  access_allowed BOOLEAN DEFAULT TRUE,
   last_daily_reset DATETIME DEFAULT CURRENT_TIMESTAMP,
   referred_by TEXT, -- Foreign Key to Users.id (Level 1)
   matches_played INTEGER DEFAULT 0,
