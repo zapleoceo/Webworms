@@ -87,10 +87,14 @@ export class InputHandler {
     this.presenter.handleInput(action, false);
   };
 
+  private activeKeys = new Set<string>();
+
   private handleKeyDown(event: KeyboardEvent): void {
     const action = this.keyMap[event.key];
     if (action) {
       event.preventDefault(); // Prevent scrolling
+      if (this.activeKeys.has(event.code)) return;
+      this.activeKeys.add(event.code);
       this.presenter.handleInput(action, true);
     }
   }
@@ -99,6 +103,7 @@ export class InputHandler {
     const action = this.keyMap[event.key];
     if (action) {
       event.preventDefault();
+      this.activeKeys.delete(event.code);
       this.presenter.handleInput(action, false);
     }
   }

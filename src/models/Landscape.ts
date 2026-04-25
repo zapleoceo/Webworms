@@ -42,11 +42,13 @@ export class Landscape {
   }
 
   public createCrater(cx: number, cy: number, radius: number): void {
-    const r2 = radius * radius;
-    const minX = Math.max(0, Math.floor(cx - radius));
-    const maxX = Math.min(this.width - 1, Math.ceil(cx + radius));
-    const minY = Math.max(0, Math.floor(cy - radius));
-    const maxY = Math.min(this.height - 1, Math.ceil(cy + radius));
+    // Use slightly larger radius (+1.5) to clear out single-pixel artifacts (debris)
+    const effectiveRadius = radius + 1.5;
+    const r2 = effectiveRadius * effectiveRadius;
+    const minX = Math.max(0, Math.floor(cx - effectiveRadius));
+    const maxX = Math.min(this.width - 1, Math.ceil(cx + effectiveRadius));
+    const minY = Math.max(0, Math.floor(cy - effectiveRadius));
+    const maxY = Math.min(this.height - 1, Math.ceil(cy + effectiveRadius));
 
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
@@ -58,12 +60,13 @@ export class Landscape {
         const dx = x - cx;
         const dy = y - cy;
         if (dx * dx + dy * dy <= r2) {
-          this.setSolid(x, y, false);
+          this.setMaterial(x, y, 0); // Completely remove material
         }
       }
     }
-    // Instead of forcing a full redraw, just queue the crater for fast erasure
-    this.newCraters.push({x: cx, y: cy, r: radius});
+    // Inform renderer with original radius for visual effects, 
+    // or slightly larger so it clears the visual canvas properly too
+    this.newCraters.push({x: cx, y: cy, r: effectiveRadius});
   }
 
   public getTopSolidY(x: number): number {
