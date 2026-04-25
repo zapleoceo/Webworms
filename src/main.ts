@@ -17,16 +17,58 @@ declare global {
 // 4. Admin Endpoints
   if (window.location.pathname === '/admin') {
     document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-      <div style="color: white; font-family: Courier New; padding: 20px;">
-        <h1>Admin Panel</h1>
-        <button id="load-users" style="padding: 10px; margin-bottom: 20px;">Load Users</button>
-        <div id="users-list"></div>
+      <div style="color: white; font-family: Courier New; padding: 20px; max-width: 600px; margin: 0 auto;">
+        <div id="admin-auth">
+          <h1>Admin Authentication</h1>
+          <input type="email" id="admin-email" class="retro-input" placeholder="Admin Email" style="margin-bottom: 10px;">
+          <input type="password" id="admin-password" class="retro-input" placeholder="Admin Password" style="margin-bottom: 10px;">
+          <button id="admin-login-btn" class="retro-btn">Login to Admin Panel</button>
+        </div>
+
+        <div id="admin-dashboard" style="display: none;">
+          <h1>Admin Panel</h1>
+          <button id="load-users" class="retro-btn" style="padding: 10px; margin-bottom: 20px;">Load Users</button>
+          <button id="admin-logout-btn" class="retro-btn" style="padding: 10px; margin-bottom: 20px; background-color: #8B0000;">Logout</button>
+          <div id="users-list"></div>
+        </div>
       </div>
     `;
 
+    let adminHeaders = new Headers();
+
+    document.getElementById('admin-login-btn')!.addEventListener('click', () => {
+      const email = (document.getElementById('admin-email') as HTMLInputElement).value;
+      const pass = (document.getElementById('admin-password') as HTMLInputElement).value;
+      if (!email || !pass) {
+        alert("Please enter credentials");
+        return;
+      }
+      adminHeaders.set('X-Admin-Email', email);
+      adminHeaders.set('X-Admin-Password', pass);
+      document.getElementById('admin-auth')!.style.display = 'none';
+      document.getElementById('admin-dashboard')!.style.display = 'block';
+    });
+
+    document.getElementById('admin-logout-btn')!.addEventListener('click', () => {
+      adminHeaders = new Headers();
+      document.getElementById('admin-dashboard')!.style.display = 'none';
+      document.getElementById('admin-auth')!.style.display = 'block';
+      document.getElementById('users-list')!.innerHTML = '';
+    });
+
     document.getElementById('load-users')!.addEventListener('click', async () => {
       try {
-        const res = await fetch(APIClient.BASE_URL + '/admin/users');
+        const res = await fetch(APIClient.BASE_URL + '/admin/users', { headers: adminHeaders });
+        if (!res.ok) {
+          if (res.status === 401) {
+            alert("Unauthorized! Incorrect admin credentials or user is not an admin.");
+            document.getElementById('admin-logout-btn')!.click();
+          } else {
+            alert(`Error loading users: ${res.statusText}`);
+          }
+          return;
+        }
+        
         const users = await res.json();
         const list = document.getElementById('users-list')!;
         list.innerHTML = users.map((u: any) => `
@@ -55,12 +97,21 @@ declare global {
             const cb = document.querySelector(`.access-cb[data-id="${id}"]`) as HTMLInputElement;
             const adminCb = document.querySelector(`.admin-cb[data-id="${id}"]`) as HTMLInputElement;
             
-            await fetch(APIClient.BASE_URL + '/admin/users', {
+            const saveRes = await fetch(APIClient.BASE_URL + '/admin/users', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Admin-Email': adminHeaders.get('X-Admin-Email') || '',
+                'X-Admin-Password': adminHeaders.get('X-Admin-Password') || ''
+              },
               body: JSON.stringify({ id, access_allowed: cb.checked, is_admin: adminCb.checked })
             });
-            alert('Saved!');
+            
+            if (!saveRes.ok) {
+              alert('Failed to save! Unauthorized.');
+            } else {
+              alert('Saved!');
+            }
           });
         });
       } catch (e) {

@@ -47,7 +47,7 @@ export default {
 
       // 4. Admin Endpoints
       else if (url.pathname === '/api/admin/users' && request.method === 'GET') {
-        response = await getAdminUsers(env);
+        response = await getAdminUsers(request, env);
       }
       
       else if (url.pathname === '/api/admin/users' && request.method === 'POST') {
@@ -237,13 +237,21 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
       return new Response('Invalid verification token', { status: 400 });
     }
 
-    const result = await env.DB.prepare(
-      `UPDATE Users SET is_active = 1, verification_token = NULL WHERE verification_token = ? RETURNING id`
-    ).bind(token).first();
+    const user = await env.DB.prepare('SELECT id FROM Users WHERE verification_token = ?').bind(token).first<{id: string}>();
 
-    if (!result) {
-      return new Response('Token invalid or already used', { status: 400 });
+    if (!user) {
+      return new Response(`
+        <html><body>
+          <h3 style="color:red;">Error</h3>
+          <p>Token invalid or already used.</p>
+          <a href="/">Back to game</a>
+        </body></html>
+      `, { headers: { 'Content-Type': 'text/html' }, status: 400 });
     }
+
+    await env.DB.prepare(
+      `UPDATE Users SET is_active = 1, verification_token = NULL WHERE id = ?`
+    ).bind(user.id).run();
 
     // Redirect to main page after success
     const frontendUrl = url.origin; // If worker is hosted separately, this might be different. Let's just return a script to redirect.
@@ -260,7 +268,23 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
   }
 }
 
-async function getAdminUsers(env: Env): Promise<Response> {
+async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
+  const email = request.headers.get('X-Admin-Email');
+  const password = request.headers.get('X-Admin-Password');
+  
+  if (!email || !password) return false;
+  
+  const hashedPassword = await hashPassword(password);
+  const user = await env.DB.prepare('SELECT id FROM Users WHERE email = ? AND password_hash = ? AND is_admin = 1').bind(email, hashedPassword).first();
+  
+  return !!user;
+}
+
+async function getAdminUsers(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized. Admin access required.' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+  
   try {
     const { results } = await env.DB.prepare('SELECT id, email, username, play_time_balance, is_active, is_admin, access_allowed, created_at, last_login FROM Users ORDER BY created_at DESC').all();
     return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -270,6 +294,10 @@ async function getAdminUsers(env: Env): Promise<Response> {
 }
 
 async function updateAdminUser(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized. Admin access required.' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
   const body = await request.json() as { id: string, access_allowed: boolean, is_admin: boolean };
   try {
     await env.DB.prepare('UPDATE Users SET access_allowed = ?, is_admin = ? WHERE id = ?')
