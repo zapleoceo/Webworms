@@ -8,6 +8,7 @@ export class GamePresenter {
   public physics: PhysicsEngine;
   private lastTime: number = 0;
   private isRunning: boolean = false;
+  private activeInputs: Set<string> = new Set(); // Track held keys/buttons
 
   constructor(width: number, height: number) {
     this.state = new GameState(width, height);
@@ -48,7 +49,26 @@ export class GamePresenter {
   }
 
   public update(dt: number): void {
+    this.processActiveInputs(dt);
     this.physics.update(this.state, dt);
+  }
+
+  private processActiveInputs(dt: number): void {
+    const player = this.state.getCurrentPlayer();
+    if (!player) return;
+
+    const aimSpeed = 90; // degrees per second
+    const chargeSpeed = 100; // max power per second
+
+    if (this.activeInputs.has('up')) {
+      player.updateAim(aimSpeed * dt);
+    }
+    if (this.activeInputs.has('down')) {
+      player.updateAim(-aimSpeed * dt);
+    }
+    if (this.activeInputs.has('fire')) {
+      player.changePower(chargeSpeed * dt);
+    }
   }
 
   public render(): void {
@@ -59,8 +79,13 @@ export class GamePresenter {
     const player = this.state.getCurrentPlayer();
     if (!player) return;
 
+    if (isActive) {
+      this.activeInputs.add(action);
+    } else {
+      this.activeInputs.delete(action);
+    }
+
     const moveSpeed = 100;
-    const aimSpeed = 90;
     const jumpForce = -250;
 
     switch (action) {
@@ -72,12 +97,6 @@ export class GamePresenter {
         player.vx = isActive ? moveSpeed : 0;
         if (isActive) player.facingRight = true;
         break;
-      case 'up':
-        if (isActive) player.updateAim(aimSpeed * 0.1);
-        break;
-      case 'down':
-        if (isActive) player.updateAim(-aimSpeed * 0.1);
-        break;
       case 'jump':
         if (isActive && !player.isJumping) {
           player.vy = jumpForce;
@@ -85,10 +104,9 @@ export class GamePresenter {
         }
         break;
       case 'fire':
-        if (isActive) {
-          player.changePower(2); // Charging
-        } else {
-          this.fireWeapon(player); // Release to fire
+        // If releasing fire, shoot the weapon
+        if (!isActive) {
+          this.fireWeapon(player);
         }
         break;
     }

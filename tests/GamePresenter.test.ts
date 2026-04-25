@@ -24,8 +24,10 @@ describe('GamePresenter', () => {
 
     // Charge weapon
     presenter.handleInput('fire', true);
-    presenter.handleInput('fire', true);
-    expect(player.aimPower).toBe(4);
+    presenter.update(0.5); // update loop for 0.5 seconds
+    
+    expect(player.aimPower).toBeGreaterThan(0);
+    expect(player.aimPower).toBe(50); // 100 power/sec * 0.5s
 
     // Fire weapon
     presenter.handleInput('fire', false);
