@@ -3,6 +3,7 @@ import { PhysicsEngine } from './PhysicsEngine';
 import { Worm } from '../models/Worm';
 import { Projectile } from '../models/Projectile';
 import { SoundManager } from '../utils/SoundManager';
+import { PhysicsProp } from '../models/PhysicsProp';
 
 export class GamePresenter {
   public state: GameState;
@@ -51,12 +52,27 @@ export class GamePresenter {
   public init(): void {
     this.state.landscape.generateTerrain();
     
-    // Add two worms for Phase 1
-    const p1 = new Worm(300, 100, false, 'Player 1', '#FF69B4');
-    const p2 = new Worm(900, 100, true, 'Player 2', '#4169E1'); // Dummy
+    // Add two worms for Phase 1 with Safe Spawn
+    const spawnPoints: {x: number, y: number}[] = [];
+    
+    const s1 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
+    spawnPoints.push(s1);
+    const p1 = new Worm(s1.x, s1.y, false, 'Player 1', '#FF69B4');
+    
+    const s2 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
+    spawnPoints.push(s2);
+    const p2 = new Worm(s2.x, s2.y, true, 'Player 2', '#4169E1'); // Dummy
     
     this.state.addPlayer(p1);
     this.state.addPlayer(p2);
+
+    // Add some random dynamic props (Asteroids/Crates)
+    for (let i = 0; i < 5; i++) {
+      const s = this.state.landscape.getSafeSpawn(spawnPoints, 100);
+      spawnPoints.push(s);
+      const prop = new PhysicsProp(s.x, s.y - 50, i % 2 === 0 ? 'rock' : 'crate');
+      this.state.props.push(prop);
+    }
   }
 
   public start(): void {

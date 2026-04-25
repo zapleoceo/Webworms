@@ -30,6 +30,7 @@ export class CanvasRenderer {
 
     this.drawSky(state);
     this.drawLandscape(state);
+    this.drawProps(state);
     this.drawProjectiles(state);
     this.drawPlayers(state);
     this.drawExplosions(state);
@@ -38,6 +39,47 @@ export class CanvasRenderer {
 
     this.drawOffscreenPointers(state);
     this.drawUI(state);
+  }
+
+  private drawProps(state: GameState): void {
+    for (const prop of state.props) {
+      this.ctx.save();
+      this.ctx.translate(prop.x, prop.y);
+      this.ctx.rotate(prop.rotation);
+
+      if (prop.type === 'crate') {
+        this.ctx.fillStyle = '#8B4513'; // wood
+        this.ctx.fillRect(-prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
+        this.ctx.strokeStyle = '#5c2e0e';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(-prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
+        
+        // Crate cross pattern
+        this.ctx.beginPath();
+        this.ctx.moveTo(-prop.radius, -prop.radius);
+        this.ctx.lineTo(prop.radius, prop.radius);
+        this.ctx.moveTo(prop.radius, -prop.radius);
+        this.ctx.lineTo(-prop.radius, prop.radius);
+        this.ctx.stroke();
+      } else {
+        // Asteroid / Rock
+        this.ctx.fillStyle = '#555';
+        this.ctx.beginPath();
+        // Draw jagged rock
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2;
+          const r = prop.radius * (0.8 + (i % 2) * 0.4); // irregular shape
+          this.ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+        }
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.strokeStyle = '#333';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.stroke();
+      }
+
+      this.ctx.restore();
+    }
   }
 
   private clear(): void {

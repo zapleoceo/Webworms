@@ -2,12 +2,14 @@ import { Landscape } from './Landscape';
 import { Worm } from './Worm';
 import { Projectile } from './Projectile';
 import { Explosion } from './Explosion';
+import { PhysicsProp } from './PhysicsProp';
 
 export class GameState {
   public landscape: Landscape;
   public players: Worm[] = [];
   public projectiles: Projectile[] = [];
   public explosions: Explosion[] = [];
+  public props: PhysicsProp[] = [];
   public currentPlayerIndex: number = 0;
   
   public width: number;

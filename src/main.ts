@@ -11,6 +11,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <button class="retro-btn" id="btn-start-game">START GAME</button>
     </div>
 
+    <div id="loader-screen" class="screen">
+      <h2 class="retro-text blink">GENERATING WORLD...</h2>
+    </div>
+
     <div id="game-container" class="screen">
       <canvas id="gameCanvas" width="800" height="600"></canvas>
     </div>
@@ -47,13 +51,22 @@ const inputHandler = new InputHandler(presenter, canvas);
 
 // Screen Management
 const menuScreen = document.getElementById('main-menu')!;
+const loaderScreen = document.getElementById('loader-screen')!;
 const gameScreen = document.getElementById('game-container')!;
 const gameOverScreen = document.getElementById('game-over-screen')!;
 const winnerText = document.getElementById('winner-text')!;
 const mobileControls = document.getElementById('mobile-controls')!;
 
-document.getElementById('btn-start-game')!.addEventListener('click', () => {
+document.getElementById('btn-start-game')!.addEventListener('click', async () => {
   menuScreen.classList.remove('active');
+  loaderScreen.classList.add('active');
+  
+  // Allow UI to paint the loader
+  await new Promise(resolve => setTimeout(resolve, 50));
+  
+  presenter.reset();
+  
+  loaderScreen.classList.remove('active');
   gameScreen.classList.add('active');
   
   // Show controls on mobile
@@ -61,7 +74,6 @@ document.getElementById('btn-start-game')!.addEventListener('click', () => {
     mobileControls.style.display = 'flex';
   }
   
-  presenter.reset();
   presenter.start();
 });
 

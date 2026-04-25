@@ -31,8 +31,63 @@ export class PhysicsEngine {
     }
     state.explosions = state.explosions.filter(e => e.life > 0);
 
+    // Update dynamic props
+    this.updateProps(state, dt);
+
     // Handle worm-to-worm collisions (Heavy Pushing)
     this.handleWormCollisions(state);
+  }
+
+  private updateProps(state: GameState, dt: number): void {
+    for (const prop of state.props) {
+      if (prop.isSettled) {
+        // Quick check to see if ground under it disappeared
+        const bottomY = Math.floor(prop.y + prop.radius + 1);
+        if (!state.landscape.isSolid(Math.floor(prop.x), bottomY)) {
+          prop.isSettled = false;
+        } else {
+          continue;
+        }
+      }
+
+      prop.vy += this.gravity * dt;
+      prop.x += prop.vx * dt;
+      prop.y += prop.vy * dt;
+      prop.rotation += prop.angularVelocity * dt;
+
+      const cx = Math.floor(prop.x);
+      const bottomY = Math.floor(prop.y + prop.radius);
+
+      // Map bounds
+      if (prop.x < prop.radius) { prop.x = prop.radius; prop.vx *= -prop.bounce; }
+      if (prop.x > state.width - prop.radius) { prop.x = state.width - prop.radius; prop.vx *= -prop.bounce; }
+      if (prop.y > state.height) { prop.isSettled = true; continue; }
+
+      // Terrain collision
+      if (state.landscape.isSolid(cx, bottomY)) {
+        // Push out
+        let y = bottomY;
+        while (state.landscape.isSolid(cx, y) && y > 0) {
+          y--;
+        }
+        prop.y = y - prop.radius;
+
+        // Bounce
+        prop.vy = -prop.vy * prop.bounce;
+        prop.vx *= prop.friction;
+
+        // Spin
+        prop.angularVelocity = prop.vx * 0.05;
+
+        // Settle if slow
+        if (Math.abs(prop.vy) < 15 && Math.abs(prop.vx) < 5) {
+          prop.vy = 0;
+          prop.vx = 0;
+          prop.angularVelocity = 0;
+          prop.isSettled = true;
+        }
+      }
+    }
   }
 
   private handleWormCollisions(state: GameState): void {
@@ -193,7 +248,7 @@ export class PhysicsEngine {
       this.onExplode();
     }
 
-    // Damage nearby players
+    // Damage nearby players and push props
     for (const player of state.players) {
       const playerRadius = player.width / 2;
       const dist = MathUtils.distance(proj.x, proj.y, player.x, player.y);
@@ -209,6 +264,21 @@ export class PhysicsEngine {
         player.vx += (dx / norm) * 150 * damageRatio;
         player.vy -= 150 * damageRatio; // push up
         player.isJumping = true;
+      }
+    }
+
+    for (const prop of state.props) {
+      const dist = MathUtils.distance(proj.x, proj.y, prop.x, prop.y);
+      if (dist <= proj.explosionRadius + prop.radius) {
+        const damageRatio = 1 - (dist / (proj.explosionRadius + prop.radius));
+        const dx = prop.x - proj.x;
+        const dy = prop.y - proj.y;
+        const norm = Math.sqrt(dx*dx + dy*dy) || 1;
+        
+        prop.vx += (dx / norm) * 300 * damageRatio;
+        prop.vy -= 300 * damageRatio;
+        prop.angularVelocity += (Math.random() - 0.5) * 20 * damageRatio;
+        prop.isSettled = false;
       }
     }
   }

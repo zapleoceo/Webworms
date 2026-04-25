@@ -7,13 +7,15 @@ describe('Integration Test', () => {
     presenter.init();
 
     const player = presenter.state.getCurrentPlayer()!;
+    // Player is spawned via getSafeSpawn so they are already on the ground
     const initialY = player.y;
     
-    // Simulate one loop step
+    // Jump to see physics working
+    presenter.handleInput('jump', true);
     presenter.update(0.1);
     
-    // Gravity should have pulled player down
-    expect(player.y).toBeGreaterThan(initialY);
+    // Jump should have pulled player up
+    expect(player.y).toBeLessThan(initialY);
 
     // Charge and fire
     presenter.handleInput('fire', true); // charge

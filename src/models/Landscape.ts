@@ -52,6 +52,9 @@ export class Landscape {
 
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
+        // Do not destroy the unbreakable borders
+        if (x < 5 || x >= this.width - 5 || y >= this.height - 5) continue;
+        
         const dx = x - cx;
         const dy = y - cy;
         if (dx * dx + dy * dy <= r2) {
@@ -61,5 +64,42 @@ export class Landscape {
     }
     // Instead of forcing a full redraw, just queue the crater for fast erasure
     this.newCraters.push({x: cx, y: cy, r: radius});
+  }
+
+  public getTopSolidY(x: number): number {
+    const intX = Math.floor(x);
+    for (let y = 0; y < this.height; y++) {
+      if (this.isSolid(intX, y)) return y;
+    }
+    return this.height - 10;
+  }
+
+  public getSafeSpawn(existingPoints: {x: number, y: number}[], minDistance: number): {x: number, y: number} {
+    let bestX = this.width / 2;
+    let bestY = this.getTopSolidY(bestX);
+    const maxAttempts = 50;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      // Pick random X, keeping away from borders
+      const testX = 50 + Math.random() * (this.width - 100);
+      const testY = this.getTopSolidY(testX);
+
+      let tooClose = false;
+      for (const p of existingPoints) {
+        const dx = p.x - testX;
+        const dy = p.y - testY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minDistance) {
+          tooClose = true;
+          break;
+        }
+      }
+
+      if (!tooClose) {
+        return { x: testX, y: testY };
+      }
+    }
+    // Fallback
+    return { x: bestX, y: bestY };
   }
 }

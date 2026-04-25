@@ -58,6 +58,16 @@ h1.game-title {
   text-shadow: 2px 2px 0px #000;
 }
 
+.blink {
+  animation: blinker 1s linear infinite;
+}
+
+@keyframes blinker {
+  50% {
+    opacity: 0;
+  }
+}
+
 .retro-btn {
   background-color: #4CAF50;
   border: 4px solid #fff;
