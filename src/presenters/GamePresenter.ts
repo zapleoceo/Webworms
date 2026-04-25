@@ -268,8 +268,11 @@ export class GamePresenter {
       return;
     }
     
-    // Apply cooldown
-    player.weaponCooldowns[weapon.id] = weapon.cooldown;
+    // Apply cooldown (Dynamic: based on shot power, min 20% of base cooldown)
+    const powerRatio = Math.max(0.2, power / 100);
+    const actualCooldown = weapon.cooldown * powerRatio;
+    player.weaponCooldowns[weapon.id] = actualCooldown;
+    player.maxWeaponCooldowns[weapon.id] = actualCooldown;
 
     // Calculate vector based on angle and power
     const baseRad = player.aimAngle * (Math.PI / 180);

@@ -34,6 +34,7 @@ export class Worm {
   public weapons: Weapon[] = [];
   public currentWeaponIndex: number = 0;
   public weaponCooldowns: Record<string, number> = {};
+  public maxWeaponCooldowns: Record<string, number> = {};
 
   constructor(x: number, y: number, isDummy: boolean = false, name: string = 'Player', unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier', selectedWeapons: string[] = ['bazooka', 'blaster']) {
     this.x = x;
@@ -84,12 +85,14 @@ export class Worm {
       if (WEAPONS[wid]) {
         this.weapons.push(WEAPONS[wid]);
         this.weaponCooldowns[wid] = 0;
+        this.maxWeaponCooldowns[wid] = WEAPONS[wid].cooldown;
       }
     }
     // Fallback if none selected
     if (this.weapons.length === 0) {
       this.weapons.push(WEAPONS['bazooka']);
       this.weaponCooldowns['bazooka'] = 0;
+      this.maxWeaponCooldowns['bazooka'] = WEAPONS['bazooka'].cooldown;
     }
   }
 

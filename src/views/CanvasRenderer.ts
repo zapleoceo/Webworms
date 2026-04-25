@@ -400,23 +400,32 @@ export class CanvasRenderer {
 
     // Weapon Info
     const weapon = player.getCurrentWeapon();
+    let cd = 0;
+    let maxCd = 1;
     if (weapon) {
       this.ctx.fillStyle = weapon.color;
       this.ctx.fillText(`WEAPON: ${weapon.name}`, 20, 50);
       
-      // Cooldown UI
-      const cd = player.weaponCooldowns[weapon.id] || 0;
-      if (cd > 0) {
-        this.ctx.fillStyle = 'red';
-        this.ctx.fillText(`RELOADING: ${cd.toFixed(1)}s`, 20, 65);
-      }
+      cd = player.weaponCooldowns[weapon.id] || 0;
+      maxCd = player.maxWeaponCooldowns[weapon.id] || 1;
     }
 
-    // Power bar
+    // Base background bar
     this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    this.ctx.fillRect(20, 75, 100, 10);
+    this.ctx.fillRect(20, 60, 100, 10);
 
-    this.ctx.fillStyle = 'red';
-    this.ctx.fillRect(20, 75, player.aimPower, 10);
+    if (cd > 0) {
+      // Cooldown UI (Reverse charging bar)
+      this.ctx.fillStyle = '#FFA500'; // Orange for reload
+      const ratio = cd / maxCd;
+      this.ctx.fillRect(20, 60, 100 * ratio, 10); // shrinks to the left as cd approaches 0
+      
+      this.ctx.fillStyle = 'red';
+      this.ctx.fillText(`RELOADING: ${cd.toFixed(1)}s`, 20, 85);
+    } else {
+      // Power bar (Forward charging bar)
+      this.ctx.fillStyle = 'red';
+      this.ctx.fillRect(20, 60, player.aimPower, 10);
+    }
   }
 }

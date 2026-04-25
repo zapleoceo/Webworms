@@ -71,6 +71,23 @@ h1.game-title {
   display: flex;
 }
 
+.retro-input {
+  background: black;
+  color: #00ffff;
+  border: 2px solid #00ffff;
+  padding: 10px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 1.2rem;
+  margin-bottom: 15px;
+  width: 250px;
+  text-align: center;
+}
+
+.retro-input:focus {
+  outline: none;
+  box-shadow: 0 0 10px #00ffff;
+}
+
 .weapon-selection {
   background: rgba(0, 0, 0, 0.5);
   padding: 15px;
