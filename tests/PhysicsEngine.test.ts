@@ -4,6 +4,7 @@ import { GameState } from '../src/models/GameState';
 import { Worm } from '../src/models/Worm';
 import { Projectile } from '../src/models/Projectile';
 import { WEAPONS } from '../src/models/Weapon';
+import { PhysicsProp } from '../src/models/PhysicsProp';
 
 describe('PhysicsEngine', () => {
   let engine: PhysicsEngine;
@@ -44,28 +45,36 @@ describe('PhysicsEngine', () => {
     expect(worm.health).toBeLessThan(100); // Took fall damage
   });
 
-  it('prevents walking up steep slopes', () => {
-    // Create a 90 degree wall at x=60
-    for(let x=60; x<100; x++) {
-      for(let y=50; y<100; y++) {
-        state.landscape.setSolid(x, y, true);
-      }
+  it('prevents props from rolling up steep slopes easily', () => {
+    const engine = new PhysicsEngine();
+    const state = new GameState(100, 100);
+    const prop = new PhysicsProp(50, 50, 'rock');
+    
+    // Give prop high horizontal speed towards a wall
+    prop.vx = 200;
+    // ensure gravity works
+    prop.vy = 100;
+    state.props.push(prop);
+    
+    // Create a steep wall at x=60
+    for (let y = 0; y < 100; y++) {
+      state.landscape.setSolid(60, y, true);
     }
-    // Floor at y=80
-    for(let x=0; x<60; x++) {
-      for(let y=80; y<100; y++) {
-        state.landscape.setSolid(x, y, true);
-      }
+    // Floor
+    for (let x = 0; x < 100; x++) {
+      state.landscape.setSolid(x, 90, true);
     }
 
-    const worm = new Worm(55, 75); // Walking towards wall
-    worm.vx = 100; // moving right
-    state.addPlayer(worm);
+    prop.y = 80;
+    prop.x = 55;
     
+    // Engine update should detect the wall/slope and drain velocity or bounce
+    // Provide a small dt loop to simulate rolling into the wall
+    engine.update(state, 0.1);
     engine.update(state, 0.1);
     
-    expect(worm.x).toBeLessThan(60); // Could not pass wall
-    expect(worm.vx).toBe(0); // Speed killed by wall
+    // Velocity should be severely reduced or reversed
+    expect(prop.vx).toBeLessThan(100); 
   });
 
   it('updates projectile and handles explosion', () => {

@@ -83,10 +83,13 @@ export class PhysicsEngine {
         }
       }
 
+      const oldX = prop.x;
+      const oldY = prop.y;
+
       prop.vy += this.gravity * dt;
       
       // Apply wind if not settled (in the air)
-      if (!prop.isSettled) {
+      if (!prop.isSettled && state.wind) {
         prop.vx += state.wind * dt * (0.8 / prop.mass);
       }
 
@@ -109,29 +112,44 @@ export class PhysicsEngine {
         while (state.landscape.isSolid(cx, y) && y > 0) {
           y--;
         }
-        prop.y = y - prop.radius;
+        
+        const newY = y - prop.radius;
+        
+        // SLOPE CHECK: If the prop is forced UP by the ground (y < oldY), it hit a slope/wall
+        const dy = oldY - newY;
+        if (dy > 1 && Math.abs(prop.vx) > 5) {
+          // Hitting a slope drains horizontal velocity significantly based on slope steepness
+          prop.vx *= 0.5; // Heavy friction for rolling uphill
+          
+          if (dy > 3) {
+            // Too steep! Bounce back or stop instead of climbing
+            prop.vx *= -0.2; // Bounce off the wall slightly
+            prop.x = oldX; // Revert horizontal movement
+          }
+        }
+        
+        prop.y = newY;
 
         // Heavy impact check for props
         if (prop.vy > 300) {
           if (this.onHeavyImpact) this.onHeavyImpact();
+          // Prop takes fall damage if hitting ground hard
+          prop.takeDamage((Math.abs(prop.vy) - 200) * 0.1);
         }
 
         // Bounce
-        prop.vy = -prop.vy * prop.bounce;
-        prop.vx *= prop.friction;
-
-        // Spin
-        prop.angularVelocity = prop.vx * 0.05;
-
-        // Settle if slow
-        if (Math.abs(prop.vy) < 15 && Math.abs(prop.vx) < 5) {
-          prop.vy = 0;
-          prop.vx = 0;
-          prop.angularVelocity = 0;
-          prop.isSettled = true;
-        } else if (Math.abs(prop.vy) > 200) {
-          // Prop takes fall damage if hitting ground hard
-          prop.takeDamage((Math.abs(prop.vy) - 200) * 0.1);
+        if (prop.vy > 20) {
+          prop.vy = -prop.vy * prop.bounce;
+          prop.vx *= prop.friction;
+          prop.angularVelocity *= prop.friction;
+        } else {
+          // Settle if slow
+          if (Math.abs(prop.vy) < 15 && Math.abs(prop.vx) < 5) {
+            prop.vy = 0;
+            prop.vx = 0;
+            prop.angularVelocity = 0;
+            prop.isSettled = true;
+          }
         }
       }
     }
@@ -341,13 +359,18 @@ export class PhysicsEngine {
     } else {
       // Air resistance and WIND
       worm.vx *= 0.98;
-      worm.vx += state.wind * dt * 0.5; // Worms are slightly affected by wind in the air
+      // Protect against undefined state wind (in tests)
+      if (state.wind) {
+        worm.vx += state.wind * dt * 0.5; // Worms are slightly affected by wind in the air
+      }
     }
   }
 
   private updateProjectile(proj: Projectile, state: GameState, dt: number): void {
     proj.vy += this.gravity * dt;
-    proj.vx += state.wind * dt * proj.windMultiplier; // Apply wind based on weapon stats
+    if (state.wind) {
+      proj.vx += state.wind * dt * proj.windMultiplier; // Apply wind based on weapon stats
+    }
     
     proj.updatePosition(dt);
 

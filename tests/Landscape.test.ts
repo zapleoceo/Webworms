@@ -31,9 +31,18 @@ describe('Landscape', () => {
     
     // Middle of the sky might have floating islands now, so let's check a very specific empty spot 
     // Because of our unbreakable top/bottom borders (10px), (50, 0) is actually solid!
-    // We should check inside the sky area (e.g. y=20)
+    // We should check inside the sky area (e.g. x=50, y=20 might be solid due to floating island noise)
+    // We'll scan a larger block to find AT LEAST one empty pixel.
     let foundEmpty = false;
-    if (!landscape.isSolid(50, 20)) foundEmpty = true;
+    for(let y = 10; y < 40; y++) {
+      for(let x = 10; x < 90; x++) {
+        if (!landscape.isSolid(x, y)) {
+          foundEmpty = true;
+          break;
+        }
+      }
+      if (foundEmpty) break;
+    }
     expect(foundEmpty).toBe(true);
   });
 

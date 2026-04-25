@@ -8,7 +8,7 @@ export class SoundManager {
   // External audio buffers
   private externalBuffers: Record<string, AudioBuffer | null> = {};
 
-  public async init(): Promise<void> {
+  public init(): void {
     if (!this.ctx) {
       try {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -25,14 +25,17 @@ export class SoundManager {
     }
 
     if (this.ctx && !this.explosionBuffer) {
-      this.explosionBuffer = this.generateNoiseBuffer(0.3, true);
-      this.impactBuffer = this.generateNoiseBuffer(0.15, false);
-      
-      // Try to load external sounds (will silently fail and fallback to synth if not found)
-      await this.loadExternalSound('jump', '/sounds/jump.wav');
-      await this.loadExternalSound('hurt', '/sounds/hurt.wav');
-      await this.loadExternalSound('explosion', '/sounds/explosion.wav');
+      this.explosionBuffer = this.generateNoiseBuffer(0.3, true, this.ctx.sampleRate);
+      this.impactBuffer = this.generateNoiseBuffer(0.15, false, this.ctx.sampleRate);
     }
+  }
+
+  public async loadSounds(): Promise<void> {
+    if (!this.ctx) return;
+    await this.loadExternalSound('jump', '/sounds/jump.wav');
+    await this.loadExternalSound('hurt', '/sounds/hurt.wav');
+    await this.loadExternalSound('explosion', '/sounds/explosion.wav');
+    await this.loadExternalSound('land', '/sounds/land.wav');
   }
 
   private async loadExternalSound(name: string, url: string): Promise<void> {
@@ -61,10 +64,10 @@ export class SoundManager {
     return false; // Fallback needed
   }
 
-  private generateNoiseBuffer(duration: number, crush: boolean): AudioBuffer | null {
+  private generateNoiseBuffer(duration: number, crush: boolean, rate = 44100): AudioBuffer | null {
     if (!this.ctx) return null;
-    const bufferSize = this.ctx.sampleRate * duration;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const bufferSize = rate * duration;
+    const buffer = this.ctx.createBuffer(1, bufferSize, rate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
       const noise = Math.random() * 2 - 1;
@@ -124,7 +127,7 @@ export class SoundManager {
       if (freq > 400) freq = 400;
       
       try {
-        this.fallingOsc.frequency.setTargetAtTime(freq, this.ctx.currentTime + 0.1);
+        this.fallingOsc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.1);
       } catch (e) {}
     }
   }
@@ -183,6 +186,7 @@ export class SoundManager {
   }
 
   public playHeavyImpact(): void {
+    if (this.playExternal('explosion')) return;
     if (!this.ctx || !this.impactBuffer) return;
     try {
       const noiseSrc = this.ctx.createBufferSource();

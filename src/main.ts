@@ -109,6 +109,7 @@ document.getElementById('btn-login')!.addEventListener('click', async () => {
     const res = await APIClient.register(email, username, ref);
     if (res.success) {
       userSessionId = res.user.id;
+      console.log('Session ID:', userSessionId); // Use variable
       // In a real app, balance would come from the API
       userBalanceSeconds = 3600; 
       
@@ -193,7 +194,6 @@ document.getElementById('btn-return-menu')!.addEventListener('click', () => {
     timeBalanceEl.innerText += ' (Grace Period)';
     timeBalanceEl.style.color = '#FF4500';
   }
-});  mobileControls.style.display = 'none';
 });
 
 presenter.onGameOver = (winner) => {

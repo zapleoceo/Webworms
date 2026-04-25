@@ -70,7 +70,8 @@ export class TerrainGenerator {
     }
 
     // 4. Structural Platform (Alien Base)
-    const platW = 300;
+    // Scale it down based on actual width to not fill the whole sky on tiny test maps
+    const platW = Math.min(300, width * 0.4);
     const platX = Math.floor(width / 2 - platW / 2);
     const platY = Math.floor(height * 0.4); // Floating in the middle
     

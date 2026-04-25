@@ -32,6 +32,8 @@ export class GamePresenter {
 
     this.physics = new PhysicsEngine();
     this.soundManager = new SoundManager();
+    this.soundManager.init();
+    this.soundManager.loadSounds().catch(() => {}); // Load external files asynchronously
     
     // Connect physics events to sound manager
     this.physics.onExplode = () => this.soundManager.playExplosion();
@@ -130,10 +132,10 @@ export class GamePresenter {
     const airControl = 0.5; // 50% control while in the air
 
     if (this.activeInputs.has('up')) {
-      player.updateAim(-aimSpeed * dt); // Rotate counter-clockwise
+      player.updateAim(aimSpeed * dt); // Rotate counter-clockwise (up)
     }
     if (this.activeInputs.has('down')) {
-      player.updateAim(aimSpeed * dt); // Rotate clockwise
+      player.updateAim(-aimSpeed * dt); // Rotate clockwise (down)
     }
     if (this.activeInputs.has('fire')) {
       player.changePower(chargeSpeed * dt);
