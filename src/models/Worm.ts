@@ -8,6 +8,9 @@ export class Worm {
   public isJumping: boolean = false;
   
   public health: number = 100;
+  public maxHealth: number = 100;
+  public defense: number = 0; // 0.0 to 1.0 (e.g. 0.2 = 20% damage reduction)
+  
   public aimAngle: number = 0; // 0 to 360 degrees
   public aimPower: number = 0; // 0 to 100
   public facingRight: boolean = true;
@@ -49,7 +52,8 @@ export class Worm {
   }
 
   public takeDamage(amount: number): void {
-    this.health -= amount;
+    const actualDamage = amount * (1 - this.defense);
+    this.health -= actualDamage;
     if (this.health < 0) this.health = 0;
   }
 }

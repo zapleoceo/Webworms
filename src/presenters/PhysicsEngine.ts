@@ -42,6 +42,12 @@ export class PhysicsEngine {
 
     // Handle worm-to-worm collisions (Heavy Pushing)
     this.handleWormCollisions(state);
+    
+    // Handle worm-to-prop collisions (Kinetic damage, falling)
+    this.handleWormPropCollisions(state);
+    
+    // Cleanup dead props
+    state.props = state.props.filter(p => p.health > 0);
   }
 
   private updateProps(state: GameState, dt: number): void {
@@ -91,11 +97,58 @@ export class PhysicsEngine {
           prop.vx = 0;
           prop.angularVelocity = 0;
           prop.isSettled = true;
+        } else if (Math.abs(prop.vy) > 200) {
+          // Prop takes fall damage if hitting ground hard
+          prop.takeDamage((Math.abs(prop.vy) - 200) * 0.1);
         }
       }
     }
   }
 
+  private handleWormPropCollisions(state: GameState): void {
+    for (const worm of state.players) {
+      if (worm.health <= 0) continue;
+      
+      for (const prop of state.props) {
+        const dist = MathUtils.distance(worm.x, worm.y, prop.x, prop.y);
+        const minDist = worm.width / 2 + prop.radius;
+        
+        if (dist < minDist && dist > 0) {
+          // Overlapping! Positional correction
+          const overlap = minDist - dist;
+          const nx = (worm.x - prop.x) / dist;
+          const ny = (worm.y - prop.y) / dist;
+          
+          // Prop is heavy, worm moves out of the way more
+          worm.x += nx * overlap * 0.8;
+          worm.y += ny * overlap * 0.8;
+          prop.x -= nx * overlap * 0.2;
+          prop.y -= ny * overlap * 0.2;
+
+          // Kinetic damage calculation
+          const relVx = prop.vx - worm.vx;
+          const relVy = prop.vy - worm.vy;
+          const relSpeed = Math.sqrt(relVx * relVx + relVy * relVy);
+
+          // If crash is fast enough, apply damage
+          if (relSpeed > 100) {
+            let rawDamage = (relSpeed - 100) * 0.1;
+            // Cap kinetic damage to never exceed a direct projectile hit (25)
+            if (rawDamage > 24) rawDamage = 24; 
+            
+            worm.takeDamage(rawDamage);
+            prop.takeDamage(rawDamage * 0.5); // Prop also takes some damage from hitting the worm
+          }
+
+          // Exchange momentum
+          worm.vx += nx * relSpeed * 0.5;
+          worm.vy += ny * relSpeed * 0.5;
+          prop.vx -= nx * relSpeed * 0.1;
+          prop.vy -= ny * relSpeed * 0.1;
+        }
+      }
+    }
+  }
   private handleWormCollisions(state: GameState): void {
     for (let i = 0; i < state.players.length; i++) {
       for (let j = i + 1; j < state.players.length; j++) {
@@ -235,6 +288,14 @@ export class PhysicsEngine {
       }
     }
 
+    // Collision with props
+    for (const prop of state.props) {
+      if (MathUtils.distance(proj.x, proj.y, prop.x, prop.y) < prop.radius + proj.radius) {
+        this.explode(proj, state);
+        return;
+      }
+    }
+
     // Out of bounds / Hitting the unbreakable cosmic barrier (5px border)
     if (proj.x <= 5 || proj.x >= state.width - 5 || proj.y >= state.height - 5) {
       this.explode(proj, state);
@@ -278,13 +339,16 @@ export class PhysicsEngine {
       const dist = MathUtils.distance(proj.x, proj.y, prop.x, prop.y);
       if (dist <= proj.explosionRadius + prop.radius) {
         const damageRatio = 1 - (dist / (proj.explosionRadius + prop.radius));
+        prop.takeDamage(proj.damage * damageRatio); // Prop takes explosive damage
+
         const dx = prop.x - proj.x;
         const dy = prop.y - proj.y;
         const norm = Math.sqrt(dx*dx + dy*dy) || 1;
         
-        prop.vx += (dx / norm) * 300 * damageRatio;
-        prop.vy -= 300 * damageRatio;
-        prop.angularVelocity += (Math.random() - 0.5) * 20 * damageRatio;
+        // Props are heavier, they get knocked back less (e.g., 50 instead of 150/300)
+        prop.vx += (dx / norm) * (50 / prop.mass) * damageRatio;
+        prop.vy -= (50 / prop.mass) * damageRatio;
+        prop.angularVelocity += (Math.random() - 0.5) * 10 * damageRatio;
         prop.isSettled = false;
       }
     }

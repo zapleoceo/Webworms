@@ -79,6 +79,16 @@ export class CanvasRenderer {
         this.ctx.stroke();
       }
 
+      // Draw Prop Health Bar
+      this.ctx.restore(); // restore to draw health bar without rotation
+      this.ctx.save();
+      this.ctx.translate(prop.x, prop.y);
+      
+      this.ctx.fillStyle = 'red';
+      this.ctx.fillRect(-prop.radius, -prop.radius - 8, prop.radius * 2, 3);
+      this.ctx.fillStyle = '#32CD32'; // Lime green
+      this.ctx.fillRect(-prop.radius, -prop.radius - 8, (prop.radius * 2) * (prop.health / prop.maxHealth), 3);
+      
       this.ctx.restore();
     }
   }
