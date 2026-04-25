@@ -8,6 +8,13 @@ export class CanvasRenderer {
   
   private wormImages: { [key: string]: HTMLImageElement } = {};
 
+  private loadImg(src: string): HTMLImageElement {
+    const img = new Image();
+    img.src = src;
+    img.onerror = () => console.warn(`Failed to load image: ${src}`);
+    return img;
+  }
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { willReadFrequently: true })!;
@@ -21,22 +28,14 @@ export class CanvasRenderer {
     this.terrainCtx = terrainContext;
 
     // Load sprite images from local assets
-    this.wormImages['soldier'] = new Image();
-    this.wormImages['soldier'].src = '/worm_soldier.png'; // Worm with Bazooka
-
-    this.wormImages['heavy'] = new Image();
-    this.wormImages['heavy'].src = '/worm_heavy.png'; // Big worm
-
-    this.wormImages['scout'] = new Image();
-    this.wormImages['scout'].src = '/worm_scout.png'; // Pointing/Ninja worm
+    this.wormImages['soldier'] = this.loadImg('/worm_soldier.png');
+    this.wormImages['heavy'] = this.loadImg('/worm_heavy.png');
+    this.wormImages['scout'] = this.loadImg('/worm_scout.png');
     
     // Load brand assets for airdrops
-    this.wormImages['brand_apple'] = new Image();
-    this.wormImages['brand_apple'].src = '/brand_apple.png';
-    this.wormImages['brand_windows'] = new Image();
-    this.wormImages['brand_windows'].src = '/brand_windows.png';
-    this.wormImages['brand_android'] = new Image();
-    this.wormImages['brand_android'].src = '/brand_android.png';
+    this.wormImages['brand_apple'] = this.loadImg('/brand_apple.png');
+    this.wormImages['brand_windows'] = this.loadImg('/brand_windows.png');
+    this.wormImages['brand_android'] = this.loadImg('/brand_android.png');
   }
 
   public render(state: GameState): void {

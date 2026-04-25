@@ -32,10 +32,14 @@ export class SoundManager {
 
   public async loadSounds(): Promise<void> {
     if (!this.ctx) return;
-    await this.loadExternalSound('jump', '/sounds/jump.wav');
-    await this.loadExternalSound('hurt', '/sounds/hurt.wav');
-    await this.loadExternalSound('explosion', '/sounds/explosion.wav');
-    await this.loadExternalSound('land', '/sounds/land.wav');
+    
+    // Using Promise.allSettled so that if one sound fails, it doesn't block the rest or the app
+    await Promise.allSettled([
+      this.loadExternalSound('jump', '/sounds/jump.wav'),
+      this.loadExternalSound('hurt', '/sounds/hurt.wav'),
+      this.loadExternalSound('explosion', '/sounds/explosion.wav'),
+      this.loadExternalSound('land', '/sounds/land.wav')
+    ]);
   }
 
   private async loadExternalSound(name: string, url: string): Promise<void> {
