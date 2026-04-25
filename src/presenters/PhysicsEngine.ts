@@ -30,6 +30,44 @@ export class PhysicsEngine {
       exp.update(dt);
     }
     state.explosions = state.explosions.filter(e => e.life > 0);
+
+    // Handle worm-to-worm collisions (Heavy Pushing)
+    this.handleWormCollisions(state);
+  }
+
+  private handleWormCollisions(state: GameState): void {
+    for (let i = 0; i < state.players.length; i++) {
+      for (let j = i + 1; j < state.players.length; j++) {
+        const p1 = state.players[i];
+        const p2 = state.players[j];
+        
+        // Skip dead worms
+        if (p1.health <= 0 || p2.health <= 0) continue;
+
+        const dist = MathUtils.distance(p1.x, p1.y, p2.x, p2.y);
+        const minDist = p1.width / 2 + p2.width / 2;
+
+        if (dist < minDist && dist > 0) {
+          // Overlapping! Apply heavy pushing
+          const overlap = minDist - dist;
+          const nx = (p1.x - p2.x) / dist;
+          const ny = (p1.y - p2.y) / dist;
+          
+          // Physically separate them (50/50 split of the overlap)
+          p1.x += nx * overlap * 0.5;
+          p1.y += ny * overlap * 0.5;
+          p2.x -= nx * overlap * 0.5;
+          p2.y -= ny * overlap * 0.5;
+
+          // Momentum transfer (heavy pushing makes initiator lose speed)
+          const relVx = p1.vx - p2.vx;
+          
+          // The pusher loses most of their momentum, the pushed gains a little
+          p1.vx -= relVx * 0.8;
+          p2.vx += relVx * 0.2;
+        }
+      }
+    }
   }
 
   private updateWorm(worm: any, state: GameState, dt: number): void {
@@ -99,7 +137,7 @@ export class PhysicsEngine {
 
     // Check if falling off the map
     if (worm.y > state.height) {
-      worm.takeDamage(100); // death by falling off map
+      worm.takeDamage(9999); // Instant death
       worm.y = state.height;
       worm.vy = 0; // stop falling
     }

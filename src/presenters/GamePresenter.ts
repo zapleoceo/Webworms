@@ -11,8 +11,15 @@ export class GamePresenter {
   private isRunning: boolean = false;
   private activeInputs: Set<string> = new Set(); // Track held keys/buttons
   private soundManager: SoundManager;
+  private initialWidth: number;
+  private initialHeight: number;
+
+  public onGameOver?: (winner: Worm | null) => void;
 
   constructor(width: number, height: number) {
+    this.initialWidth = width;
+    this.initialHeight = height;
+    
     // Make the world wider than the canvas
     const worldWidth = width * 1.5;
     const worldHeight = height * 1.2;
@@ -29,6 +36,16 @@ export class GamePresenter {
     this.physics.onExplode = () => {
       this.soundManager.playExplosion();
     };
+  }
+
+  public reset(): void {
+    const worldWidth = this.initialWidth * 1.5;
+    const worldHeight = this.initialHeight * 1.2;
+    this.state = new GameState(worldWidth, worldHeight);
+    this.state.cameraX = (worldWidth - this.initialWidth) / 2;
+    this.state.cameraY = (worldHeight - this.initialHeight) / 2;
+    this.activeInputs.clear();
+    this.init();
   }
 
   public init(): void {
@@ -67,6 +84,18 @@ export class GamePresenter {
   public update(dt: number): void {
     this.processActiveInputs(dt);
     this.physics.update(this.state, dt);
+    this.checkGameOver();
+  }
+
+  private checkGameOver(): void {
+    const alivePlayers = this.state.players.filter(p => p.health > 0);
+    // If we started with more than 1 player and now only 1 or 0 remain
+    if (this.state.players.length > 1 && alivePlayers.length <= 1) {
+      this.stop();
+      if (this.onGameOver) {
+        this.onGameOver(alivePlayers[0] || null);
+      }
+    }
   }
 
   private processActiveInputs(dt: number): void {
