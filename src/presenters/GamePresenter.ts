@@ -18,6 +18,7 @@ export class GamePresenter {
 
   private matchTime: number = 0;
   private nextAirdropTime: number = 60;
+  private currentAirdropBrand: string = '';
   private brandAssets = ['/assets/brand_apple.png', '/assets/brand_windows.png', '/assets/brand_android.png'];
   
   // Camera delay after explosion
@@ -87,6 +88,7 @@ export class GamePresenter {
     this.activeInputs.clear();
     this.matchTime = 0;
     this.nextAirdropTime = 60;
+    this.currentAirdropBrand = this.brandAssets[Math.floor(Math.random() * this.brandAssets.length)];
     this.init(selectedWeapons, unitClass);
   }
 
@@ -141,9 +143,17 @@ export class GamePresenter {
   public update(dt: number): void {
     if (this.isRunning) {
       this.matchTime += dt;
+      const timeLeft = this.nextAirdropTime - this.matchTime;
+      
+      this.state.nextAirdrop = {
+        timeRemaining: Math.max(0, timeLeft),
+        brandImage: this.currentAirdropBrand
+      };
+
       if (this.matchTime >= this.nextAirdropTime) {
         this.spawnAirdrop();
         this.nextAirdropTime += 60;
+        this.currentAirdropBrand = this.brandAssets[Math.floor(Math.random() * this.brandAssets.length)];
       }
     }
 
@@ -156,8 +166,7 @@ export class GamePresenter {
   private spawnAirdrop(): void {
     // Drop a brand from the sky at a random X coordinate
     const x = 50 + Math.random() * (this.state.width - 100);
-    const brandImage = this.brandAssets[Math.floor(Math.random() * this.brandAssets.length)];
-    const brandProp = new PhysicsProp(x, 0, 'brand', brandImage);
+    const brandProp = new PhysicsProp(x, 0, 'brand', this.currentAirdropBrand);
     this.state.props.push(brandProp);
   }
 

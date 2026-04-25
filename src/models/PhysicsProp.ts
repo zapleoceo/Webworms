@@ -6,7 +6,8 @@ export class PhysicsProp {
   
   public radius: number;
   public rotation: number = 0; // in radians
-  public angularVelocity: number = 0; // rads per second
+  public angularVelocity: number = 0;
+  public angle: number = 0; // rads per second
   
   public type: 'rock' | 'crate' | 'brand';
   public brandImage?: string; // Optional image for brand drops
@@ -38,6 +39,8 @@ export class PhysicsProp {
       this.bounce = 0.1;
       this.maxHealth = 200;
       this.defense = 0.0;
+      this.angle = Math.random() * Math.PI * 2;
+      this.angularVelocity = (Math.random() - 0.5) * 5;
       this.health = 200;
     } else {
       this.radius = 10 + Math.random() * 10;

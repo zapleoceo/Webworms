@@ -15,6 +15,8 @@ export class GameState {
   public width: number;
   public height: number;
   
+  public nextAirdrop: { timeRemaining: number, brandImage: string } | null = null;
+
   public cameraX: number = 0;
   public cameraY: number = 0;
   public zoom: number = 1;

@@ -95,7 +95,7 @@ export class PhysicsEngine {
 
       prop.x += prop.vx * dt;
       prop.y += prop.vy * dt;
-      prop.rotation += prop.angularVelocity * dt;
+      prop.angle += prop.angularVelocity * dt;
 
       const cx = Math.floor(prop.x);
       const bottomY = Math.floor(prop.y + prop.radius);

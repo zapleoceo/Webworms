@@ -41,7 +41,7 @@ export class CanvasRenderer {
 
   public render(state: GameState): void {
     this.clear();
-    
+
     // Apply camera translation and zoom
     this.ctx.save();
     this.ctx.scale(state.zoom, state.zoom);
@@ -89,7 +89,7 @@ export class CanvasRenderer {
         if (img && img.complete && img.naturalWidth !== 0) {
           this.ctx.save();
           this.ctx.translate(prop.x, prop.y);
-          this.ctx.rotate(prop.angularVelocity || 0); // Slight rotation if any
+          this.ctx.rotate(prop.angle);
           
           // Draw white background circle for visibility
           this.ctx.fillStyle = 'rgba(255,255,255,0.8)';
@@ -491,6 +491,29 @@ export class CanvasRenderer {
       // Power bar (Forward charging bar)
       this.ctx.fillStyle = 'red';
       this.ctx.fillRect(20, 50, player.aimPower, 10);
+      this.ctx.fillText(`POWER: ${Math.floor(player.aimPower)}`, 20, 75);
+    }
+
+    // Render Airdrop Indicator if one is coming
+    if (state.nextAirdrop && state.nextAirdrop.timeRemaining > 0) {
+      const dropStr = `AIRDROP IN: ${Math.ceil(state.nextAirdrop.timeRemaining)}s`;
+      
+      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      this.ctx.fillRect(this.canvas.width / 2 - 100, 10, 200, 40);
+      
+      this.ctx.fillStyle = '#fff';
+      this.ctx.textAlign = 'center';
+      this.ctx.font = 'bold 16px Courier New';
+      this.ctx.fillText(dropStr, this.canvas.width / 2, 30);
+      
+      // Draw miniature brand logo
+      const imgKey = state.nextAirdrop.brandImage.split('/').pop()?.split('.')[0] || '';
+      const img = this.wormImages[imgKey];
+      if (img && img.complete) {
+        this.ctx.drawImage(img, this.canvas.width / 2 - 12, 35, 24, 24);
+      }
+      
+      this.ctx.textAlign = 'left'; // reset
     }
   }
 }
