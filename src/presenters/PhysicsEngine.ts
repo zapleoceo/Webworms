@@ -63,12 +63,66 @@ export class PhysicsEngine {
 
     // Handle worm-to-worm collisions (Heavy Pushing)
     this.handleWormCollisions(state);
-    
+
     // Handle worm-to-prop collisions (Kinetic damage, falling)
     this.handleWormPropCollisions(state);
-    
+
     // Cleanup dead props
     state.props = state.props.filter(p => p.health > 0);
+
+    this.updateSnowflakes(state, dt);
+  }
+
+  private updateSnowflakes(state: GameState, dt: number): void {
+    const flakes = state.snowflakes;
+    if (!flakes) return;
+    
+    // Spawn new flakes randomly
+    // Spawn rate relative to map width
+    const spawnRate = state.width * 0.05; 
+    for (let i = 0; i < spawnRate; i++) {
+      if (Math.random() < 0.1) {
+        flakes.push({
+          x: Math.random() * state.width,
+          y: 0,
+          vx: 0,
+          vy: 30 + Math.random() * 20 // constant fall speed, no acceleration
+        });
+      }
+    }
+
+    for (let i = flakes.length - 1; i >= 0; i--) {
+      const flake = flakes[i];
+      // Wind affects horizontal speed
+      flake.vx = state.wind * 0.5;
+      
+      flake.x += flake.vx * dt;
+      flake.y += flake.vy * dt;
+
+      const px = Math.floor(flake.x);
+      const py = Math.floor(flake.y);
+
+      // Check bounds
+      if (py >= state.height - 30 || px < 30 || px >= state.width - 30) {
+        flakes.splice(i, 1);
+        continue;
+      }
+
+      // Check collision
+      if (state.landscape.isSolid(px, py)) {
+        // Find highest non-solid pixel to pile up snow
+        let targetY = py - 1;
+        while (targetY > 0 && state.landscape.isSolid(px, targetY)) {
+          targetY--;
+        }
+        
+        // Become snow (material 5)
+        if (targetY > 0) {
+          state.landscape.setMaterial(px, targetY, 5);
+        }
+        flakes.splice(i, 1);
+      }
+    }
   }
 
   private updateProps(state: GameState, dt: number): void {
@@ -416,6 +470,7 @@ export class PhysicsEngine {
       let radiusModifier = 1.0;
       if (hitMaterial === 2) radiusModifier = 0.75; // Meteorite Rock is harder
       else if (hitMaterial === 4) radiusModifier = 0.5; // Metal Platform is very hard
+      else if (hitMaterial === 5) radiusModifier = 2.0; // Snow is very weak
       else if (hitMaterial === 255) radiusModifier = 0.3; // Barely scratches the indestructible border
       
       this.explode(proj, state, radiusModifier);

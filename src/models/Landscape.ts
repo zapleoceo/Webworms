@@ -18,17 +18,20 @@ export class Landscape {
   }
 
   public getMaterial(x: number, y: number): number {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return 0;
-    return this.grid[this.getIndex(x, y)];
+    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return 255;
+    return this.grid[y * this.width + x];
+  }
+
+  public setMaterial(x: number, y: number, material: number): void {
+    if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+      this.grid[y * this.width + x] = material;
+      this.needsUpdate = true;
+    }
   }
 
   public isSolid(x: number, y: number): boolean {
-    return this.getMaterial(x, y) > 0;
-  }
-
-  public setMaterial(x: number, y: number, mat: number): void {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
-    this.grid[this.getIndex(x, y)] = mat;
+    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return true;
+    return this.grid[y * this.width + x] > 0;
   }
 
   // Backwards compatibility for tests

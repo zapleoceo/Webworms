@@ -50,6 +50,7 @@ export class CanvasRenderer {
     this.drawLandscape(state);
     this.drawProps(state);
     this.drawProjectiles(state);
+    this.drawSnowflakes(state);
     this.drawPlayers(state);
     this.drawExplosions(state);
     
@@ -180,6 +181,8 @@ export class CanvasRenderer {
             data[idx] = 100; data[idx+1] = 100; data[idx+2] = 110;
             // Metal pattern
             if ((x+y)%10 === 0) { data[idx] = 130; data[idx+1] = 130; data[idx+2] = 140; }
+          } else if (mat === 5) { // Snow
+            data[idx] = 255; data[idx+1] = 255; data[idx+2] = 255;
           } else if (mat === 255) { // Alloy (Border)
             data[idx] = 30; data[idx+1] = 30; data[idx+2] = 40;
             // Metal pattern
@@ -251,6 +254,14 @@ export class CanvasRenderer {
 
     // Draw the cached landscape onto the main canvas (SUPER FAST)
     this.ctx.drawImage(this.terrainCanvas, 0, 0);
+  }
+
+  private drawSnowflakes(state: GameState): void {
+    if (!state.snowflakes) return;
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    for (const flake of state.snowflakes) {
+      this.ctx.fillRect(Math.floor(flake.x), Math.floor(flake.y), 1, 1);
+    }
   }
 
   private drawPlayers(state: GameState): void {

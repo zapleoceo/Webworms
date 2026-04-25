@@ -296,48 +296,61 @@ canvas {
 
 /* Mobile Controls */
 #mobile-controls {
-  display: none; /* Hidden by default */
+  position: absolute;
+  bottom: 20px;
+  left: 0;
   width: 100%;
-  max-width: 600px;
+  height: 140px;
+  pointer-events: none;
+  z-index: 20;
+  display: flex;
   justify-content: space-between;
-  padding: 10px;
+  padding: 0 20px;
   box-sizing: border-box;
-  margin-top: 5px;
 }
 
 .d-pad {
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .horizontal {
   display: flex;
-  gap: 5px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .action-pad {
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
   align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.action-pad-row {
+  display: flex;
+  gap: 10px;
 }
 
 .control-btn {
-  width: clamp(45px, 12vw, 60px);
-  height: clamp(45px, 12vw, 60px);
-  background: rgba(255, 255, 255, 0.2);
-  border: 2px solid rgba(255, 255, 255, 0.5);
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid #32CD32;
+  color: #32CD32;
   border-radius: 50%;
-  color: white;
-  font-size: clamp(16px, 5vw, 24px);
-  font-weight: bold;
+  width: 50px;
+  height: 50px;
+  font-size: 1.5rem;
   display: flex;
   justify-content: center;
   align-items: center;
   user-select: none;
   -webkit-user-select: none;
-  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .control-btn:active, .control-btn:focus {
@@ -346,22 +359,38 @@ canvas {
 }
 
 .action-btn {
-  border-radius: 50%;
-  font-size: clamp(0.8rem, 3vw, 1rem);
-}
-
-.switch-btn {
-  background-color: rgba(50, 205, 50, 0.5);
-  height: clamp(40px, 10vw, 50px);
-  width: clamp(40px, 10vw, 50px);
+  width: 60px;
+  height: 60px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: bold;
 }
 
 .fire-btn {
-  background-color: rgba(255, 69, 0, 0.5);
+  background: rgba(255, 0, 0, 0.5);
+  border-color: #ff0000;
+  color: #ff0000;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
 }
 
 .fire-btn:active {
-  background: rgba(255, 0, 0, 0.7);
+  background: rgba(255, 0, 0, 0.8);
+  color: #fff;
+}
+
+.switch-btn {
+  background: rgba(255, 215, 0, 0.5);
+  border-color: #ffd700;
+  color: #ffd700;
+  font-size: 0.7rem;
+}
+
+.switch-btn:active {
+  background: rgba(255, 215, 0, 0.8);
+  color: #000;
 }
 
 /* Media Queries */
@@ -374,6 +403,12 @@ canvas {
   }
   #game-container {
     max-height: 60vh; /* Leave room for controls */
+  }
+}
+
+@media (min-width: 1024px) {
+  #mobile-controls {
+    display: none;
   }
 }
 

@@ -14,7 +14,9 @@ export class GameState {
   
   public width: number;
   public height: number;
-  
+
+  public snowflakes: {x: number, y: number, vx: number, vy: number}[] = [];
+
   public nextAirdrop: { timeRemaining: number, brandImage: string } | null = null;
 
   public cameraX: number = 0;

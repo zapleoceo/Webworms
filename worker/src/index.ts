@@ -231,7 +231,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
 async function handleVerify(request: Request, env: Env): Promise<Response> {
   try {
     const url = new URL(request.url);
-    const token = url.searchParams.get('token');
+    const token = url.searchParams.get('token')?.trim();
 
     if (!token) {
       return new Response('Invalid verification token', { status: 400 });
