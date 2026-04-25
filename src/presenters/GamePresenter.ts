@@ -105,8 +105,13 @@ export class GamePresenter {
         }
         break;
       case 'fire':
-        // If releasing fire, shoot the weapon
-        if (!isActive) {
+        if (isActive) {
+          // Start charging - if aimPower is 0, give it a tiny bit so it registers as a shot
+          if (player.aimPower === 0) {
+            player.aimPower = 1;
+          }
+        } else {
+          // If releasing fire, shoot the weapon
           this.fireWeapon(player);
         }
         break;
@@ -116,16 +121,19 @@ export class GamePresenter {
   private fireWeapon(player: Worm): void {
     if (player.aimPower <= 0) return;
     
+    const power = Math.max(player.aimPower, 15); // Minimum power for a quick tap
+    
     // Calculate vector based on angle and power
     const rad = player.aimAngle * (Math.PI / 180);
-    const speed = player.aimPower * 5; // Adjust scalar
+    const speed = power * 6; // Adjust scalar for better arcs
     const direction = player.facingRight ? 1 : -1;
     
     const vx = Math.cos(rad) * speed * direction;
     const vy = -Math.sin(rad) * speed; // Negative is up
     
-    const startX = player.x + (player.width / 2) * direction;
-    const startY = player.y - player.height;
+    // Spawn completely outside the worm's collision radius
+    const startX = player.x + (player.width / 2 + 5) * direction;
+    const startY = player.y - player.height / 2 - 5;
 
     const proj = new Projectile(startX, startY, vx, vy);
     this.state.addProjectile(proj);

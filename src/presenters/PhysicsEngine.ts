@@ -74,7 +74,8 @@ export class PhysicsEngine {
 
     // Collision with players
     for (const player of state.players) {
-      if (MathUtils.distance(proj.x, proj.y, player.x, player.y) < player.width + proj.radius) {
+      const playerRadius = player.width / 2;
+      if (MathUtils.distance(proj.x, proj.y, player.x, player.y) < playerRadius + proj.radius) {
         this.explode(proj, state);
         return;
       }
@@ -93,10 +94,11 @@ export class PhysicsEngine {
 
     // Damage nearby players
     for (const player of state.players) {
+      const playerRadius = player.width / 2;
       const dist = MathUtils.distance(proj.x, proj.y, player.x, player.y);
-      if (dist <= proj.explosionRadius + player.width) {
+      if (dist <= proj.explosionRadius + playerRadius) {
         // Simple damage falloff
-        const damageRatio = 1 - (dist / (proj.explosionRadius + player.width));
+        const damageRatio = 1 - (dist / (proj.explosionRadius + playerRadius));
         player.takeDamage(proj.damage * damageRatio);
         
         // Add knockback
