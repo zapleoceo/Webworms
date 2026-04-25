@@ -16,6 +16,10 @@ export class GamePresenter {
   private initialHeight: number;
   private cameraFreeMode: boolean = false;
 
+  private matchTime: number = 0;
+  private nextAirdropTime: number = 60;
+  private brandAssets = ['/assets/brand_apple.png', '/assets/brand_windows.png', '/assets/brand_android.png'];
+
   public onGameOver?: (winner: Worm | null, stats: {p1Dmg: number, p2Dmg: number}) => void;
   public onLocalAction?: (action: string, isActive: boolean) => void;
 
@@ -55,6 +59,8 @@ export class GamePresenter {
     this.state.cameraX = (worldWidth - this.initialWidth) / 2;
     this.state.cameraY = (worldHeight - this.initialHeight) / 2;
     this.activeInputs.clear();
+    this.matchTime = 0;
+    this.nextAirdropTime = 60;
     this.init(selectedWeapons, unitClass);
   }
 
@@ -107,10 +113,26 @@ export class GamePresenter {
   }
 
   public update(dt: number): void {
+    if (this.isRunning) {
+      this.matchTime += dt;
+      if (this.matchTime >= this.nextAirdropTime) {
+        this.spawnAirdrop();
+        this.nextAirdropTime += 60;
+      }
+    }
+
     this.processActiveInputs(dt);
     this.physics.update(this.state, dt);
     this.updateCamera(dt);
     this.checkGameOver();
+  }
+
+  private spawnAirdrop(): void {
+    // Drop a brand from the sky at a random X coordinate
+    const x = 50 + Math.random() * (this.state.width - 100);
+    const brandImage = this.brandAssets[Math.floor(Math.random() * this.brandAssets.length)];
+    const brandProp = new PhysicsProp(x, 0, 'brand', brandImage);
+    this.state.props.push(brandProp);
   }
 
   private updateCamera(dt: number): void {
@@ -186,7 +208,17 @@ export class GamePresenter {
       player.updateAim(-aimSpeed * dt); // Rotate clockwise (down)
     }
     if (this.activeInputs.has('fire')) {
-      player.changePower(chargeSpeed * dt);
+      const weapon = player.getCurrentWeapon();
+      if (weapon && player.weaponCooldowns[weapon.id] <= 0) {
+        player.changePower(chargeSpeed * dt);
+        // Auto-fire at max power if holding the button
+        if (player.aimPower >= 100) {
+          this.fireWeapon(player);
+        }
+      } else {
+        // Prevent charging while reloading
+        player.aimPower = 0;
+      }
     }
     
     // Apply movement continuously as a force to overcome friction/slopes
@@ -337,7 +369,10 @@ export class GamePresenter {
 
     // Calculate vector based on angle and power
     const baseRad = player.aimAngle * (Math.PI / 180);
-    const speed = power * 6; // Adjust scalar for better arcs
+    let speed = power * 6; // Adjust scalar for better arcs
+    if (weapon.id === 'laser') {
+      speed = 1500; // Laser goes super fast and straight
+    }
     
     // Spawn completely outside the worm's collision radius
     const startX = player.x + Math.cos(baseRad) * (player.width / 2 + 5);

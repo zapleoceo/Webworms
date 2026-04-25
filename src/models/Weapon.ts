@@ -27,37 +27,61 @@ export const WEAPONS: Record<string, Weapon> = {
   blaster: { 
     id: 'blaster', 
     name: 'Plasma Blaster', 
-    damage: 12, 
-    explosionRadius: 15, 
+    damage: 15, 
+    explosionRadius: 25, 
     knockback: 30, 
     windMultiplier: 0.2, 
-    spread: 5, 
-    projectilesPerShot: 3, 
+    spread: 0, 
+    projectilesPerShot: 1, 
     color: '#00FFFF', // Cyan
     cooldown: 1.5
   },
   shotgun: { 
     id: 'shotgun', 
     name: 'Shotgun', 
-    damage: 8, 
-    explosionRadius: 10, 
+    damage: 8, // Per pellet
+    explosionRadius: 15, // Small explosion per pellet
     knockback: 50, 
     windMultiplier: 0.5, 
-    spread: 15, 
+    spread: 15, // 15 degrees spread
     projectilesPerShot: 5, 
-    color: '#FFFF00', // Yellow
+    color: '#FFD700', // Gold
     cooldown: 2.5
   },
   sniper: { 
     id: 'sniper', 
     name: 'Railgun', 
     damage: 40, 
-    explosionRadius: 20, 
+    explosionRadius: 10, // Piercing damage, small hole
     knockback: 200, 
     windMultiplier: 0.05, 
     spread: 0, 
     projectilesPerShot: 1, 
-    color: '#FF00FF', // Magenta
+    color: '#FF1493', // DeepPink
     cooldown: 4.0
+  },
+  minigun: {
+    id: 'minigun',
+    name: 'Minigun',
+    damage: 5,
+    explosionRadius: 12,
+    knockback: 10,
+    windMultiplier: 0.8,
+    spread: 5,
+    projectilesPerShot: 1,
+    color: '#FFA500', // Orange
+    cooldown: 0.15
+  },
+  laser: {
+    id: 'laser',
+    name: 'Laser',
+    damage: 8,
+    explosionRadius: 5, // Direct hit required basically
+    knockback: 5,
+    windMultiplier: 0.0,
+    spread: 0,
+    projectilesPerShot: 1,
+    color: '#00FF00', // Lime
+    cooldown: 0.05
   }
 };

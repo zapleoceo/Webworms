@@ -22,18 +22,23 @@ export class CanvasRenderer {
     if (!terrainContext) throw new Error('Offscreen canvas not supported');
     this.terrainCtx = terrainContext;
 
-    // Load sprite images from pngimg.com (Free Worms Game PNGs)
+    // Load sprite images from local assets
     this.wormImages['soldier'] = new Image();
-    this.wormImages['soldier'].crossOrigin = 'anonymous';
-    this.wormImages['soldier'].src = 'https://pngimg.com/uploads/worms_game/worms_game_PNG52126.png'; // Worm with Bazooka
+    this.wormImages['soldier'].src = '/assets/worm_soldier.png'; // Worm with Bazooka
 
     this.wormImages['heavy'] = new Image();
-    this.wormImages['heavy'].crossOrigin = 'anonymous';
-    this.wormImages['heavy'].src = 'https://pngimg.com/uploads/worms_game/worms_game_PNG52103.png'; // Big worm
+    this.wormImages['heavy'].src = '/assets/worm_heavy.png'; // Big worm
 
     this.wormImages['scout'] = new Image();
-    this.wormImages['scout'].crossOrigin = 'anonymous';
-    this.wormImages['scout'].src = 'https://pngimg.com/uploads/worms_game/worms_game_PNG52117.png'; // Pointing/Ninja worm
+    this.wormImages['scout'].src = '/assets/worm_scout.png'; // Pointing/Ninja worm
+    
+    // Load brand assets for airdrops
+    this.wormImages['brand_apple'] = new Image();
+    this.wormImages['brand_apple'].src = '/assets/brand_apple.png';
+    this.wormImages['brand_windows'] = new Image();
+    this.wormImages['brand_windows'].src = '/assets/brand_windows.png';
+    this.wormImages['brand_android'] = new Image();
+    this.wormImages['brand_android'].src = '/assets/brand_android.png';
   }
 
   public render(state: GameState): void {
@@ -77,6 +82,31 @@ export class CanvasRenderer {
         this.ctx.moveTo(prop.radius, -prop.radius);
         this.ctx.lineTo(-prop.radius, prop.radius);
         this.ctx.stroke();
+      } else if (prop.type === 'brand' && prop.brandImage) {
+        // Draw Brand Logo PNG
+        // Extract 'brand_apple' from '/assets/brand_apple.png'
+        const imgKey = prop.brandImage.split('/').pop()?.split('.')[0] || '';
+        const img = this.wormImages[imgKey];
+        
+        if (img && img.complete && img.naturalWidth !== 0) {
+          this.ctx.save();
+          this.ctx.translate(prop.x, prop.y);
+          this.ctx.rotate(prop.angularVelocity || 0); // Slight rotation if any
+          
+          // Draw white background circle for visibility
+          this.ctx.fillStyle = 'rgba(255,255,255,0.8)';
+          this.ctx.beginPath();
+          this.ctx.arc(0, 0, prop.radius, 0, Math.PI * 2);
+          this.ctx.fill();
+
+          // Draw the brand
+          this.ctx.drawImage(img, -prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
+          this.ctx.restore();
+        } else {
+          // Fallback box
+          this.ctx.fillStyle = 'white';
+          this.ctx.fillRect(prop.x - prop.radius, prop.y - prop.radius, prop.radius * 2, prop.radius * 2);
+        }
       } else {
         // Asteroid / Rock
         this.ctx.fillStyle = '#555';

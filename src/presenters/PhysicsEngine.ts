@@ -237,8 +237,17 @@ export class PhysicsEngine {
   private updateWorm(worm: any, state: GameState, dt: number): void {
     if (worm.health <= 0) return;
 
-    // Apply gravity
-    worm.vy += this.gravity * dt;
+    const cx = Math.floor(worm.x);
+    const bottomY = Math.floor(worm.y + worm.height / 2);
+
+    // Ground check (is there a solid pixel exactly below the worm?)
+    const isGrounded = state.landscape.isSolid(cx, bottomY) || state.landscape.isSolid(cx, bottomY + 1);
+
+    if (!isGrounded || worm.isJumping) {
+      worm.vy += this.gravity * dt;
+    } else {
+      worm.vy = 0; // Prevent gravity accumulation when resting on the ground
+    }
     
     // Update walk cycle animation
     if (Math.abs(worm.vx) > 5 && !worm.isJumping) {
@@ -297,11 +306,9 @@ export class PhysicsEngine {
       }
     }
 
-    const cx = Math.floor(worm.x);
-    let bottomY = Math.floor(worm.y + worm.height / 2);
-
     // Ground collision (falling)
-      if (worm.vy >= 0 && state.landscape.isSolid(cx, bottomY)) {
+      const currentBottomY = Math.floor(worm.y + worm.height / 2);
+      if (worm.vy >= 0 && state.landscape.isSolid(cx, currentBottomY)) {
         // Stop falling sound
         if (worm.isFallingSoundPlaying) {
           worm.isFallingSoundPlaying = false;
@@ -309,24 +316,27 @@ export class PhysicsEngine {
         }
   
         // Push up to exactly the surface level (no infinite loops)
-        while (state.landscape.isSolid(cx, bottomY) && bottomY > 0) {
-          bottomY--;
+        let searchY = currentBottomY;
+        while (state.landscape.isSolid(cx, searchY) && searchY > 0) {
+          searchY--;
         }
         
-        const newY = bottomY - worm.height / 2;
-        // Anti-jitter: only adjust Y if the difference is significant
-        if (Math.abs(worm.y - newY) > 0.1) {
-          worm.y = newY;
-        }
+        const newY = searchY - worm.height / 2;
+        worm.y = newY;
+        worm.vy = 0;
+        worm.isJumping = false;
   
         // Always play a landing "thud" (boov) if we just landed from a jump/fall
         if (worm.isJumping || worm.vy > 50) {
           if (this.onLand) this.onLand();
         }
   
-        // Heavy impact check
+        // Heavy impact check and fall damage
         if (worm.vy > 300) {
           if (this.onHeavyImpact) this.onHeavyImpact();
+          const fallDamage = (worm.vy - 200) * 0.2;
+          worm.takeDamage(fallDamage);
+          if (this.onHurt) this.onHurt();
         }
 
       // Fall Damage Calculation (check speed BEFORE resetting it)

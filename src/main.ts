@@ -9,8 +9,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div id="game-wrapper">
     <div id="auth-screen" class="screen active">
       <div class="logo-container">
-        <img src="https://pngimg.com/uploads/worms_game/worms_game_PNG52123.png" alt="Worms Logo" class="game-logo-img">
-        <h1 class="game-title">WebWorms</h1>
+        <img src="/assets/logo.png" alt="Worms Logo" class="game-logo-img">
       </div>
       <h2 class="retro-text blink" style="margin-bottom: 30px;">LOGIN</h2>
       <input type="email" id="auth-email" class="retro-input" placeholder="Email (Magic Link)">
@@ -20,7 +19,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <div id="main-menu" class="screen">
       <div class="logo-container">
-        <h1 class="game-title" style="font-size: 2.5rem; margin-top: 10px;">WebWorms</h1>
+        <img src="/assets/logo.png" alt="Worms Logo" class="game-logo-img">
       </div>
       <div id="time-balance" class="retro-text" style="color: #32CD32; margin-bottom: 20px; font-size: 1.2rem;">Time Left: 1h 0m</div>
       <div class="weapon-selection">
@@ -31,11 +30,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <option value="scout">Scout (Fast)</option>
         </select>
 
-        <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 10px;">Select 2 Weapons:</h3>
-        <label><input type="checkbox" class="weapon-cb" value="bazooka" checked> Bazooka (2.0s)</label>
-        <label><input type="checkbox" class="weapon-cb" value="blaster" checked> Plasma (1.5s)</label>
-        <label><input type="checkbox" class="weapon-cb" value="shotgun"> Shotgun (2.5s)</label>
-        <label><input type="checkbox" class="weapon-cb" value="sniper"> Railgun (4.0s)</label>
+        <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 10px;">Select Weapons:</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+          <label><input type="checkbox" class="weapon-cb" value="bazooka" checked> Bazooka</label>
+          <label><input type="checkbox" class="weapon-cb" value="blaster" checked> Plasma</label>
+          <label><input type="checkbox" class="weapon-cb" value="shotgun"> Shotgun</label>
+          <label><input type="checkbox" class="weapon-cb" value="sniper"> Railgun</label>
+          <label><input type="checkbox" class="weapon-cb" value="minigun"> Minigun</label>
+          <label><input type="checkbox" class="weapon-cb" value="laser"> Laser</label>
+        </div>
       </div>
 
       <div class="game-modes-panel">
