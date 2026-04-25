@@ -73,7 +73,7 @@ declare global {
   <div id="game-wrapper">
     <div id="auth-screen" class="screen">
       <div class="logo-container">
-        <img src="/assets/logo.png" alt="Worms Logo" class="game-logo-img">
+        <img src="/logo.png" alt="Worms Logo" class="game-logo-img" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 style=\\'color:white\\'>Worms Logo</h1>')">
       </div>
       <h2 class="retro-text blink" id="auth-title" style="margin-bottom: 30px;">LOGIN</h2>
       <input type="email" id="auth-email" class="retro-input" placeholder="Email">
@@ -92,7 +92,7 @@ declare global {
         <span id="user-display-name" class="retro-text" style="display: none; font-size: 0.8rem; color: #32CD32;"></span>
       </div>
       <div class="logo-container">
-        <img src="/assets/logo.png" alt="Worms Logo" class="game-logo-img">
+        <img src="/logo.png" alt="Worms Logo" class="game-logo-img" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 style=\\'color:white\\'>Worms Logo</h1>')">
       </div>
       <div id="time-balance" class="retro-text" style="color: #32CD32; margin-bottom: 20px; font-size: 1.2rem;">Time Left: 1h 0m</div>
       <div class="weapon-selection">
@@ -515,13 +515,18 @@ window.presenter.onGameOver = (winner: any, stats: any) => {
 
 let lastTime = performance.now();
   function gameLoop(time: number) {
-    const dt = (time - lastTime) / 1000;
-    lastTime = time;
+    try {
+      const dt = (time - lastTime) / 1000;
+      lastTime = time;
 
-    window.presenter.update(dt);
-    window.renderer.render(window.presenter.state);
+      window.presenter.update(dt);
+      window.renderer.render(window.presenter.state);
 
-    requestAnimationFrame(gameLoop);
+      requestAnimationFrame(gameLoop);
+    } catch (e) {
+      console.error('Game Loop Error:', e);
+      requestAnimationFrame(gameLoop); // Try to recover
+    }
   }
   requestAnimationFrame(gameLoop);
 // Add orientation check if needed.

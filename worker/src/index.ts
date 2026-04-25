@@ -73,6 +73,8 @@ export default {
         newHeaders.set(key, value);
       }
       
+      console.log(`[API] ${request.method} ${url.pathname} - Status: ${response.status}`);
+      
       return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
@@ -80,6 +82,7 @@ export default {
       });
 
     } catch (e: any) {
+      console.error(`[API ERROR] ${request.method} ${url.pathname}:`, e.message);
       return new Response(JSON.stringify({ error: 'Internal Server Error', details: e.message }), {
         status: 500,
         headers: { 'Content-Type': 'application/json', ...corsHeaders }

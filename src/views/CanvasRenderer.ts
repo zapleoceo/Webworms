@@ -22,21 +22,21 @@ export class CanvasRenderer {
 
     // Load sprite images from local assets
     this.wormImages['soldier'] = new Image();
-    this.wormImages['soldier'].src = '/assets/worm_soldier.png'; // Worm with Bazooka
+    this.wormImages['soldier'].src = '/worm_soldier.png'; // Worm with Bazooka
 
     this.wormImages['heavy'] = new Image();
-    this.wormImages['heavy'].src = '/assets/worm_heavy.png'; // Big worm
+    this.wormImages['heavy'].src = '/worm_heavy.png'; // Big worm
 
     this.wormImages['scout'] = new Image();
-    this.wormImages['scout'].src = '/assets/worm_scout.png'; // Pointing/Ninja worm
+    this.wormImages['scout'].src = '/worm_scout.png'; // Pointing/Ninja worm
     
     // Load brand assets for airdrops
     this.wormImages['brand_apple'] = new Image();
-    this.wormImages['brand_apple'].src = '/assets/brand_apple.png';
+    this.wormImages['brand_apple'].src = '/brand_apple.png';
     this.wormImages['brand_windows'] = new Image();
-    this.wormImages['brand_windows'].src = '/assets/brand_windows.png';
+    this.wormImages['brand_windows'].src = '/brand_windows.png';
     this.wormImages['brand_android'] = new Image();
-    this.wormImages['brand_android'].src = '/assets/brand_android.png';
+    this.wormImages['brand_android'].src = '/brand_android.png';
   }
 
   public render(state: GameState): void {
