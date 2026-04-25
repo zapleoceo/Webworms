@@ -6,6 +6,7 @@ export class TerrainGenerator {
     // 0 = Empty
     // 1 = Lunar Dirt
     // 2 = Meteorite Rock
+    // 4 = Metal Platform (Destructible but strong)
     // 255 = Indestructible Alloy
     
     const setPixel = (x: number, y: number, mat: number) => {
@@ -77,14 +78,14 @@ export class TerrainGenerator {
     
     for (let x = platX; x < platX + platW; x++) {
       for (let y = platY; y < platY + 15; y++) {
-        setPixel(x, y, 255); // Unbreakable bridge
+        setPixel(x, y, 4); // Metal Platform (Destructible)
       }
     }
     // Support beams for the platform
     for (let y = platY + 15; y < height; y++) {
       if (y % 10 < 5) continue; // Truss pattern
-      for (let x = platX + 20; x < platX + 40; x++) setPixel(x, y, 255);
-      for (let x = platX + platW - 40; x < platX + platW - 20; x++) setPixel(x, y, 255);
+      for (let x = platX + 20; x < platX + 40; x++) setPixel(x, y, 4);
+      for (let x = platX + platW - 40; x < platX + platW - 20; x++) setPixel(x, y, 4);
     }
 
     return grid;

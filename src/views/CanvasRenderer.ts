@@ -177,7 +177,11 @@ export class CanvasRenderer {
             data[idx] = 70; data[idx+1] = 70; data[idx+2] = 75;
           } else if (mat === 3) { // Ice
             data[idx] = 170; data[idx+1] = 221; data[idx+2] = 255;
-          } else if (mat === 255) { // Alloy (Border/Platforms)
+          } else if (mat === 4) { // Metal Platform (Destructible)
+            data[idx] = 100; data[idx+1] = 100; data[idx+2] = 110;
+            // Metal pattern
+            if ((x+y)%10 === 0) { data[idx] = 130; data[idx+1] = 130; data[idx+2] = 140; }
+          } else if (mat === 255) { // Alloy (Border)
             data[idx] = 30; data[idx+1] = 30; data[idx+2] = 40;
             // Metal pattern
             if ((x+y)%10 === 0) { data[idx] = 50; data[idx+1] = 50; data[idx+2] = 60; }

@@ -395,11 +395,15 @@ export class PhysicsEngine {
     const pr = Math.max(1, Math.floor(proj.radius * 0.8)); // slightly smaller than visual radius for forgiveness
     
     let hitTerrain = false;
+    let hitMaterial = 0;
+    
     for (let y = py - pr; y <= py + pr; y++) {
       for (let x = px - pr; x <= px + pr; x++) {
         if (x >= 0 && x < state.width && y >= 0 && y < state.height) {
-          if (state.landscape.isSolid(x, y)) {
+          const mat = state.landscape.getMaterial(x, y);
+          if (mat > 0) {
             hitTerrain = true;
+            hitMaterial = mat;
             break;
           }
         }
@@ -408,15 +412,33 @@ export class PhysicsEngine {
     }
 
     if (hitTerrain) {
-      this.explode(proj, state);
+      // Determine material strength modifier for explosion radius
+      let radiusModifier = 1.0;
+      if (hitMaterial === 2) radiusModifier = 0.75; // Meteorite Rock is harder
+      else if (hitMaterial === 4) radiusModifier = 0.5; // Metal Platform is very hard
+      else if (hitMaterial === 255) radiusModifier = 0.3; // Barely scratches the indestructible border
+      
+      this.explode(proj, state, radiusModifier);
       return;
+    }
+
+    // Collision with other projectiles
+    for (const otherProj of state.projectiles) {
+      if (otherProj !== proj && otherProj.active) {
+        if (MathUtils.distance(proj.x, proj.y, otherProj.x, otherProj.y) < proj.radius + otherProj.radius) {
+          otherProj.active = false;
+          this.explode(otherProj, state, 1.0); // Secondary explosion
+          this.explode(proj, state, 1.0);
+          return;
+        }
+      }
     }
 
     // Collision with players
     for (const player of state.players) {
       const playerRadius = player.width / 2;
       if (MathUtils.distance(proj.x, proj.y, player.x, player.y) < playerRadius + proj.radius) {
-        this.explode(proj, state);
+        this.explode(proj, state, 1.0);
         return;
       }
     }
@@ -424,26 +446,30 @@ export class PhysicsEngine {
     // Collision with props
     for (const prop of state.props) {
       if (MathUtils.distance(proj.x, proj.y, prop.x, prop.y) < prop.radius + proj.radius) {
-        this.explode(proj, state);
+        this.explode(proj, state, 1.0);
         return;
       }
     }
 
     // Out of bounds / Hitting the unbreakable cosmic barrier (30px border)
     if (proj.x <= 30 || proj.x >= state.width - 30 || proj.y >= state.height - 30) {
-      this.explode(proj, state);
+      this.explode(proj, state, 0.3); // Minimal crater on border
       return;
     }
   }
 
-  private explode(proj: Projectile, state: GameState): void {
+  private explode(proj: Projectile, state: GameState, radiusModifier: number = 1.0): void {
     const owner = (proj as any).owner; // Track projectile owner for damage attribution
     proj.active = false;
+    
+    // Calculate final explosion radius based on the material hit
+    const finalRadius = proj.explosionRadius * radiusModifier;
+    
     // Carve landscape
-    state.landscape.createCrater(Math.floor(proj.x), Math.floor(proj.y), proj.explosionRadius);
+    state.landscape.createCrater(Math.floor(proj.x), Math.floor(proj.y), finalRadius);
 
     // Add visual explosion effect
-    state.explosions.push(new Explosion(proj.x, proj.y, proj.explosionRadius));
+    state.explosions.push(new Explosion(proj.x, proj.y, finalRadius));
 
     // Trigger sound
     if (this.onExplode) {
