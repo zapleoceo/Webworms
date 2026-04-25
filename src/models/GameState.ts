@@ -9,8 +9,13 @@ export class GameState {
   public projectiles: Projectile[] = [];
   public explosions: Explosion[] = [];
   public currentPlayerIndex: number = 0;
+  
   public width: number;
   public height: number;
+  
+  public cameraX: number = 0;
+  public cameraY: number = 0;
+  
   public wind: number = 0; // Wind affecting projectiles
 
   constructor(width: number, height: number) {

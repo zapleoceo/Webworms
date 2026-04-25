@@ -5,6 +5,7 @@ import { InputHandler } from './views/InputHandler';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div id="game-wrapper">
+    <h1 class="game-title">WebWorms</h1>
     <div id="game-container">
       <canvas id="gameCanvas" width="800" height="600"></canvas>
     </div>
@@ -30,7 +31,7 @@ const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const presenter = new GamePresenter(canvas.width, canvas.height);
 
 const renderer = new CanvasRenderer(canvas);
-const inputHandler = new InputHandler(presenter);
+const inputHandler = new InputHandler(presenter, canvas);
 
 // Function to handle canvas scaling for mobile
 function resizeCanvas() {

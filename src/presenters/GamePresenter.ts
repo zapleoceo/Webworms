@@ -13,7 +13,15 @@ export class GamePresenter {
   private soundManager: SoundManager;
 
   constructor(width: number, height: number) {
-    this.state = new GameState(width, height);
+    // Make the world wider than the canvas
+    const worldWidth = width * 1.5;
+    const worldHeight = height * 1.2;
+    this.state = new GameState(worldWidth, worldHeight);
+    
+    // Start camera centered
+    this.state.cameraX = (worldWidth - width) / 2;
+    this.state.cameraY = (worldHeight - height) / 2;
+
     this.physics = new PhysicsEngine();
     this.soundManager = new SoundManager();
     
@@ -27,8 +35,8 @@ export class GamePresenter {
     this.state.landscape.generateTerrain();
     
     // Add two worms for Phase 1
-    const p1 = new Worm(100, 100);
-    const p2 = new Worm(700, 100, true); // Dummy
+    const p1 = new Worm(300, 100, false, 'Player 1', '#FF69B4');
+    const p2 = new Worm(900, 100, true, 'Player 2', '#4169E1'); // Dummy
     
     this.state.addPlayer(p1);
     this.state.addPlayer(p2);
@@ -129,13 +137,15 @@ export class GamePresenter {
       this.activeInputs.delete(action);
     }
 
-    const jumpForce = -250;
+    const jumpForce = -150;
 
     switch (action) {
       case 'jump':
         if (isActive && !player.isJumping) {
           player.vy = jumpForce;
           player.isJumping = true;
+          // Play jump sound
+          // this.soundManager.playJump(); // Future: implement playJump
         }
         break;
       case 'fire':
@@ -152,6 +162,21 @@ export class GamePresenter {
     }
   }
 
+  public moveCamera(dx: number, dy: number, canvasWidth: number, canvasHeight: number): void {
+    this.state.cameraX -= dx;
+    this.state.cameraY -= dy;
+    
+    // Clamp camera to map bounds
+    if (this.state.cameraX < 0) this.state.cameraX = 0;
+    if (this.state.cameraX > this.state.width - canvasWidth) {
+      this.state.cameraX = Math.max(0, this.state.width - canvasWidth);
+    }
+    if (this.state.cameraY < 0) this.state.cameraY = 0;
+    if (this.state.cameraY > this.state.height - canvasHeight) {
+      this.state.cameraY = Math.max(0, this.state.height - canvasHeight);
+    }
+  }
+
   private fireWeapon(player: Worm): void {
     if (player.aimPower <= 0) return;
     
@@ -160,14 +185,14 @@ export class GamePresenter {
     // Calculate vector based on angle and power
     const rad = player.aimAngle * (Math.PI / 180);
     const speed = power * 6; // Adjust scalar for better arcs
-    const direction = player.facingRight ? 1 : -1;
     
-    const vx = Math.cos(rad) * speed * direction;
+    // No direction multiplier needed because angle is 0-360
+    const vx = Math.cos(rad) * speed;
     const vy = -Math.sin(rad) * speed; // Negative is up
     
     // Spawn completely outside the worm's collision radius
-    const startX = player.x + (player.width / 2 + 5) * direction;
-    const startY = player.y - player.height / 2 - 5;
+    const startX = player.x + Math.cos(rad) * (player.width / 2 + 5);
+    const startY = player.y - Math.sin(rad) * (player.height / 2 + 5);
 
     const proj = new Projectile(startX, startY, vx, vy);
     this.state.addProjectile(proj);

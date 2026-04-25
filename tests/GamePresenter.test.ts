@@ -11,7 +11,7 @@ describe('GamePresenter', () => {
 
   it('initializes state correctly', () => {
     expect(presenter.state.players.length).toBe(2);
-    expect(presenter.state.landscape.width).toBe(800);
+    expect(presenter.state.landscape.width).toBe(1200); // 800 * 1.5
   });
 
   it('handles input and fires weapon', () => {

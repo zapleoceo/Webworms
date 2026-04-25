@@ -23,11 +23,20 @@ export class CanvasRenderer {
 
   public render(state: GameState): void {
     this.clear();
-    this.drawSky();
+    
+    // Apply camera translation
+    this.ctx.save();
+    this.ctx.translate(-state.cameraX, -state.cameraY);
+
+    this.drawSky(state);
     this.drawLandscape(state);
     this.drawProjectiles(state);
     this.drawPlayers(state);
     this.drawExplosions(state);
+    
+    this.ctx.restore(); // Restore camera so UI is drawn fixed to screen
+
+    this.drawOffscreenPointers(state);
     this.drawUI(state);
   }
 
@@ -35,12 +44,12 @@ export class CanvasRenderer {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  private drawSky(): void {
-    const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+  private drawSky(state: GameState): void {
+    const gradient = this.ctx.createLinearGradient(0, 0, 0, state.height);
     gradient.addColorStop(0, '#87CEEB'); // Sky blue
     gradient.addColorStop(1, '#E0F6FF'); // Lighter blue
     this.ctx.fillStyle = gradient;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, state.width, state.height);
   }
 
   private drawLandscape(state: GameState): void {
@@ -102,9 +111,15 @@ export class CanvasRenderer {
   private drawPlayers(state: GameState): void {
     for (const player of state.players) {
       // Draw Worm Body
-      this.ctx.fillStyle = '#FF69B4'; // Hot pink
+      this.ctx.fillStyle = player.teamColor || '#FF69B4'; // Use team color
       this.ctx.beginPath();
       this.ctx.arc(player.x, player.y, player.width / 2, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      // Equipment Layer (e.g. Helmet)
+      this.ctx.fillStyle = '#A0522D'; // Brown helmet
+      this.ctx.beginPath();
+      this.ctx.arc(player.x, player.y - 2, player.width / 2 + 1, Math.PI, Math.PI * 2);
       this.ctx.fill();
 
       // Eyes
@@ -118,7 +133,12 @@ export class CanvasRenderer {
       this.ctx.arc(player.x + eyeOffset + 0.5, player.y - 2, 0.5, 0, Math.PI * 2);
       this.ctx.fill();
 
-      // Health bar
+      // Name and Health bar
+      this.ctx.fillStyle = 'black';
+      this.ctx.font = '10px Arial';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(player.name, player.x, player.y - 20);
+
       this.ctx.fillStyle = 'red';
       this.ctx.fillRect(player.x - 10, player.y - 15, 20, 3);
       this.ctx.fillStyle = '#32CD32'; // Lime green
@@ -127,10 +147,19 @@ export class CanvasRenderer {
       // Aiming Reticle (only for current player)
       if (player === state.getCurrentPlayer() && !player.isJumping) {
         const rad = player.aimAngle * (Math.PI / 180);
-        const direction = player.facingRight ? 1 : -1;
-        const targetX = player.x + Math.cos(rad) * 30 * direction;
+        // facingRight is now purely visual or derived from angle, no direction multiplier needed if angle is 360
+        const targetX = player.x + Math.cos(rad) * 30;
         const targetY = player.y - Math.sin(rad) * 30;
 
+        // Draw weapon barrel
+        this.ctx.strokeStyle = '#555';
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.moveTo(player.x, player.y);
+        this.ctx.lineTo(player.x + Math.cos(rad) * 12, player.y - Math.sin(rad) * 12);
+        this.ctx.stroke();
+
+        // Draw aim line
         this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
         this.ctx.lineWidth = 1;
         this.ctx.setLineDash([2, 2]);
@@ -229,6 +258,61 @@ export class CanvasRenderer {
         this.ctx.fill();
       }
 
+      this.ctx.restore();
+    }
+  }
+
+  private drawOffscreenPointers(state: GameState): void {
+    const viewLeft = state.cameraX;
+    const viewRight = state.cameraX + this.canvas.width;
+    const viewTop = state.cameraY;
+    const viewBottom = state.cameraY + this.canvas.height;
+    const centerX = state.cameraX + this.canvas.width / 2;
+    const centerY = state.cameraY + this.canvas.height / 2;
+
+    for (const player of state.players) {
+      if (player.x >= viewLeft && player.x <= viewRight && player.y >= viewTop && player.y <= viewBottom) {
+        continue; // Visible
+      }
+
+      // Calculate direction from center
+      const dx = player.x - centerX;
+      const dy = player.y - centerY;
+      const angle = Math.atan2(dy, dx);
+
+      // Find intersection with screen edge
+      let edgeX, edgeY;
+      const slope = dy / dx;
+
+      if (Math.abs(slope) < this.canvas.height / this.canvas.width) {
+        // Intersects left or right edge
+        edgeX = dx > 0 ? this.canvas.width - 20 : 20;
+        edgeY = this.canvas.height / 2 + (edgeX - this.canvas.width / 2) * slope;
+      } else {
+        // Intersects top or bottom edge
+        edgeY = dy > 0 ? this.canvas.height - 20 : 20;
+        edgeX = this.canvas.width / 2 + (edgeY - this.canvas.height / 2) / slope;
+      }
+
+      // Draw pointer
+      this.ctx.save();
+      this.ctx.translate(edgeX, edgeY);
+      
+      // Draw text
+      this.ctx.fillStyle = player.teamColor || 'white';
+      this.ctx.font = '12px Arial';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(player.name, 0, dy > 0 ? -15 : 25);
+      
+      // Draw Triangle
+      this.ctx.rotate(angle);
+      this.ctx.fillStyle = player.teamColor || 'white';
+      this.ctx.beginPath();
+      this.ctx.moveTo(10, 0);
+      this.ctx.lineTo(-5, 5);
+      this.ctx.lineTo(-5, -5);
+      this.ctx.fill();
+      
       this.ctx.restore();
     }
   }

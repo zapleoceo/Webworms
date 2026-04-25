@@ -5,8 +5,10 @@ body {
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background-color: #333;
-  font-family: Arial, sans-serif;
+  background-color: #222;
+  background-image: radial-gradient(#333 1px, transparent 1px);
+  background-size: 20px 20px;
+  font-family: 'Courier New', Courier, monospace; /* Retro font */
   overflow: hidden;
   touch-action: none; /* Prevent browser zoom/scroll on mobile */
 }
@@ -28,13 +30,28 @@ body {
   height: 100%;
 }
 
+/* Retro Title */
+h1.game-title {
+  color: #FFD700;
+  text-shadow: 2px 2px 0px #FF4500, 4px 4px 0px #000;
+  margin: 5px 0 15px 0;
+  font-size: 2rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
 #game-container {
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
-  border-radius: 10px;
+  box-shadow: 0 0 0 10px #444, 0 0 0 15px #222, 0 20px 50px rgba(0, 0, 0, 0.8);
+  border-radius: 4px;
   overflow: hidden;
   background: white;
   width: 800px;
   height: 600px;
+  cursor: grab;
+}
+
+#game-container:active {
+  cursor: grabbing;
 }
 
 canvas {

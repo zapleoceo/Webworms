@@ -14,13 +14,14 @@ describe('Worm', () => {
     expect(worm.health).toBe(100);
   });
 
-  it('updates aim correctly', () => {
-    worm.updateAim(10);
-    expect(worm.aimAngle).toBe(55);
-    worm.updateAim(-100);
-    expect(worm.aimAngle).toBe(0); // clamp
-    worm.updateAim(200);
-    expect(worm.aimAngle).toBe(180); // clamp
+  it('updates aim 360 degrees and changes facing', () => {
+    worm.updateAim(100);
+    expect(worm.aimAngle).toBe(100);
+    expect(worm.facingRight).toBe(false); // Left because > 90 and < 270
+
+    worm.updateAim(300); // 100 + 300 = 400 => 40
+    expect(worm.aimAngle).toBe(40);
+    expect(worm.facingRight).toBe(true);
   });
 
   it('updates power correctly', () => {
@@ -39,9 +40,10 @@ describe('Worm', () => {
     expect(worm.health).toBe(0); // clamp at 0
   });
 
-  it('does not take damage if invulnerable', () => {
-    const invulnerableWorm = new Worm(10, 10, true);
-    invulnerableWorm.takeDamage(50);
-    expect(invulnerableWorm.health).toBe(100);
+  it('takes reduced damage if dummy', () => {
+    const dummy = new Worm(10, 10, true);
+    expect(dummy.health).toBeGreaterThan(1000);
+    dummy.takeDamage(50);
+    expect(dummy.health).toBeGreaterThan(1000);
   });
 });

@@ -3,82 +3,83 @@
 ```mermaid
 flowchart TD
     subgraph Frontend (Vite + Canvas)
-        UI["UI (Lobby, Auth, Friends)"]
-        GL["Game Logic (MVP + Physics)"]
-        WR["WebRTC (P2P Match)"]
+        UI["UI (Lobby, Auth, Friends, Styled Mobile Controls)"]
+        GL["Game Logic (Momentum Physics, 360° Aiming)"]
+        WR["WebRTC (P2P Match, Turn Timer Sync)"]
+        
+        subgraph Graphics (CanvasRenderer)
+            CAM["Camera Matrix (Pan / Translate)"]
+            CL["Cached Landscape (destination-out)"]
+            PL["Particle Layer (Shockwaves, Smoke)"]
+            UL["Unit Layer (Worms)"]
+            EL["Equipment Layer (Armor, Hats)"]
+            UI["Overlay (Off-screen pointers)"]
+        end
+        
+        subgraph Audio (SoundManager)
+            SFX["8-bit Synthesizer (Jump, Pew, Boom)"]
+        end
     end
     subgraph Cloudflare Pages Functions (Backend)
-        API["REST API (Auth, Matchmaking, Balance)"]
-        WH["Payment Webhook (Stripe/Crypto)"]
+        API["REST API (Auth, Matchmaking, Friends)"]
+        WH["Payment Webhook (Stripe/Telegram)"]
     end
     subgraph Cloudflare D1 (Database)
-        U[("Users")]
-        F[("Friends")]
-        M[("Matches & Settings")]
+        U[("Users (PlayTime Balance)")]
+        F[("Friends (Status)")]
         T[("Transactions")]
     end
     
     UI <--> API
     API <--> U
     API <--> F
-    API <--> M
     WH --> T
     T --> U
     GL <--> WR
+    GL --> Graphics
+    GL --> Audio
 ```
 
-## 2. Описание технологий
-- Фронтенд: TypeScript + HTML5 Canvas (Vite). Оптимизация `destination-out` для кратеров.
+## 2. Описание технологий и Биллинг
+- Фронтенд: TypeScript + HTML5 Canvas (Vite).
 - Бэкенд: Cloudflare Pages Functions (Serverless).
 - База данных: Cloudflare D1 (Edge SQLite).
-- Сеть: Trystero (или кастомный WebRTC) для P2P-передачи координат и кратеров.
+- Сеть: Trystero (или кастомный WebRTC).
+- Звук: Web Audio API (Oscillators, BiquadFilters).
+- Платежи: Безопасный Webhook-эндпоинт (напр., `/api/webhooks/stripe`). Подпись платежа валидируется на стороне Cloudflare, после чего баланс `play_time_balance` пополняется на 3600 секунд.
 
-## 3. Физический движок (Доработки)
-Движок (`PhysicsEngine.ts`) требует следующих математических апгрейдов:
-1. **Расчет нормалей**: При ходьбе червяк сканирует пиксели ландшафта (через `Math.atan2(dy, dx)`) в радиусе вокруг себя.
-2. **Ограничение угла (Slope Limit)**: Если угол склона превышает 60°, обнуляем `vx` от кнопок ходьбы и применяем гравитацию (червяк скатывается).
-3. **Состояние "в воздухе"**: Ввод с кнопок (стрелки влево/вправо) умножается на коэффициент `airControl = 0.5` вместо жесткого стопа.
-4. **Защита от проваливания**: При проверке коллизий движок должен толкать червяка не только вверх, но и по вектору нормали, чтобы избежать бага "исчезновения", если червяк застрял в 5-пиксельной неразрушаемой стене.
+## 3. Физический движок, Камера и Вооружение (Доработки)
+
+### 3.1 Физика (PhysicsEngine.ts)
+1. **Гравитация (Gravity) и Трение**: Параметры (напр., 300 px/s²) больше не хардкодятся, а извлекаются из `state.matchSettings`. Это позволяет применять кастомные настройки для разных мультиплеерных раундов.
+2. **Инерция и Склоны (Momentum Slopes)**:
+   - Если склон крутой (нормаль > 50°), червяк пытается залезть.
+   - Проверяется горизонтальная скорость `Math.abs(vx)`. Если скорость высокая (>150), червяк по инерции "забегает" на стенку (теряя скорость).
+   - Если скорость низкая, червяк отскакивает и съезжает вниз.
+3. **Прыжки (Jump)**: Высота прыжка уменьшена (сила -150 вместо -250). Управление в воздухе (Air Control) позволяет накапливать горизонтальную скорость.
+
+### 3.2 Камера и Оффскрин-Индикаторы (CanvasRenderer.ts)
+- **Viewport Translation**: `CanvasRenderer` хранит координаты `cameraX` и `cameraY`. Перед отрисовкой игрового мира вызывается `ctx.translate(-cameraX, -cameraY)`. `InputHandler` обрабатывает события `mousemove`/`touchmove` для изменения координат камеры (Drag-to-pan).
+- **Вычисление Индикаторов (Pointers)**: Для каждого червяка проверяется, находится ли он внутри прямоугольника `[cameraX, cameraY, cameraX+canvas.width, cameraY+canvas.height]`. Если нет, вычисляется пересечение отрезка (от центра экрана до координат червяка) с границами экрана, и в этой точке рисуется треугольник и текст (имя юнита).
+
+### 3.3 Оружие (Weapon System)
+- **360° Прицел**: `aimAngle` не ограничивается 180 градусами. Угол пересчитывается от 0 до 359. Дуло оружия отрисовывается по окружности. Направление персонажа (`facingRight`) автоматически зависит от угла (cos(angle)).
+- **Ударная волна (Shockwave vs Crater)**: 
+  - `Projectile.ts` содержит `explosionRadius` (для вырезания дыры) и `shockwaveRadius` (для отталкивания червяков).
+- **Спред (Spread)**: `GamePresenter.ts` в методе `fireWeapon` поддерживает цикл для генерации множественных `Projectile` с небольшим разбросом угла (дробовик).
 
 ## 4. Схема Базы Данных (Cloudflare D1)
 
-### 4.1 Data Model Definition
-```mermaid
-erDiagram
-    USERS ||--o{ FRIENDS : "has"
-    USERS ||--o{ TRANSACTIONS : "makes"
-    USERS {
-        string id PK
-        string username
-        string password_hash
-        int play_time_balance "In seconds"
-    }
-    FRIENDS {
-        string user_id PK
-        string friend_id PK
-        string status "pending/accepted"
-    }
-    TRANSACTIONS {
-        string id PK
-        string user_id
-        int amount_cents
-        int time_added_sec
-        string status "completed/failed"
-    }
-    MATCH_SETTINGS {
-        string id PK
-        int turn_time_limit
-        string allowed_weapons
-    }
-```
-
-### 4.2 Data Definition Language (DDL)
 ```sql
 CREATE TABLE Users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE,
   password_hash TEXT,
   play_time_balance INTEGER DEFAULT 0,
+  matches_played INTEGER DEFAULT 0,
+  matches_won INTEGER DEFAULT 0,
+  total_damage_dealt INTEGER DEFAULT 0,
+  total_kills INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -89,12 +90,11 @@ CREATE TABLE Friends (
   PRIMARY KEY (user_id, friend_id)
 );
 
-CREATE TABLE Transactions (
+CREATE TABLE MATCH_SETTINGS (
   id TEXT PRIMARY KEY,
-  user_id TEXT,
-  amount_cents INTEGER,
-  time_added_sec INTEGER,
-  status TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  turn_time_limit INTEGER,
+  allowed_weapons TEXT,
+  gravity_multiplier REAL DEFAULT 1.0,
+  friction_multiplier REAL DEFAULT 1.0
 );
 ```

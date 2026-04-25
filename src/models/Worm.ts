@@ -5,33 +5,50 @@ export class Worm {
   public vy: number = 0;
   public width: number = 10;
   public height: number = 10;
-  public aimAngle: number = 45; // Degrees
-  public aimPower: number = 0;
-  public health: number = 100;
-  public isInvulnerable: boolean = false;
-  public facingRight: boolean = true;
   public isJumping: boolean = false;
+  
+  public health: number = 100;
+  public aimAngle: number = 0; // 0 to 360 degrees
+  public aimPower: number = 0; // 0 to 100
+  public facingRight: boolean = true;
 
-  constructor(x: number, y: number, isInvulnerable: boolean = false) {
+  // Visual/team identifier
+  public teamColor: string;
+  public name: string;
+
+  constructor(x: number, y: number, isDummy: boolean = false, name: string = 'Player', color: string = '#FF69B4') {
     this.x = x;
     this.y = y;
-    this.isInvulnerable = isInvulnerable;
+    this.name = name;
+    this.teamColor = color;
+    if (isDummy) {
+      // Dummy has high health and doesn't die easily for testing
+      this.health = 10000;
+    }
   }
 
-  public updateAim(deltaAngle: number): void {
-    this.aimAngle += deltaAngle;
-    if (this.aimAngle < 0) this.aimAngle = 0;
-    if (this.aimAngle > 180) this.aimAngle = 180;
+  public updateAim(delta: number): void {
+    this.aimAngle += delta;
+    
+    // Normalize to 0-360
+    while (this.aimAngle >= 360) this.aimAngle -= 360;
+    while (this.aimAngle < 0) this.aimAngle += 360;
+
+    // Automatically face the direction of the aim
+    if (this.aimAngle > 90 && this.aimAngle < 270) {
+      this.facingRight = false;
+    } else {
+      this.facingRight = true;
+    }
   }
 
-  public changePower(deltaPower: number): void {
-    this.aimPower += deltaPower;
-    if (this.aimPower < 0) this.aimPower = 0;
+  public changePower(delta: number): void {
+    this.aimPower += delta;
     if (this.aimPower > 100) this.aimPower = 100;
+    if (this.aimPower < 0) this.aimPower = 0;
   }
 
   public takeDamage(amount: number): void {
-    if (this.isInvulnerable) return;
     this.health -= amount;
     if (this.health < 0) this.health = 0;
   }
