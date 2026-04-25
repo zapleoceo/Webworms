@@ -115,6 +115,20 @@ export class SoundManager {
     } catch (e) {}
   }
 
+  public updateFalling(vy: number): void {
+    if (this.fallingOsc && this.ctx) {
+      // Map velocity to frequency (higher velocity = lower pitch to simulate approaching the ground)
+      // e.g. vy 150 -> 400Hz, vy 500 -> 100Hz
+      let freq = 500 - vy;
+      if (freq < 100) freq = 100;
+      if (freq > 400) freq = 400;
+      
+      try {
+        this.fallingOsc.frequency.setTargetAtTime(freq, this.ctx.currentTime + 0.1);
+      } catch (e) {}
+    }
+  }
+
   public startFalling(): void {
     if (!this.ctx || this.fallingOsc) return;
     try {
@@ -123,10 +137,9 @@ export class SoundManager {
       
       this.fallingOsc.type = 'triangle';
       this.fallingOsc.frequency.setValueAtTime(400, this.ctx.currentTime);
-      this.fallingOsc.frequency.linearRampToValueAtTime(100, this.ctx.currentTime + 2.0); // Doppler effect
       
       this.fallingGain.gain.setValueAtTime(0.01, this.ctx.currentTime);
-      this.fallingGain.gain.linearRampToValueAtTime(0.2, this.ctx.currentTime + 1.0); // Wind buildup
+      this.fallingGain.gain.linearRampToValueAtTime(0.2, this.ctx.currentTime + 0.5); // Fast wind buildup
       
       this.fallingOsc.connect(this.fallingGain);
       this.fallingGain.connect(this.ctx.destination);
@@ -143,6 +156,30 @@ export class SoundManager {
       this.fallingOsc = null;
       this.fallingGain = null;
     }
+  }
+
+  public playLand(): void {
+    if (this.playExternal('land')) return;
+    if (!this.ctx) return;
+
+    // "Boov" thud sound
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      
+      // Quick pitch drop
+      osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.1);
+      
+      gain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+      
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.1);
+    } catch (e) {}
   }
 
   public playHeavyImpact(): void {

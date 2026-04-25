@@ -38,7 +38,9 @@ export class GamePresenter {
     this.physics.onJump = () => this.soundManager.playJump();
     this.physics.onHurt = () => this.soundManager.playHurt();
     this.physics.onFallStart = () => this.soundManager.startFalling();
+    this.physics.onFallUpdate = (vy) => this.soundManager.updateFalling(vy);
     this.physics.onFallStop = () => this.soundManager.stopFalling();
+    this.physics.onLand = () => this.soundManager.playLand();
     this.physics.onHeavyImpact = () => this.soundManager.playHeavyImpact();
   }
 

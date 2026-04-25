@@ -12,6 +12,8 @@ export class PhysicsEngine {
   public onHurt?: () => void;
   public onFallStart?: () => void;
   public onFallStop?: () => void;
+  public onFallUpdate?: (vy: number) => void;
+  public onLand?: () => void;
   public onHeavyImpact?: () => void;
 
   public update(state: GameState, dt: number): void {
@@ -265,10 +267,11 @@ export class PhysicsEngine {
     
     // Check if falling fast enough to trigger sound
     if (worm.vy > 150) {
-      if (this.onFallStart && !worm.isFallingSoundPlaying) {
+      if (!worm.isFallingSoundPlaying) {
         worm.isFallingSoundPlaying = true;
-        this.onFallStart();
+        if (this.onFallStart) this.onFallStart();
       }
+      if (this.onFallUpdate) this.onFallUpdate(worm.vy);
     } else {
       if (worm.isFallingSoundPlaying) {
         worm.isFallingSoundPlaying = false;
@@ -280,28 +283,33 @@ export class PhysicsEngine {
     let bottomY = Math.floor(worm.y + worm.height / 2);
 
     // Ground collision (falling)
-    if (worm.vy >= 0 && state.landscape.isSolid(cx, bottomY)) {
-      // Stop falling sound
-      if (worm.isFallingSoundPlaying) {
-        worm.isFallingSoundPlaying = false;
-        if (this.onFallStop) this.onFallStop();
-      }
-
-      // Push up to exactly the surface level (no infinite loops)
-      while (state.landscape.isSolid(cx, bottomY) && bottomY > 0) {
-        bottomY--;
-      }
-      
-      const newY = bottomY - worm.height / 2;
-      // Anti-jitter: only adjust Y if the difference is significant
-      if (Math.abs(worm.y - newY) > 0.1) {
-        worm.y = newY;
-      }
-
-      // Heavy impact check
-      if (worm.vy > 300) {
-        if (this.onHeavyImpact) this.onHeavyImpact();
-      }
+      if (worm.vy >= 0 && state.landscape.isSolid(cx, bottomY)) {
+        // Stop falling sound
+        if (worm.isFallingSoundPlaying) {
+          worm.isFallingSoundPlaying = false;
+          if (this.onFallStop) this.onFallStop();
+        }
+  
+        // Push up to exactly the surface level (no infinite loops)
+        while (state.landscape.isSolid(cx, bottomY) && bottomY > 0) {
+          bottomY--;
+        }
+        
+        const newY = bottomY - worm.height / 2;
+        // Anti-jitter: only adjust Y if the difference is significant
+        if (Math.abs(worm.y - newY) > 0.1) {
+          worm.y = newY;
+        }
+  
+        // Always play a landing "thud" (boov) if we just landed from a jump/fall
+        if (worm.isJumping || worm.vy > 50) {
+          if (this.onLand) this.onLand();
+        }
+  
+        // Heavy impact check
+        if (worm.vy > 300) {
+          if (this.onHeavyImpact) this.onHeavyImpact();
+        }
 
       // Fall Damage Calculation (check speed BEFORE resetting it)
       if (worm.vy > this.safeFallSpeed) {

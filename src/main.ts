@@ -50,6 +50,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
       <div class="action-pad">
         <button class="control-btn action-btn" id="btn-jump">Jump</button>
+        <button class="control-btn action-btn switch-btn" id="btn-switch">Switch</button>
         <button class="control-btn action-btn fire-btn" id="btn-fire">Fire</button>
       </div>
     </div>

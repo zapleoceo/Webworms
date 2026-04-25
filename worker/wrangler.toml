@@ -1,0 +1,12 @@
+name = "webworms-api"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "webworms-db"
+database_id = "00000000-0000-0000-0000-000000000000" # Replace with actual ID
+
+[[kv_namespaces]]
+binding = "ROOMS"
+id = "00000000000000000000000000000000" # Replace with actual KV ID
