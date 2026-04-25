@@ -1,5 +1,5 @@
 export class APIClient {
-  static BASE_URL = 'https://webworms-api.demoniwwwe.workers.dev/api';
+  static BASE_URL = '/api';
 
   static async register(email: string, username: string, password?: string, refCode?: string) {
     try {

@@ -1,0 +1,12 @@
+name = "webworms"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-03-20"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "webworms-db"
+database_id = "6f84783d-f776-42e1-8cb8-ce6d342e803a"
+
+[[kv_namespaces]]
+binding = "ROOMS"
+id = "7089e094dcff4e439524738e5f129932"
