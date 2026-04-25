@@ -5,6 +5,8 @@ import { MathUtils } from '../utils/MathUtils';
 
 export class PhysicsEngine {
   public gravity: number = 200; // pixels per second squared
+  public safeFallSpeed: number = 280; // Safe landing speed
+  public fallDamageMultiplier: number = 0.2; // Damage per extra speed unit
   public onExplode?: () => void;
 
   public update(state: GameState, dt: number): void {
@@ -34,37 +36,82 @@ export class PhysicsEngine {
     // Apply gravity
     worm.vy += this.gravity * dt;
     
-    // Update position
-    worm.x += worm.vx * dt;
-    worm.y += worm.vy * dt;
-
-    // Apply friction to x velocity (only if on ground and not actively moving)
-    worm.vx *= 0.9;
-
-    // Check landscape collision
-    // Basic ground collision: check points at the bottom of the worm
-    const bottomY = Math.floor(worm.y + worm.height / 2);
-    const centerX = Math.floor(worm.x);
-
-    // Stop falling if hitting ground
-    if (state.landscape.isSolid(centerX, bottomY)) {
-      worm.vy = 0;
-      worm.isJumping = false;
+    // Attempt Horizontal Movement (with slope logic)
+    const dx = worm.vx * dt;
+    if (dx !== 0) {
+      worm.x += dx;
       
-      // Push up slightly out of the ground
-      let y = bottomY;
-      while (state.landscape.isSolid(centerX, y) && y > 0) {
-        y--;
+      // Screen bounds with 5px padding (clamp before checking terrain to avoid infinite push-up bug)
+      if (worm.x < 5) { worm.x = 5; worm.vx = 0; }
+      if (worm.x > state.width - 5) { worm.x = state.width - 5; worm.vx = 0; }
+
+      const cx = Math.floor(worm.x);
+      const bottomY = Math.floor(worm.y + worm.height / 2);
+
+      // Slope limit check
+      if (state.landscape.isSolid(cx, bottomY)) {
+        let step = 0;
+        const maxStep = 3; // Allow climbing up to ~60 degree slope (approx 3px up for 1-2px across)
+        
+        while (step <= maxStep && state.landscape.isSolid(cx, bottomY - step)) {
+          step++;
+        }
+
+        if (step <= maxStep) {
+          // Valid slope, step up
+          worm.y -= step;
+        } else {
+          // Too steep! Hit a wall. Revert X movement and kill horizontal speed
+          worm.x -= dx;
+          worm.vx = 0;
+        }
       }
-      worm.y = y - worm.height / 2;
     }
 
-    // Screen bounds with 5px padding
-    if (worm.x < 5) { worm.x = 5; worm.vx = 0; }
-    if (worm.x > state.width - 5) { worm.x = state.width - 5; worm.vx = 0; }
+    // Attempt Vertical Movement
+    const dy = worm.vy * dt;
+    worm.y += dy;
+    
+    const cx = Math.floor(worm.x);
+    let bottomY = Math.floor(worm.y + worm.height / 2);
+
+    // Ground collision (falling)
+    if (worm.vy >= 0 && state.landscape.isSolid(cx, bottomY)) {
+      // Push up to exactly the surface level (no infinite loops)
+      while (state.landscape.isSolid(cx, bottomY) && bottomY > 0) {
+        bottomY--;
+      }
+      worm.y = bottomY - worm.height / 2;
+
+      // Fall Damage Calculation (check speed BEFORE resetting it)
+      if (worm.vy > this.safeFallSpeed) {
+        const damage = (worm.vy - this.safeFallSpeed) * this.fallDamageMultiplier;
+        worm.takeDamage(damage);
+      }
+
+      worm.vy = 0;
+      worm.isJumping = false;
+    } 
+    // Ceiling collision (jumping up into something)
+    else if (worm.vy < 0 && state.landscape.isSolid(cx, Math.floor(worm.y - worm.height / 2))) {
+      worm.vy = 0; // Bonk head, stop moving up
+    }
+
+    // Check if falling off the map
     if (worm.y > state.height) {
       worm.takeDamage(100); // death by falling off map
       worm.y = state.height;
+      worm.vy = 0; // stop falling
+    }
+
+    // Apply friction
+    if (!worm.isJumping) {
+      // Ground friction
+      worm.vx *= 0.8;
+      if (Math.abs(worm.vx) < 5) worm.vx = 0; // complete stop
+    } else {
+      // Air resistance
+      worm.vx *= 0.98;
     }
   }
 

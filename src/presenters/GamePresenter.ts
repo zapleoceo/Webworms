@@ -67,7 +67,9 @@ export class GamePresenter {
 
     const aimSpeed = 90; // degrees per second
     const chargeSpeed = 100; // max power per second
-    const moveSpeed = 100;
+    const moveForce = 800; // pixels per second squared (acceleration)
+    const maxSpeed = 100; // pixels per second
+    const airControl = 0.5; // 50% control while in the air
 
     if (this.activeInputs.has('up')) {
       player.updateAim(aimSpeed * dt);
@@ -79,13 +81,27 @@ export class GamePresenter {
       player.changePower(chargeSpeed * dt);
     }
     
-    // Apply movement continuously to overcome friction
+    // Apply movement continuously as a force to overcome friction/slopes
     if (this.activeInputs.has('left')) {
-      player.vx = -moveSpeed;
       player.facingRight = false;
+      if (!player.isJumping) {
+        player.vx = -maxSpeed; // Instant speed on ground
+      } else {
+        player.vx -= moveForce * airControl * dt; // Gradual acceleration in air
+      }
     } else if (this.activeInputs.has('right')) {
-      player.vx = moveSpeed;
       player.facingRight = true;
+      if (!player.isJumping) {
+        player.vx = maxSpeed; // Instant speed on ground
+      } else {
+        player.vx += moveForce * airControl * dt; // Gradual acceleration in air
+      }
+    }
+
+    // Clamp air speed so they don't accelerate infinitely
+    if (player.isJumping) {
+      if (player.vx > maxSpeed * 1.5) player.vx = maxSpeed * 1.5;
+      if (player.vx < -maxSpeed * 1.5) player.vx = -maxSpeed * 1.5;
     }
   }
 
