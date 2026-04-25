@@ -2,7 +2,8 @@ export class Landscape {
   public width: number;
   public height: number;
   public grid: Uint8Array;
-  public needsUpdate: boolean = true; // Flag for renderer caching
+  public needsUpdate: boolean = true; // Flag for full renderer caching (init only)
+  public newCraters: {x: number, y: number, r: number}[] = []; // Queue for fast erasure
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -58,6 +59,7 @@ export class Landscape {
         }
       }
     }
-    this.needsUpdate = true;
+    // Instead of forcing a full redraw, just queue the crater for fast erasure
+    this.newCraters.push({x: cx, y: cy, r: radius});
   }
 }

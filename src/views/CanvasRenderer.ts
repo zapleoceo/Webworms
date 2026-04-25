@@ -44,7 +44,7 @@ export class CanvasRenderer {
   }
 
   private drawLandscape(state: GameState): void {
-    // Only redraw the landscape to the offscreen canvas if it has changed (e.g. explosion)
+    // 1. Only do a full redraw on initialization (or when needsUpdate is explicitly true)
     if (state.landscape.needsUpdate) {
       this.terrainCtx.clearRect(0, 0, this.terrainCanvas.width, this.terrainCanvas.height);
       this.terrainCtx.fillStyle = '#8B4513'; // Dirt brown
@@ -79,6 +79,20 @@ export class CanvasRenderer {
       }
       
       state.landscape.needsUpdate = false;
+    }
+
+    // 2. Process new craters using ultra-fast 'destination-out' to punch holes
+    if (state.landscape.newCraters.length > 0) {
+      this.terrainCtx.globalCompositeOperation = 'destination-out';
+      this.terrainCtx.fillStyle = 'black'; // Color doesn't matter for destination-out
+      
+      for (const crater of state.landscape.newCraters) {
+        this.terrainCtx.beginPath();
+        this.terrainCtx.arc(crater.x, crater.y, crater.r, 0, Math.PI * 2);
+        this.terrainCtx.fill();
+      }
+      
+      this.terrainCtx.globalCompositeOperation = 'source-over'; // Restore
     }
 
     // Draw the cached landscape onto the main canvas (SUPER FAST)

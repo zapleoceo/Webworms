@@ -93,6 +93,11 @@ export class GamePresenter {
     // This will be overridden by the View layer in main.ts
   }
 
+  // Hook for the view to clear state after rendering
+  public postRender(): void {
+    this.state.landscape.newCraters = [];
+  }
+
   public handleInput(action: string, isActive: boolean): void {
     // Unlock Web Audio API on first user interaction
     if (isActive) {

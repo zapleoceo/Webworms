@@ -68,6 +68,7 @@ resizeCanvas(); // initial call
 // Override render method to connect View layer
 presenter.render = () => {
   renderer.render(presenter.state);
+  presenter.postRender();
 };
 
 // Initialize and start game loop

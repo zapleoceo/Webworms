@@ -1,44 +1,46 @@
-## 1. Архитектурный дизайн
-Используется паттерн MVP (Model-View-Presenter). 
+## 1. Архитектурный дизайн (MVP + Performance Mode)
 
 ```mermaid
 flowchart TD
-    subgraph Frontend
-        V["View (Canvas/DOM)"]
-        P["Presenter (Game Logic)"]
-        M["Model (State, Physics)"]
+    subgraph View (Rendering)
+        C["Main Canvas"]
+        O["Offscreen Terrain Canvas (Cache)"]
+        S["SoundManager (Pre-cached Buffers)"]
     end
-    V <--> P
-    P <--> M
-    subgraph Tests
-        T["Unit/Integration Tests (Vitest)"]
+    subgraph Presenter (Logic)
+        GP["GamePresenter (Main Loop)"]
+        PE["PhysicsEngine (Calculations)"]
     end
-    T -.-> P
-    T -.-> M
+    subgraph Model (Data)
+        GS["GameState"]
+        L["Landscape (Physics Grid + Crater Queue)"]
+    end
+    
+    GP --> PE
+    PE --> GS
+    GP --> C
+    O -- "drawImage (60 FPS)" --> C
+    L -- "newCraters queue (Event)" --> O
 ```
 
 ## 2. Описание технологий
-- Фронтенд: TypeScript + HTML5 Canvas API для рендеринга.
-- Сборка: Vite.
-- Защита кода: vite-plugin-javascript-obfuscator (для обфускации фронтенд кода при билде).
-- Тестирование: Vitest (Unit и Integration тесты).
-- Структура: Строгое разделение на Model, View, Presenter. Каждый класс/скрипт в отдельном файле.
+- Фронтенд: TypeScript + HTML5 Canvas API
+- Сборка: Vite + Обфускатор
+- Оптимизации: 
+  - `CanvasRenderingContext2D.globalCompositeOperation = 'destination-out'` (Сверхбыстрое вырезание кратеров)
+  - `AudioContext.createBuffer` (Кэширование генеративного 8-битного шума в памяти)
 
-## 3. Определение структуры папок
-| Путь | Назначение |
-|-------|---------|
-| `/src/models` | Хранение состояния игры, сущности (Worm, Projectile, Landscape) |
-| `/src/views` | Отрисовка на Canvas, обработка инпутов (Renderer, InputHandler) |
-| `/src/presenters` | Связующее звено, игровой цикл, физика (GamePresenter, PhysicsEngine) |
-| `/src/utils` | Вспомогательные функции (MathUtils, Collision) |
-| `/tests` | Автотесты (отдельные файлы для unit и интеграционных тестов) |
+## 3. Решение проблемы быстродействия
+При одновременном взрыве нескольких ракет предыдущая версия перерисовывала 480 000 элементов массива `Landscape` в `Canvas`. 
+Новое архитектурное решение:
+1. `Landscape` (Model) отвечает только за физический массив `Uint8Array`.
+2. При взрыве `Landscape` добавляет координаты взрыва в очередь `newCraters`.
+3. `CanvasRenderer` (View) читает очередь `newCraters` перед отрисовкой кадра.
+4. `CanvasRenderer` использует аппаратное ускорение `destination-out` для вырезания круга на скрытом холсте `terrainCanvas`, после чего очередь очищается.
+5. `SoundManager` генерирует массив белого шума 1 раз при `init()` и переиспользует его.
 
-## 4. План реализации (Фаза 1)
-1. Инициализация проекта (Vite + TypeScript + Vitest).
-2. Настройка обфускации кода для production-билда.
-3. Разработка базовых утилит и моделей с автотестами.
-4. Создание генератора ландшафта (Model).
-5. Разработка физики (гравитация, баллистика снарядов).
-6. Реализация View (отрисовка червяка, прицела, ландшафта).
-7. Сборка Presenter для управления игровым циклом (Game Loop).
-8. Интеграционное тестирование всего процесса выстрела.
+## 4. Этап 2: Сетевая Архитектура
+Планируемый стек для мультиплеера:
+- База данных: Cloudflare D1 (SQL)
+- Матчмейкинг: Cloudflare Pages Functions (REST API)
+- Коммуникация: WebRTC (DataChannels) через Trystero или кастомный сигнальный сервер (Cloudflare KV).
