@@ -137,6 +137,10 @@ export class PhysicsEngine {
           prop.takeDamage((Math.abs(prop.vy) - 200) * 0.1);
         }
 
+        // Stop spinning when hitting ground
+        prop.angularVelocity *= 0.5;
+        if (Math.abs(prop.angularVelocity) < 0.1) prop.angularVelocity = 0;
+
         // Bounce
         if (prop.vy > 20) {
           prop.vy = -prop.vy * prop.bounce;
