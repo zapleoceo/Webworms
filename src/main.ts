@@ -37,11 +37,15 @@ declare global {
             <p><b>Active (Verified):</b> ${u.is_active ? 'Yes' : 'No'}</p>
             <p><b>Balance:</b> ${u.play_time_balance}s</p>
             <p><b>Created:</b> ${u.created_at}</p>
-            <label>
+            <label style="display: block;">
               <input type="checkbox" class="access-cb" data-id="${u.id}" ${u.access_allowed ? 'checked' : ''}> 
               Access Allowed
             </label>
-            <button class="save-user-btn" data-id="${u.id}" style="margin-left: 10px;">Save</button>
+            <label style="display: block;">
+              <input type="checkbox" class="admin-cb" data-id="${u.id}" ${u.is_admin ? 'checked' : ''}> 
+              Admin
+            </label>
+            <button class="save-user-btn" data-id="${u.id}" style="margin-top: 10px;">Save</button>
           </div>
         `).join('');
 
@@ -49,11 +53,12 @@ declare global {
           btn.addEventListener('click', async (e) => {
             const id = (e.target as HTMLButtonElement).dataset.id;
             const cb = document.querySelector(`.access-cb[data-id="${id}"]`) as HTMLInputElement;
+            const adminCb = document.querySelector(`.admin-cb[data-id="${id}"]`) as HTMLInputElement;
             
             await fetch(APIClient.BASE_URL + '/admin/users', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id, access_allowed: cb.checked })
+              body: JSON.stringify({ id, access_allowed: cb.checked, is_admin: adminCb.checked })
             });
             alert('Saved!');
           });
@@ -66,7 +71,7 @@ declare global {
 
   document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div id="game-wrapper">
-    <div id="auth-screen" class="screen active">
+    <div id="auth-screen" class="screen">
       <div class="logo-container">
         <img src="/assets/logo.png" alt="Worms Logo" class="game-logo-img">
       </div>
@@ -78,9 +83,14 @@ declare global {
       <p id="auth-toggle-text" style="color: #fff; font-family: Courier New; margin-top: 15px; cursor: pointer; text-decoration: underline;">
         Need an account? Register here.
       </p>
+      <button class="retro-btn" id="btn-close-auth" style="margin-top: 20px; font-size: 0.8rem; background-color: #555;">BACK TO MENU</button>
     </div>
 
-    <div id="main-menu" class="screen">
+    <div id="main-menu" class="screen active">
+      <div style="position: absolute; top: 20px; right: 20px;">
+        <button class="retro-btn" id="btn-open-auth" style="font-size: 0.8rem; padding: 5px 10px;">LOGIN / REGISTER</button>
+        <span id="user-display-name" class="retro-text" style="display: none; font-size: 0.8rem; color: #32CD32;"></span>
+      </div>
       <div class="logo-container">
         <img src="/assets/logo.png" alt="Worms Logo" class="game-logo-img">
       </div>
@@ -187,10 +197,20 @@ const timeBalanceEl = document.getElementById('time-balance')!;
 
 let userBalanceSeconds = 3600;
 let userSessionId: string | null = null;
+let userSessionName: string | null = null;
 let deductInterval: number | null = null;
 let syncModule: MultiplayerSync | null = null;
 
-// Auth Flow
+document.getElementById('btn-open-auth')!.addEventListener('click', () => {
+  menuScreen.classList.remove('active');
+  authScreen.classList.add('active');
+});
+
+document.getElementById('btn-close-auth')!.addEventListener('click', () => {
+  authScreen.classList.remove('active');
+  menuScreen.classList.add('active');
+});
+
 let isLoginMode = true;
 
 document.getElementById('auth-toggle-text')!.addEventListener('click', () => {
@@ -241,6 +261,7 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
       } else {
         // Login success
         userSessionId = res.user.id;
+        userSessionName = res.user.username;
         console.log('Session ID:', userSessionId);
         userBalanceSeconds = res.user.play_time_balance || 3600; 
         
@@ -248,6 +269,11 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
         menuScreen.classList.add('active');
         
         // Update UI
+        document.getElementById('btn-open-auth')!.style.display = 'none';
+        const displayEl = document.getElementById('user-display-name')!;
+        displayEl.style.display = 'inline';
+        displayEl.innerText = `[${userSessionName}]`;
+
         const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
         const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
         timeBalanceEl.innerText = `Time Left: ${hrs}h ${mins}m`;
@@ -362,6 +388,12 @@ canvas.addEventListener('touchmove', (e) => {
 
   // Handle Multiplayer Mode
   if (mode === 'friend') {
+    if (!userSessionId) {
+      alert('You must be logged in to play with a friend!');
+      loaderScreen.classList.remove('active');
+      authScreen.classList.add('active');
+      return;
+    }
     const loaderText = document.getElementById('loader-text')!;
     const invitePanel = document.getElementById('invite-panel')!;
     const inviteInput = document.getElementById('invite-link') as HTMLInputElement;

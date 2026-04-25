@@ -3,56 +3,88 @@ export interface Env {
   ROOMS: KVNamespace;
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
     const url = new URL(request.url);
 
-    // 1. Healthcheck / Ping
-    if (url.pathname === '/api/ping') {
-      return new Response(JSON.stringify({ status: 'ok', time: Date.now() }), {
-        headers: { 'Content-Type': 'application/json' }
+    try {
+      let response: Response;
+
+      // 1. Healthcheck / Ping
+      if (url.pathname === '/api/ping') {
+        response = new Response(JSON.stringify({ status: 'ok', time: Date.now() }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      // 2. Auth Routes
+      else if (url.pathname === '/api/auth/register' && request.method === 'POST') {
+        response = await handleRegister(request, env);
+      }
+      
+      else if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+        response = await handleLogin(request, env);
+      }
+      
+      else if (url.pathname === '/api/auth/verify' && request.method === 'GET') {
+        response = await handleVerify(request, env);
+      }
+
+      else if (url.pathname === '/api/auth/daily-reset' && request.method === 'POST') {
+        response = await handleDailyReset(request, env);
+      }
+
+      // 4. Admin Endpoints
+      else if (url.pathname === '/api/admin/users' && request.method === 'GET') {
+        response = await getAdminUsers(env);
+      }
+      
+      else if (url.pathname === '/api/admin/users' && request.method === 'POST') {
+        response = await updateAdminUser(request, env);
+      }
+      else if (url.pathname === '/api/rooms' && request.method === 'POST') {
+        response = await createRoom(request, env);
+      }
+      
+      // Signaling endpoints
+      else if (url.pathname.startsWith('/api/rooms/') && request.method === 'POST') {
+        response = await handleSignaling(request, env);
+      }
+      
+      else if (url.pathname.startsWith('/api/rooms/') && request.method === 'GET') {
+        response = await handleSignalingGet(request, env);
+      } else {
+        response = new Response('Not Found', { status: 404 });
+      }
+
+      // Append CORS headers to whatever response was generated
+      const newHeaders = new Headers(response.headers);
+      for (const [key, value] of Object.entries(corsHeaders)) {
+        newHeaders.set(key, value);
+      }
+      
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders
+      });
+
+    } catch (e: any) {
+      return new Response(JSON.stringify({ error: 'Internal Server Error', details: e.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
-
-    // 2. Auth Routes
-    if (url.pathname === '/api/auth/register' && request.method === 'POST') {
-      return handleRegister(request, env);
-    }
-    
-    if (url.pathname === '/api/auth/login' && request.method === 'POST') {
-      return handleLogin(request, env);
-    }
-    
-    if (url.pathname === '/api/auth/verify' && request.method === 'GET') {
-      return handleVerify(request, env);
-    }
-
-    if (url.pathname === '/api/auth/daily-reset' && request.method === 'POST') {
-      return handleDailyReset(request, env);
-    }
-
-    // 4. Admin Endpoints
-    if (url.pathname === '/api/admin/users' && request.method === 'GET') {
-      return getAdminUsers(env);
-    }
-    
-    if (url.pathname === '/api/admin/users' && request.method === 'POST') {
-      return updateAdminUser(request, env);
-    }
-    if (url.pathname === '/api/rooms' && request.method === 'POST') {
-      return createRoom(request, env);
-    }
-    
-    // Signaling endpoints
-    if (url.pathname.startsWith('/api/rooms/') && request.method === 'POST') {
-      return handleSignaling(request, env);
-    }
-    
-    if (url.pathname.startsWith('/api/rooms/') && request.method === 'GET') {
-      return handleSignalingGet(request, env);
-    }
-
-    return new Response('Not Found', { status: 404 });
   },
 };
 
@@ -89,12 +121,14 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
     
     const hashedPassword = await hashPassword(password);
     const token = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+    
+    const isAdmin = email.toLowerCase() === 'demoniwwwe@gmail.com' ? 1 : 0;
 
     // If no referral, just insert user
     if (!referred_by) {
       await env.DB.prepare(
-        `INSERT INTO Users (id, email, username, password_hash, is_active, verification_token, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?)`
-      ).bind(id, email, username, hashedPassword, 0, token, initialBalance).run();
+        `INSERT INTO Users (id, email, username, password_hash, is_active, is_admin, verification_token, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(id, email, username, hashedPassword, 0, isAdmin, token, initialBalance).run();
       
       const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
       return new Response(JSON.stringify({ 
@@ -114,8 +148,8 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
 
     // Insert user
     stmts.push(env.DB.prepare(
-      `INSERT INTO Users (id, email, username, password_hash, is_active, verification_token, referred_by, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, email, username, hashedPassword, 0, token, parentRow?.id || null, initialBalance));
+      `INSERT INTO Users (id, email, username, password_hash, is_active, is_admin, verification_token, referred_by, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, email, username, hashedPassword, 0, isAdmin, token, parentRow?.id || null, initialBalance));
 
     if (parentRow) {
       // Add 1 hour to parent
@@ -224,22 +258,22 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
 
 async function getAdminUsers(env: Env): Promise<Response> {
   try {
-    const { results } = await env.DB.prepare('SELECT id, email, username, play_time_balance, access_allowed, created_at, last_login FROM Users ORDER BY created_at DESC').all();
-    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+    const { results } = await env.DB.prepare('SELECT id, email, username, play_time_balance, is_active, is_admin, access_allowed, created_at, last_login FROM Users ORDER BY created_at DESC').all();
+    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
 
 async function updateAdminUser(request: Request, env: Env): Promise<Response> {
-  const body = await request.json() as { id: string, access_allowed: boolean };
+  const body = await request.json() as { id: string, access_allowed: boolean, is_admin: boolean };
   try {
-    await env.DB.prepare('UPDATE Users SET access_allowed = ? WHERE id = ?')
-      .bind(body.access_allowed ? 1 : 0, body.id)
+    await env.DB.prepare('UPDATE Users SET access_allowed = ?, is_admin = ? WHERE id = ?')
+      .bind(body.access_allowed ? 1 : 0, body.is_admin ? 1 : 0, body.id)
       .run();
-    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
 

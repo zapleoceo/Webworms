@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS Users (
   username TEXT UNIQUE,
   password_hash TEXT,
   is_active BOOLEAN DEFAULT FALSE,
+  is_admin BOOLEAN DEFAULT FALSE,
   verification_token TEXT,
   play_time_balance INTEGER DEFAULT 3600, -- 1 hour in seconds
   access_allowed BOOLEAN DEFAULT TRUE,
