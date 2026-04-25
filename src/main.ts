@@ -3,6 +3,7 @@ import { GamePresenter } from './presenters/GamePresenter';
 import { CanvasRenderer } from './views/CanvasRenderer';
 import { InputHandler } from './views/InputHandler';
 import { APIClient } from './network/APIClient';
+import { MultiplayerSync } from './network/MultiplayerSync';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div id="game-wrapper">
@@ -45,7 +46,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
 
     <div id="loader-screen" class="screen">
-      <h2 class="retro-text blink">GENERATING WORLD...</h2>
+      <h2 class="retro-text blink" id="loader-text">GENERATING WORLD...</h2>
+      <div id="invite-panel" style="display: none; flex-direction: column; align-items: center;">
+        <p style="color: #fff; font-family: Courier New; margin-bottom: 10px;">Send this link to your friend:</p>
+        <input type="text" id="invite-link" class="retro-input" readonly style="font-size: 0.9rem; width: 350px;">
+        <button class="retro-btn" id="btn-copy-invite" style="padding: 10px 20px; font-size: 1rem;">COPY LINK</button>
+      </div>
     </div>
 
     <!-- The actual game area, fully responsive -->
@@ -116,6 +122,7 @@ const timeBalanceEl = document.getElementById('time-balance')!;
 let userBalanceSeconds = 3600;
 let userSessionId: string | null = null;
 let deductInterval: number | null = null;
+let syncModule: MultiplayerSync | null = null;
 
 // Auth Flow
 document.getElementById('btn-login')!.addEventListener('click', async () => {
@@ -196,8 +203,65 @@ async function startGame(mode: 'training' | 'friend' | 'random') {
   if (window.innerWidth <= 768) {
     mobileControls.style.display = 'flex';
   }
-  
-  presenter.start();
+
+  // Handle Multiplayer Mode
+  if (mode === 'friend') {
+    const loaderText = document.getElementById('loader-text')!;
+    const invitePanel = document.getElementById('invite-panel')!;
+    const inviteInput = document.getElementById('invite-link') as HTMLInputElement;
+    
+    loaderText.innerText = 'CONNECTING TO SERVER...';
+    syncModule = new MultiplayerSync();
+    
+    // Check if we are joining a room via URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinRoomId = urlParams.get('room') || undefined;
+
+    syncModule.onReady = () => {
+      invitePanel.style.display = 'none';
+      loaderScreen.classList.remove('active');
+      gameScreen.classList.add('active');
+      presenter.start();
+    };
+
+    syncModule.onPlayerAction = (action, active) => {
+      presenter.handleInput(action, active, true); // true = from network
+    };
+
+    presenter.onLocalAction = (action, active) => {
+      syncModule?.sendAction(action, active);
+    };
+
+    try {
+      const roomId = await syncModule.createOrJoinRoom(joinRoomId);
+      
+      if (!joinRoomId) {
+        // We are the host, waiting for someone
+        loaderText.innerText = 'WAITING FOR OPPONENT...';
+        invitePanel.style.display = 'flex';
+        
+        const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+        inviteInput.value = inviteUrl;
+        
+        document.getElementById('btn-copy-invite')!.onclick = () => {
+          navigator.clipboard.writeText(inviteUrl);
+          document.getElementById('btn-copy-invite')!.innerText = 'COPIED!';
+        };
+      } else {
+        loaderText.innerText = 'JOINING ROOM...';
+      }
+    } catch (e) {
+      alert('Failed to connect: ' + e);
+      loaderScreen.classList.remove('active');
+      menuScreen.classList.add('active');
+      return;
+    }
+  } else {
+    // Training mode starts immediately
+    loaderScreen.classList.remove('active');
+    gameScreen.classList.add('active');
+    presenter.start();
+  }
 
   // Start time deduction interval ONLY if not training
   if (deductInterval) clearInterval(deductInterval);

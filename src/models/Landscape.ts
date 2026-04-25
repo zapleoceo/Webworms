@@ -50,8 +50,10 @@ export class Landscape {
 
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
-        // Do not destroy the unbreakable borders
-        if (x < 5 || x >= this.width - 5 || y >= this.height - 5) continue;
+        // Do not destroy the unbreakable borders (now 30px thick)
+        if (x < 30 || x >= this.width - 30 || y >= this.height - 30) continue;
+        // Do not destroy indestructible alloy (255) anywhere
+        if (this.getMaterial(x, y) === 255) continue;
         
         const dx = x - cx;
         const dy = y - cy;

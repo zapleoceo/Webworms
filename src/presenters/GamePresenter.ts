@@ -14,8 +14,10 @@ export class GamePresenter {
   private soundManager: SoundManager;
   private initialWidth: number;
   private initialHeight: number;
+  private cameraFreeMode: boolean = false;
 
   public onGameOver?: (winner: Worm | null, stats: {p1Dmg: number, p2Dmg: number}) => void;
+  public onLocalAction?: (action: string, isActive: boolean) => void;
 
   constructor(width: number, height: number) {
     this.initialWidth = width;
@@ -107,7 +109,51 @@ export class GamePresenter {
   public update(dt: number): void {
     this.processActiveInputs(dt);
     this.physics.update(this.state, dt);
+    this.updateCamera(dt);
     this.checkGameOver();
+  }
+
+  private updateCamera(dt: number): void {
+    // Determine the target to follow
+    let targetX = this.state.cameraX;
+    let targetY = this.state.cameraY;
+    let hasTarget = false;
+
+    // 1. Follow active projectile if any exists
+    if (this.state.projectiles.length > 0) {
+      const proj = this.state.projectiles[0]; // Follow the first active projectile
+      targetX = proj.x;
+      targetY = proj.y;
+      hasTarget = true;
+      this.cameraFreeMode = false; // Auto-follow projectiles always
+    } 
+    // 2. Otherwise follow the current player if not in free mode
+    else if (!this.cameraFreeMode) {
+      const player = this.state.getCurrentPlayer();
+      if (player) {
+        targetX = player.x;
+        targetY = player.y;
+        hasTarget = true;
+      }
+    }
+
+    if (hasTarget) {
+      // Calculate the desired camera top-left position to center the target
+      // We use the initial canvas dimensions (800x600) scaled by zoom
+      const viewportWidth = this.initialWidth / this.state.zoom;
+      const viewportHeight = this.initialHeight / this.state.zoom;
+      
+      const desiredCamX = targetX - viewportWidth / 2;
+      const desiredCamY = targetY - viewportHeight / 2;
+
+      // Smooth interpolation (Lerp)
+      const lerpFactor = 5 * dt; // Adjust speed of camera tracking
+      this.state.cameraX += (desiredCamX - this.state.cameraX) * lerpFactor;
+      this.state.cameraY += (desiredCamY - this.state.cameraY) * lerpFactor;
+
+      // Clamp camera to world bounds
+      this.clampCamera(this.initialWidth, this.initialHeight);
+    }
   }
 
   private checkGameOver(): void {
@@ -176,7 +222,14 @@ export class GamePresenter {
     this.state.landscape.newCraters = [];
   }
 
-  public handleInput(action: string, isActive: boolean): void {
+  public handleInput(action: string, isActive: boolean, isRemote: boolean = false): void {
+    // Only process remote inputs if they are marked remote, or local if marked local
+    // In a real game, you would check if the current turn belongs to the local player
+    
+    if (!isRemote && this.onLocalAction) {
+      this.onLocalAction(action, isActive);
+    }
+
     // Unlock Web Audio API on first user interaction
     if (isActive) {
       this.soundManager.init();
@@ -241,6 +294,7 @@ export class GamePresenter {
   }
 
   public moveCamera(dx: number, dy: number, canvasWidth: number, canvasHeight: number): void {
+    this.cameraFreeMode = true; // User took control
     this.state.cameraX -= dx / this.state.zoom;
     this.state.cameraY -= dy / this.state.zoom;
     this.clampCamera(canvasWidth, canvasHeight);
@@ -250,11 +304,14 @@ export class GamePresenter {
     const maxCamX = this.state.width - canvasWidth / this.state.zoom;
     const maxCamY = this.state.height - canvasHeight / this.state.zoom;
     
-    if (this.state.cameraX < 0) this.state.cameraX = 0;
-    if (this.state.cameraX > maxCamX) this.state.cameraX = Math.max(0, maxCamX);
+    // Add padding to prevent viewing the absolute 30px hard edge
+    const margin = 30;
     
-    if (this.state.cameraY < 0) this.state.cameraY = 0;
-    if (this.state.cameraY > maxCamY) this.state.cameraY = Math.max(0, maxCamY);
+    if (this.state.cameraX < margin) this.state.cameraX = margin;
+    if (this.state.cameraX > maxCamX - margin) this.state.cameraX = Math.max(margin, maxCamX - margin);
+    
+    if (this.state.cameraY < margin) this.state.cameraY = margin;
+    if (this.state.cameraY > maxCamY - margin) this.state.cameraY = Math.max(margin, maxCamY - margin);
   }
 
   private fireWeapon(player: Worm): void {

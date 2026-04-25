@@ -101,9 +101,9 @@ export class PhysicsEngine {
       const bottomY = Math.floor(prop.y + prop.radius);
 
       // Map bounds
-      if (prop.x < prop.radius) { prop.x = prop.radius; prop.vx *= -prop.bounce; }
-      if (prop.x > state.width - prop.radius) { prop.x = state.width - prop.radius; prop.vx *= -prop.bounce; }
-      if (prop.y > state.height) { prop.isSettled = true; continue; }
+      if (prop.x < prop.radius + 30) { prop.x = prop.radius + 30; prop.vx *= -prop.bounce; }
+      if (prop.x > state.width - prop.radius - 30) { prop.x = state.width - prop.radius - 30; prop.vx *= -prop.bounce; }
+      if (prop.y > state.height - 30) { prop.isSettled = true; continue; }
 
       // Terrain collision
       if (state.landscape.isSolid(cx, bottomY)) {
@@ -252,9 +252,9 @@ export class PhysicsEngine {
     if (dx !== 0) {
       worm.x += dx;
       
-      // Screen bounds with 5px padding (clamp before checking terrain to avoid infinite push-up bug)
-      if (worm.x < 5) { worm.x = 5; worm.vx = 0; }
-      if (worm.x > state.width - 5) { worm.x = state.width - 5; worm.vx = 0; }
+      // Screen bounds with 30px padding (clamp before checking terrain to avoid infinite push-up bug)
+      if (worm.x < 30) { worm.x = 30; worm.vx = 0; }
+      if (worm.x > state.width - 30) { worm.x = state.width - 30; worm.vx = 0; }
 
       const cx = Math.floor(worm.x);
       const bottomY = Math.floor(worm.y + worm.height / 2);
@@ -397,8 +397,8 @@ export class PhysicsEngine {
       }
     }
 
-    // Out of bounds / Hitting the unbreakable cosmic barrier (5px border)
-    if (proj.x <= 5 || proj.x >= state.width - 5 || proj.y >= state.height - 5) {
+    // Out of bounds / Hitting the unbreakable cosmic barrier (30px border)
+    if (proj.x <= 30 || proj.x >= state.width - 30 || proj.y >= state.height - 30) {
       this.explode(proj, state);
       return;
     }

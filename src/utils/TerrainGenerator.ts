@@ -31,7 +31,7 @@ export class TerrainGenerator {
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         // 1. Unbreakable Borders (Sides and Bottom)
-        if (x < 10 || x >= width - 10 || y >= height - 10) {
+        if (x < 30 || x >= width - 30 || y >= height - 30) {
           setPixel(x, y, 255);
           continue;
         }
