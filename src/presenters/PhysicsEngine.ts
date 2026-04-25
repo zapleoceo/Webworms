@@ -389,16 +389,27 @@ export class PhysicsEngine {
     proj.updatePosition(dt);
 
     // Collision with landscape
-    // We check a small line between previous and current position to prevent ghost collisions and passing through thin walls
-    // For simplicity, just check current position, but ensure we check EXACTLY the landscape grid
+    // Check a small bounding box around the projectile to prevent tunneling and hitting invisible 1-pixel edges
     const px = Math.floor(proj.x);
     const py = Math.floor(proj.y);
-    if (px >= 0 && px < state.width && py >= 0 && py < state.height) {
-      // isSolid checks if material > 0
-      if (state.landscape.isSolid(px, py)) {
-        this.explode(proj, state);
-        return;
+    const pr = Math.max(1, Math.floor(proj.radius * 0.8)); // slightly smaller than visual radius for forgiveness
+    
+    let hitTerrain = false;
+    for (let y = py - pr; y <= py + pr; y++) {
+      for (let x = px - pr; x <= px + pr; x++) {
+        if (x >= 0 && x < state.width && y >= 0 && y < state.height) {
+          if (state.landscape.isSolid(x, y)) {
+            hitTerrain = true;
+            break;
+          }
+        }
       }
+      if (hitTerrain) break;
+    }
+
+    if (hitTerrain) {
+      this.explode(proj, state);
+      return;
     }
 
     // Collision with players

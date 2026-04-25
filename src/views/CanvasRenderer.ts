@@ -496,10 +496,11 @@ export class CanvasRenderer {
       maxCd = player.maxWeaponCooldowns[weapon.id] || 1;
       
       // Also update the DOM button text to always show the current weapon name
-      const btnSwitch = document.getElementById('btn-switch');
-      if (btnSwitch && btnSwitch.innerText !== weapon.name) {
-        btnSwitch.innerText = weapon.name;
-        btnSwitch.style.color = weapon.color;
+      const btnSwitchDisplay = document.getElementById('weapon-name-display');
+      if (btnSwitchDisplay && btnSwitchDisplay.innerText !== weapon.name) {
+        btnSwitchDisplay.innerText = weapon.name;
+        const btnSwitch = document.getElementById('btn-switch');
+        if (btnSwitch) btnSwitch.style.color = weapon.color;
       }
 
       // Draw weapon name at bottom center (near switch button)

@@ -3,29 +3,35 @@ export class APIClient {
 
   static async register(email: string, username: string, password?: string, refCode?: string) {
     try {
+      console.log(`[APIClient] Registering ${email}... at ${this.BASE_URL}/auth/register`);
       const response = await fetch(`${this.BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, username, password, referred_by: refCode })
       });
-      return await response.json();
-    } catch (e) {
-      console.warn('Backend not running locally, returning mock auth');
-      return { success: true, user: { id: 'mock_' + Date.now(), username } };
+      const data = await response.json();
+      console.log('[APIClient] Register Response:', data);
+      return data;
+    } catch (e: any) {
+      console.error('[APIClient] Backend connection error during register:', e);
+      return { success: false, error: 'Network connection failed. Backend might be unreachable.' };
     }
   }
 
   static async login(email: string, password?: string) {
     try {
+      console.log(`[APIClient] Logging in ${email}... at ${this.BASE_URL}/auth/login`);
       const response = await fetch(`${this.BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      return await response.json();
-    } catch (e) {
-      console.warn('Backend not running locally, returning mock auth');
-      return { success: true, user: { id: 'mock_' + Date.now(), username: email } };
+      const data = await response.json();
+      console.log('[APIClient] Login Response:', data);
+      return data;
+    } catch (e: any) {
+      console.error('[APIClient] Backend connection error during login:', e);
+      return { success: false, error: 'Network connection failed. Backend might be unreachable.' };
     }
   }
 
