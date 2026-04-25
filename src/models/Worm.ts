@@ -14,6 +14,7 @@ export class Worm {
   public aimAngle: number = 0; // 0 to 360 degrees
   public aimPower: number = 0; // 0 to 100
   public facingRight: boolean = true;
+  public isFallingSoundPlaying: boolean = false;
 
   // Visual/team identifier
   public teamColor: string;

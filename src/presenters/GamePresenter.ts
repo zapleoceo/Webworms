@@ -33,10 +33,13 @@ export class GamePresenter {
     this.physics = new PhysicsEngine();
     this.soundManager = new SoundManager();
     
-    // Connect physics explosion event to sound manager
-    this.physics.onExplode = () => {
-      this.soundManager.playExplosion();
-    };
+    // Connect physics events to sound manager
+    this.physics.onExplode = () => this.soundManager.playExplosion();
+    this.physics.onJump = () => this.soundManager.playJump();
+    this.physics.onHurt = () => this.soundManager.playHurt();
+    this.physics.onFallStart = () => this.soundManager.startFalling();
+    this.physics.onFallStop = () => this.soundManager.stopFalling();
+    this.physics.onHeavyImpact = () => this.soundManager.playHeavyImpact();
   }
 
   public reset(): void {
@@ -190,7 +193,7 @@ export class GamePresenter {
           player.vy = jumpForce;
           player.isJumping = true;
           // Play jump sound
-          // this.soundManager.playJump(); // Future: implement playJump
+          if (this.physics.onJump) this.physics.onJump();
         }
         break;
       case 'fire':

@@ -1,3 +1,5 @@
+import { TerrainGenerator } from '../utils/TerrainGenerator';
+
 export class Landscape {
   public width: number;
   public height: number;
@@ -15,31 +17,27 @@ export class Landscape {
     return Math.floor(y) * this.width + Math.floor(x);
   }
 
-  public isSolid(x: number, y: number): boolean {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return false;
-    return this.grid[this.getIndex(x, y)] === 1;
+  public getMaterial(x: number, y: number): number {
+    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return 0;
+    return this.grid[this.getIndex(x, y)];
   }
 
-  public setSolid(x: number, y: number, solid: boolean): void {
+  public isSolid(x: number, y: number): boolean {
+    return this.getMaterial(x, y) > 0;
+  }
+
+  public setMaterial(x: number, y: number, mat: number): void {
     if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
-    this.grid[this.getIndex(x, y)] = solid ? 1 : 0;
+    this.grid[this.getIndex(x, y)] = mat;
+  }
+
+  // Backwards compatibility for tests
+  public setSolid(x: number, y: number, solid: boolean): void {
+    this.setMaterial(x, y, solid ? 1 : 0);
   }
 
   public generateTerrain(): void {
-    // Simple sine wave terrain
-    for (let x = 0; x < this.width; x++) {
-      const isBorder = x < 5 || x >= this.width - 5; // 5px unbreakable padding on sides
-      const terrainHeight = this.height / 2 + Math.sin(x * 0.01) * 50 + Math.sin(x * 0.05) * 20;
-      
-      for (let y = 0; y < this.height; y++) {
-        // y is 0 at top, height at bottom
-        if (isBorder || y > terrainHeight) {
-          this.setSolid(x, y, true);
-        } else {
-          this.setSolid(x, y, false);
-        }
-      }
-    }
+    this.grid = TerrainGenerator.generate(this.width, this.height);
     this.needsUpdate = true;
   }
 

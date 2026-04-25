@@ -4,10 +4,15 @@ import { Explosion } from '../models/Explosion';
 import { MathUtils } from '../utils/MathUtils';
 
 export class PhysicsEngine {
-  public gravity: number = 200; // pixels per second squared
+  public gravity: number = 300; // pixels per second squared
   public safeFallSpeed: number = 280; // Safe landing speed
-  public fallDamageMultiplier: number = 0.2; // Damage per extra speed unit
+  public fallDamageMultiplier: number = 0.15; // Damage per extra speed unit
   public onExplode?: () => void;
+  public onJump?: () => void;
+  public onHurt?: () => void;
+  public onFallStart?: () => void;
+  public onFallStop?: () => void;
+  public onHeavyImpact?: () => void;
 
   public update(state: GameState, dt: number): void {
     // Update players
@@ -83,6 +88,11 @@ export class PhysicsEngine {
           y--;
         }
         prop.y = y - prop.radius;
+
+        // Heavy impact check for props
+        if (prop.vy > 300) {
+          if (this.onHeavyImpact) this.onHeavyImpact();
+        }
 
         // Bounce
         prop.vy = -prop.vy * prop.bounce;
@@ -224,21 +234,46 @@ export class PhysicsEngine {
     const dy = worm.vy * dt;
     worm.y += dy;
     
+    // Check if falling fast enough to trigger sound
+    if (worm.vy > 150) {
+      if (this.onFallStart && !worm.isFallingSoundPlaying) {
+        worm.isFallingSoundPlaying = true;
+        this.onFallStart();
+      }
+    } else {
+      if (worm.isFallingSoundPlaying) {
+        worm.isFallingSoundPlaying = false;
+        if (this.onFallStop) this.onFallStop();
+      }
+    }
+
     const cx = Math.floor(worm.x);
     let bottomY = Math.floor(worm.y + worm.height / 2);
 
     // Ground collision (falling)
     if (worm.vy >= 0 && state.landscape.isSolid(cx, bottomY)) {
+      // Stop falling sound
+      if (worm.isFallingSoundPlaying) {
+        worm.isFallingSoundPlaying = false;
+        if (this.onFallStop) this.onFallStop();
+      }
+
       // Push up to exactly the surface level (no infinite loops)
       while (state.landscape.isSolid(cx, bottomY) && bottomY > 0) {
         bottomY--;
       }
       worm.y = bottomY - worm.height / 2;
 
+      // Heavy impact check
+      if (worm.vy > 300) {
+        if (this.onHeavyImpact) this.onHeavyImpact();
+      }
+
       // Fall Damage Calculation (check speed BEFORE resetting it)
       if (worm.vy > this.safeFallSpeed) {
         const damage = (worm.vy - this.safeFallSpeed) * this.fallDamageMultiplier;
         worm.takeDamage(damage);
+        if (this.onHurt) this.onHurt();
       }
 
       worm.vy = 0;

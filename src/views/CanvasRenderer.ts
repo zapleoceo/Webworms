@@ -108,34 +108,51 @@ export class CanvasRenderer {
   private drawLandscape(state: GameState): void {
     // 1. Only do a full redraw on initialization (or when needsUpdate is explicitly true)
     if (state.landscape.needsUpdate) {
-      this.terrainCtx.clearRect(0, 0, this.terrainCanvas.width, this.terrainCanvas.height);
-      this.terrainCtx.fillStyle = '#8B4513'; // Dirt brown
+      const width = state.landscape.width;
+      const height = state.landscape.height;
       
-      // Draw columns
-      for (let x = 0; x < state.landscape.width; x++) {
-        let startY = -1;
-        for (let y = 0; y < state.landscape.height; y++) {
-          if (state.landscape.isSolid(x, y)) {
-            if (startY === -1) startY = y;
-          } else {
-            if (startY !== -1) {
-              this.terrainCtx.fillRect(x, startY, 1, y - startY);
-              startY = -1;
-            }
+      this.terrainCanvas.width = width;
+      this.terrainCanvas.height = height;
+      this.terrainCtx.clearRect(0, 0, width, height);
+      
+      const imgData = this.terrainCtx.createImageData(width, height);
+      const data = imgData.data;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const mat = state.landscape.getMaterial(x, y);
+          if (mat === 0) continue; // transparent
+          
+          const idx = (y * width + x) * 4;
+          data[idx + 3] = 255; // Alpha
+          
+          if (mat === 1) { // Lunar Dirt
+            data[idx] = 150; data[idx+1] = 150; data[idx+2] = 150;
+            // Add some noise texture to dirt
+            if (Math.random() > 0.8) { data[idx]-=10; data[idx+1]-=10; data[idx+2]-=10; }
+          } else if (mat === 2) { // Meteorite
+            data[idx] = 70; data[idx+1] = 70; data[idx+2] = 75;
+          } else if (mat === 3) { // Ice
+            data[idx] = 170; data[idx+1] = 221; data[idx+2] = 255;
+          } else if (mat === 255) { // Alloy (Border/Platforms)
+            data[idx] = 30; data[idx+1] = 30; data[idx+2] = 40;
+            // Metal pattern
+            if ((x+y)%10 === 0) { data[idx] = 50; data[idx+1] = 50; data[idx+2] = 60; }
           }
         }
-        if (startY !== -1) {
-          this.terrainCtx.fillRect(x, startY, 1, state.landscape.height - startY);
-        }
       }
-
-      // Grass top layer
+      
+      this.terrainCtx.putImageData(imgData, 0, 0);
+      
+      // Draw Grass on top of Lunar Dirt
       this.terrainCtx.fillStyle = '#228B22'; // Forest green
-      for (let x = 0; x < state.landscape.width; x++) {
-        for (let y = 0; y < state.landscape.height; y++) {
-          if (state.landscape.isSolid(x, y)) {
+      for (let x = 0; x < width; x++) {
+        for (let y = 0; y < height; y++) {
+          if (state.landscape.getMaterial(x, y) === 1) {
             this.terrainCtx.fillRect(x, y, 1, 3); // 3 pixel grass
             break;
+          } else if (state.landscape.isSolid(x, y)) {
+            break; // Found something else, no grass
           }
         }
       }
