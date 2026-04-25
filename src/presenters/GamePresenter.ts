@@ -141,6 +141,11 @@ export class GamePresenter {
   }
 
   public update(dt: number): void {
+    if ((this.state as any).gameEnded) {
+      this.postRender();
+      return;
+    }
+
     if (this.isRunning) {
       this.matchTime += dt;
       const timeLeft = this.nextAirdropTime - this.matchTime;
@@ -289,12 +294,22 @@ export class GamePresenter {
   }
 
   public render(): void {
-    // This will be overridden by the View layer in main.ts
+    // This is overridden by main.ts
   }
 
   // Hook for the view to clear state after rendering
   public postRender(): void {
     this.state.landscape.newCraters = [];
+    if ((this.state as any).gameEnded) {
+      if (!(this as any).gameOverLogged) {
+        (this as any).gameOverLogged = true;
+        const winner = this.state.players.find(p => p.health > 0);
+        setTimeout(() => {
+          alert(`Game Over! ${winner ? winner.name + ' wins!' : 'Draw!'}`);
+          window.location.reload();
+        }, 1000);
+      }
+    }
   }
 
   public handleInput(action: string, isActive: boolean, isRemote: boolean = false): void {

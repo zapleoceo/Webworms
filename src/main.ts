@@ -1,4 +1,5 @@
 import './style.css';
+import { AdminPanel } from './admin/AdminPanel';
 import { GamePresenter } from './presenters/GamePresenter';
 import { CanvasRenderer } from './views/CanvasRenderer';
 import { InputHandler } from './views/InputHandler';
@@ -14,111 +15,11 @@ declare global {
 }
 
 // We initialize everything globally
-// 4. Admin Endpoints
-  if (window.location.pathname === '/admin') {
-    document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-      <div style="color: white; font-family: Courier New; padding: 20px; max-width: 600px; margin: 0 auto;">
-        <div id="admin-auth">
-          <h1>Admin Authentication</h1>
-          <input type="email" id="admin-email" class="retro-input" placeholder="Admin Email" style="margin-bottom: 10px;">
-          <input type="password" id="admin-password" class="retro-input" placeholder="Admin Password" style="margin-bottom: 10px;">
-          <button id="admin-login-btn" class="retro-btn">Login to Admin Panel</button>
-        </div>
-
-        <div id="admin-dashboard" style="display: none;">
-          <h1>Admin Panel</h1>
-          <button id="load-users" class="retro-btn" style="padding: 10px; margin-bottom: 20px;">Load Users</button>
-          <button id="admin-logout-btn" class="retro-btn" style="padding: 10px; margin-bottom: 20px; background-color: #8B0000;">Logout</button>
-          <div id="users-list"></div>
-        </div>
-      </div>
-    `;
-
-    let adminHeaders = new Headers();
-
-    document.getElementById('admin-login-btn')!.addEventListener('click', () => {
-      const email = (document.getElementById('admin-email') as HTMLInputElement).value;
-      const pass = (document.getElementById('admin-password') as HTMLInputElement).value;
-      if (!email || !pass) {
-        alert("Please enter credentials");
-        return;
-      }
-      adminHeaders.set('X-Admin-Email', email);
-      adminHeaders.set('X-Admin-Password', pass);
-      document.getElementById('admin-auth')!.style.display = 'none';
-      document.getElementById('admin-dashboard')!.style.display = 'block';
-    });
-
-    document.getElementById('admin-logout-btn')!.addEventListener('click', () => {
-      adminHeaders = new Headers();
-      document.getElementById('admin-dashboard')!.style.display = 'none';
-      document.getElementById('admin-auth')!.style.display = 'block';
-      document.getElementById('users-list')!.innerHTML = '';
-    });
-
-    document.getElementById('load-users')!.addEventListener('click', async () => {
-      try {
-        const res = await fetch(APIClient.BASE_URL + '/admin/users', { headers: adminHeaders });
-        if (!res.ok) {
-          if (res.status === 401) {
-            alert("Unauthorized! Incorrect admin credentials or user is not an admin.");
-            document.getElementById('admin-logout-btn')!.click();
-          } else {
-            alert(`Error loading users: ${res.statusText}`);
-          }
-          return;
-        }
-        
-        const users = await res.json();
-        const list = document.getElementById('users-list')!;
-        list.innerHTML = users.map((u: any) => `
-          <div style="border: 1px solid #555; padding: 10px; margin-bottom: 10px;">
-            <p><b>ID:</b> ${u.id}</p>
-            <p><b>Email:</b> ${u.email}</p>
-            <p><b>Username:</b> ${u.username}</p>
-            <p><b>Active (Verified):</b> ${u.is_active ? 'Yes' : 'No'}</p>
-            <p><b>Balance:</b> ${u.play_time_balance}s</p>
-            <p><b>Created:</b> ${u.created_at}</p>
-            <label style="display: block;">
-              <input type="checkbox" class="access-cb" data-id="${u.id}" ${u.access_allowed ? 'checked' : ''}> 
-              Access Allowed
-            </label>
-            <label style="display: block;">
-              <input type="checkbox" class="admin-cb" data-id="${u.id}" ${u.is_admin ? 'checked' : ''}> 
-              Admin
-            </label>
-            <button class="save-user-btn" data-id="${u.id}" style="margin-top: 10px;">Save</button>
-          </div>
-        `).join('');
-
-        document.querySelectorAll('.save-user-btn').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            const id = (e.target as HTMLButtonElement).dataset.id;
-            const cb = document.querySelector(`.access-cb[data-id="${id}"]`) as HTMLInputElement;
-            const adminCb = document.querySelector(`.admin-cb[data-id="${id}"]`) as HTMLInputElement;
-            
-            const saveRes = await fetch(APIClient.BASE_URL + '/admin/users', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Admin-Email': adminHeaders.get('X-Admin-Email') || '',
-                'X-Admin-Password': adminHeaders.get('X-Admin-Password') || ''
-              },
-              body: JSON.stringify({ id, access_allowed: cb.checked, is_admin: adminCb.checked })
-            });
-            
-            if (!saveRes.ok) {
-              alert('Failed to save! Unauthorized.');
-            } else {
-              alert('Saved!');
-            }
-          });
-        });
-      } catch (e) {
-        alert('Error loading users. Are you running the backend?');
-      }
-    });
+// Admin Route
+if (window.location.pathname === '/admin') {
+    new AdminPanel();
   } else {
+  // Setup Game logic here...
 
   document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div id="game-wrapper">
@@ -354,9 +255,16 @@ weaponCheckboxes.forEach(cb => {
 let currentMode: 'training' | 'friend' | 'random' = 'training';
 
 
+// Set up global game objects
+const presenter = new GamePresenter(window.innerWidth, window.innerHeight);
+window.presenter = presenter;
+
+// Add the canvas and setup renderer
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
-window.presenter = new GamePresenter(800, 600);
-window.renderer = new CanvasRenderer(canvas);
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+const renderer = new CanvasRenderer(canvas);
+window.renderer = renderer;
 window.inputHandler = new InputHandler(window.presenter, canvas, [
   { id: 'btn-left', action: 'left' },
   { id: 'btn-right', action: 'right' },
@@ -579,13 +487,15 @@ let lastTime = performance.now();
       requestAnimationFrame(gameLoop); // Try to recover
     }
   }
+
   requestAnimationFrame(gameLoop);
-// Add orientation check if needed.
+  // Add orientation check if needed.
 
 // Override render method to connect View layer
-window.presenter.render = () => {
-  window.renderer.render(window.presenter.state);
-  window.presenter.postRender();
+(GamePresenter.prototype as any).render = function (this: any) {
+  if (window.renderer) {
+    window.renderer.render(this.state);
+  }
 };
 
 // Initialize and bind
