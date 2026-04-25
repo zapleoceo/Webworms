@@ -36,6 +36,8 @@ export class Worm {
   public weaponCooldowns: Record<string, number> = {};
   public maxWeaponCooldowns: Record<string, number> = {};
 
+  public damageDealt: number = 0;
+
   constructor(x: number, y: number, isDummy: boolean = false, name: string = 'Player', unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier', selectedWeapons: string[] = ['bazooka', 'blaster']) {
     this.x = x;
     this.y = y;

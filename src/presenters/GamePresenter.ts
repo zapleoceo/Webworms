@@ -15,7 +15,7 @@ export class GamePresenter {
   private initialWidth: number;
   private initialHeight: number;
 
-  public onGameOver?: (winner: Worm | null) => void;
+  public onGameOver?: (winner: Worm | null, stats: {p1Dmg: number, p2Dmg: number}) => void;
 
   constructor(width: number, height: number) {
     this.initialWidth = width;
@@ -115,8 +115,10 @@ export class GamePresenter {
     // If we started with more than 1 player and now only 1 or 0 remain
     if (this.state.players.length > 1 && alivePlayers.length <= 1) {
       this.stop();
+      const p1Dmg = Math.round(this.state.players[0]?.damageDealt || 0);
+      const p2Dmg = Math.round(this.state.players[1]?.damageDealt || 0);
       if (this.onGameOver) {
-        this.onGameOver(alivePlayers[0] || null);
+        this.onGameOver(alivePlayers[0] || null, {p1Dmg, p2Dmg});
       }
     }
   }
@@ -297,7 +299,8 @@ export class GamePresenter {
       const vy = -Math.sin(rad) * speed; // Negative is up
 
       const proj = new Projectile(startX, startY, vx, vy, weapon);
-      this.state.addProjectile(proj);
+      (proj as any).owner = player; // Attach owner for stats tracking
+      this.state.projectiles.push(proj);
     }
   }
 }

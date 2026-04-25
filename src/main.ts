@@ -31,7 +31,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label><input type="checkbox" class="weapon-cb" value="shotgun"> Shotgun (2.5s)</label>
         <label><input type="checkbox" class="weapon-cb" value="sniper"> Railgun (4.0s)</label>
       </div>
-      <button class="retro-btn" id="btn-start-game">START GAME</button>
+
+      <div class="game-modes-panel">
+        <button class="mode-btn" id="btn-mode-training">Training (Free)</button>
+        <button class="mode-btn" id="btn-mode-friend">Play with Friend</button>
+        <button class="mode-btn" id="btn-mode-random" disabled>Random Match (Soon)</button>
+      </div>
     </div>
 
     <div id="loader-screen" class="screen">
@@ -43,8 +48,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
     
     <div id="game-over-screen" class="screen">
-      <h2 class="game-title">GAME OVER</h2>
-      <p id="winner-text" class="retro-text"></p>
+      <h2 class="retro-text" id="winner-text" style="margin-bottom: 20px; font-size: 3rem;">PLAYER WINS!</h2>
+      <div id="stats-panel" class="stats-panel">
+        <h3 style="color: #00ffff; text-align: center; margin-bottom: 15px;">MATCH STATS</h3>
+        <p id="stat-p1-dmg">P1 Damage: 0</p>
+        <p id="stat-p2-dmg">P2 Damage: 0</p>
+        <div id="stat-reward" class="reward-text">+10 MINUTES REWARD!</div>
+      </div>
       <button class="retro-btn" id="btn-return-menu">RETURN TO MENU</button>
     </div>
     
@@ -138,13 +148,16 @@ weaponCheckboxes.forEach(cb => {
   });
 });
 
-document.getElementById('btn-start-game')!.addEventListener('click', async () => {
-  // Gather selected weapons
+let currentMode: 'training' | 'friend' | 'random' = 'training';
+
+// Start Game Helpers
+async function startGame(mode: 'training' | 'friend' | 'random') {
+  currentMode = mode;
+  
   const checked = document.querySelectorAll('.weapon-cb:checked') as NodeListOf<HTMLInputElement>;
   const selectedWeapons = Array.from(checked).map(cb => cb.value);
   if (selectedWeapons.length === 0) selectedWeapons.push('bazooka'); // Fallback
 
-  // Gather selected class
   const classSelect = document.getElementById('class-select') as HTMLSelectElement;
   const unitClass = classSelect.value as 'soldier' | 'heavy' | 'scout';
 
@@ -166,15 +179,21 @@ document.getElementById('btn-start-game')!.addEventListener('click', async () =>
   
   presenter.start();
 
-  // Start 1 minute time deduction interval
+  // Start time deduction interval ONLY if not training
   if (deductInterval) clearInterval(deductInterval);
-  deductInterval = window.setInterval(() => {
-    userBalanceSeconds -= 60;
-    if (userBalanceSeconds <= 0) {
-      console.warn('Time limit reached! Grace period active.');
-    }
-  }, 60000);
-});
+  if (currentMode !== 'training') {
+    deductInterval = window.setInterval(() => {
+      userBalanceSeconds -= 60;
+      if (userBalanceSeconds <= 0) {
+        console.warn('Time limit reached! Grace period active.');
+      }
+    }, 60000);
+  }
+}
+
+document.getElementById('btn-mode-training')!.addEventListener('click', () => startGame('training'));
+document.getElementById('btn-mode-friend')!.addEventListener('click', () => startGame('friend'));
+document.getElementById('btn-mode-random')!.addEventListener('click', () => startGame('random'));
 
 // Assuming presenter has a way to notify on game over, but for now we'll just clear interval if we return to menu
 // e.g. on return to menu:
@@ -196,18 +215,29 @@ document.getElementById('btn-return-menu')!.addEventListener('click', () => {
   }
 });
 
-presenter.onGameOver = (winner) => {
+presenter.onGameOver = (winner, stats) => {
   gameScreen.classList.remove('active');
   mobileControls.style.display = 'none';
   gameOverScreen.classList.add('active');
-  
+
+  if (deductInterval) clearInterval(deductInterval);
+
   if (winner) {
-    winnerText.textContent = `WINNER: ${winner.name} (+1 Point)`;
+    winnerText.innerText = `${winner.name} WINS!`;
     winnerText.style.color = winner.teamColor;
+    
+    // Add reward for winning
+    userBalanceSeconds += 600; // +10 minutes
+    document.getElementById('stat-reward')!.style.display = 'block';
   } else {
-    winnerText.textContent = "DRAW - EVERYBODY DIED";
-    winnerText.style.color = "white";
+    winnerText.innerText = `DRAW!`;
+    winnerText.style.color = '#fff';
+    document.getElementById('stat-reward')!.style.display = 'none';
   }
+
+  // Update Stats UI
+  document.getElementById('stat-p1-dmg')!.innerText = `P1 Damage Dealt: ${stats.p1Dmg}`;
+  document.getElementById('stat-p2-dmg')!.innerText = `P2 Damage Dealt: ${stats.p2Dmg}`;
 };
 
 // Function to handle canvas scaling for mobile

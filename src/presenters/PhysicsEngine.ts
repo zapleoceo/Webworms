@@ -405,6 +405,7 @@ export class PhysicsEngine {
   }
 
   private explode(proj: Projectile, state: GameState): void {
+    const owner = (proj as any).owner; // Track projectile owner for damage attribution
     proj.active = false;
     // Carve landscape
     state.landscape.createCrater(Math.floor(proj.x), Math.floor(proj.y), proj.explosionRadius);
@@ -424,8 +425,14 @@ export class PhysicsEngine {
       if (dist <= proj.explosionRadius + playerRadius) {
         // Simple damage falloff
         const damageRatio = 1 - (dist / (proj.explosionRadius + playerRadius));
-        player.takeDamage(proj.damage * damageRatio);
+        const actualDamage = proj.damage * damageRatio;
+        player.takeDamage(actualDamage);
         
+        // Track damage dealt
+        if (owner && owner !== player) {
+          owner.damageDealt += actualDamage;
+        }
+
         // Add knockback
         const dx = player.x - proj.x;
         const dy = player.y - proj.y;
