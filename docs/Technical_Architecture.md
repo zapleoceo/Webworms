@@ -89,9 +89,11 @@ flowchart TD
 ```sql
 CREATE TABLE Users (
   id TEXT PRIMARY KEY,
+  email TEXT UNIQUE,
   username TEXT UNIQUE,
-  password_hash TEXT,
-  play_time_balance INTEGER DEFAULT 0,
+  play_time_balance INTEGER DEFAULT 3600,
+  last_daily_reset DATETIME DEFAULT CURRENT_TIMESTAMP,
+  referred_by TEXT, -- Foreign Key to Users.id (Parent / Level 1)
   matches_played INTEGER DEFAULT 0,
   matches_won INTEGER DEFAULT 0,
   total_damage_dealt INTEGER DEFAULT 0,
@@ -114,3 +116,24 @@ CREATE TABLE MATCH_SETTINGS (
   friction_multiplier REAL DEFAULT 1.0
 );
 ```
+
+### 4.3 Оптимизация Реферальной Пирамиды (без рекурсии)
+Для соблюдения лимитов и производительности D1 расчет бонусов происходит **строго в момент регистрации** (Batch Transaction).
+- Игрок (С) переходит по ссылке `?ref=B`. Игрок B (родитель), Игрок A (дедушка).
+- Воркер выполняет транзакцию:
+  1. `INSERT INTO Users (id, email, referred_by) VALUES ('C', '...', 'B');`
+  2. Начисление приветственного бонуса себе: `UPDATE Users SET play_time_balance = play_time_balance + 3600 WHERE id = 'C';`
+  3. Начисление родителю (Level 1): `UPDATE Users SET play_time_balance = play_time_balance + 3600 WHERE id = 'B';`
+  4. Поиск дедушки (Level 2): `SELECT referred_by FROM Users WHERE id = 'B';` -> находит 'A'.
+  5. Начисление дедушке (Level 2): `UPDATE Users SET play_time_balance = play_time_balance + 900 WHERE id = 'A';`
+Таким образом, нам не нужно каждый раз запускать тяжелые запросы с `JOIN`, чтобы узнать размер реферального дерева.
+
+### 4.4 Авторизация (Google OAuth / Magic Link)
+- Фронтенд: Перенаправляет пользователя на `https://api.game.com/auth/google`.
+- Бэкенд (Cloudflare Worker): Отрабатывает OAuth 2.0 flow, получает email пользователя от Google.
+- Проверяет базу `Users` по `email`. Если пользователя нет — регистрирует (проверяя наличие куки `ref` для реферальной системы). Выдает подписанный JWT-токен.
+- Вход по паролям отсутствует для повышения безопасности и простоты регистрации.
+
+### 4.5 Суточные лимиты и Grace Period
+- При запросе к API воркер сравнивает `last_daily_reset` с текущей датой. Если наступили новые сутки, а баланс `play_time_balance < 3600`, воркер обновляет баланс до `3600` и ставит `last_daily_reset = NOW()`.
+- Во время P2P-матча, клиенты проверяют оставшееся время. Если оно истекает, игра не прерывается (Grace Period). Бэкенд позволяет балансу уйти в минус (например, `-120 секунд`), который будет списан при следующем пополнении или сбросе.
