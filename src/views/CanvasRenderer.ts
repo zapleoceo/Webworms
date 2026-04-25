@@ -3,12 +3,22 @@ import { GameState } from '../models/GameState';
 export class CanvasRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private terrainCanvas: HTMLCanvasElement;
+  private terrainCtx: CanvasRenderingContext2D;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Canvas 2D context not supported');
     this.ctx = context;
+
+    // Create an offscreen canvas for caching the landscape
+    this.terrainCanvas = document.createElement('canvas');
+    this.terrainCanvas.width = canvas.width;
+    this.terrainCanvas.height = canvas.height;
+    const terrainContext = this.terrainCanvas.getContext('2d');
+    if (!terrainContext) throw new Error('Offscreen canvas not supported');
+    this.terrainCtx = terrainContext;
   }
 
   public render(state: GameState): void {
@@ -33,37 +43,45 @@ export class CanvasRenderer {
   }
 
   private drawLandscape(state: GameState): void {
-    // Instead of drawing pixel by pixel which is slow, we can draw vertical lines or fill shapes
-    this.ctx.fillStyle = '#8B4513'; // Dirt brown
-    
-    // Draw columns
-    for (let x = 0; x < state.landscape.width; x++) {
-      let startY = -1;
-      for (let y = 0; y < state.landscape.height; y++) {
-        if (state.landscape.isSolid(x, y)) {
-          if (startY === -1) startY = y;
-        } else {
-          if (startY !== -1) {
-            this.ctx.fillRect(x, startY, 1, y - startY);
-            startY = -1;
+    // Only redraw the landscape to the offscreen canvas if it has changed (e.g. explosion)
+    if (state.landscape.needsUpdate) {
+      this.terrainCtx.clearRect(0, 0, this.terrainCanvas.width, this.terrainCanvas.height);
+      this.terrainCtx.fillStyle = '#8B4513'; // Dirt brown
+      
+      // Draw columns
+      for (let x = 0; x < state.landscape.width; x++) {
+        let startY = -1;
+        for (let y = 0; y < state.landscape.height; y++) {
+          if (state.landscape.isSolid(x, y)) {
+            if (startY === -1) startY = y;
+          } else {
+            if (startY !== -1) {
+              this.terrainCtx.fillRect(x, startY, 1, y - startY);
+              startY = -1;
+            }
+          }
+        }
+        if (startY !== -1) {
+          this.terrainCtx.fillRect(x, startY, 1, state.landscape.height - startY);
+        }
+      }
+
+      // Grass top layer
+      this.terrainCtx.fillStyle = '#228B22'; // Forest green
+      for (let x = 0; x < state.landscape.width; x++) {
+        for (let y = 0; y < state.landscape.height; y++) {
+          if (state.landscape.isSolid(x, y)) {
+            this.terrainCtx.fillRect(x, y, 1, 3); // 3 pixel grass
+            break;
           }
         }
       }
-      if (startY !== -1) {
-        this.ctx.fillRect(x, startY, 1, state.landscape.height - startY);
-      }
+      
+      state.landscape.needsUpdate = false;
     }
 
-    // Grass top layer
-    this.ctx.fillStyle = '#228B22'; // Forest green
-    for (let x = 0; x < state.landscape.width; x++) {
-      for (let y = 0; y < state.landscape.height; y++) {
-        if (state.landscape.isSolid(x, y)) {
-          this.ctx.fillRect(x, y, 1, 3); // 3 pixel grass
-          break;
-        }
-      }
-    }
+    // Draw the cached landscape onto the main canvas (SUPER FAST)
+    this.ctx.drawImage(this.terrainCanvas, 0, 0);
   }
 
   private drawPlayers(state: GameState): void {

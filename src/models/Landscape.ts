@@ -2,6 +2,7 @@ export class Landscape {
   public width: number;
   public height: number;
   public grid: Uint8Array;
+  public needsUpdate: boolean = true; // Flag for renderer caching
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -36,6 +37,7 @@ export class Landscape {
         }
       }
     }
+    this.needsUpdate = true;
   }
 
   public createCrater(cx: number, cy: number, radius: number): void {
@@ -54,5 +56,6 @@ export class Landscape {
         }
       }
     }
+    this.needsUpdate = true;
   }
 }
