@@ -2,6 +2,7 @@ import { GameState } from '../models/GameState';
 import { PhysicsEngine } from './PhysicsEngine';
 import { Worm } from '../models/Worm';
 import { Projectile } from '../models/Projectile';
+import { SoundManager } from '../utils/SoundManager';
 
 export class GamePresenter {
   public state: GameState;
@@ -9,10 +10,17 @@ export class GamePresenter {
   private lastTime: number = 0;
   private isRunning: boolean = false;
   private activeInputs: Set<string> = new Set(); // Track held keys/buttons
+  private soundManager: SoundManager;
 
   constructor(width: number, height: number) {
     this.state = new GameState(width, height);
     this.physics = new PhysicsEngine();
+    this.soundManager = new SoundManager();
+    
+    // Connect physics explosion event to sound manager
+    this.physics.onExplode = () => {
+      this.soundManager.playExplosion();
+    };
   }
 
   public init(): void {
@@ -86,6 +94,11 @@ export class GamePresenter {
   }
 
   public handleInput(action: string, isActive: boolean): void {
+    // Unlock Web Audio API on first user interaction
+    if (isActive) {
+      this.soundManager.init();
+    }
+
     const player = this.state.getCurrentPlayer();
     if (!player) return;
 

@@ -1,9 +1,11 @@
 import { GameState } from '../models/GameState';
 import { Projectile } from '../models/Projectile';
+import { Explosion } from '../models/Explosion';
 import { MathUtils } from '../utils/MathUtils';
 
 export class PhysicsEngine {
   public gravity: number = 200; // pixels per second squared
+  public onExplode?: () => void;
 
   public update(state: GameState, dt: number): void {
     // Update players
@@ -20,6 +22,12 @@ export class PhysicsEngine {
     
     // Clean up inactive projectiles
     state.projectiles = state.projectiles.filter(p => p.active);
+
+    // Update explosions
+    for (const exp of state.explosions) {
+      exp.update(dt);
+    }
+    state.explosions = state.explosions.filter(e => e.life > 0);
   }
 
   private updateWorm(worm: any, state: GameState, dt: number): void {
@@ -51,9 +59,9 @@ export class PhysicsEngine {
       worm.y = y - worm.height / 2;
     }
 
-    // Screen bounds
-    if (worm.x < 0) { worm.x = 0; worm.vx = 0; }
-    if (worm.x > state.width) { worm.x = state.width; worm.vx = 0; }
+    // Screen bounds with 5px padding
+    if (worm.x < 5) { worm.x = 5; worm.vx = 0; }
+    if (worm.x > state.width - 5) { worm.x = state.width - 5; worm.vx = 0; }
     if (worm.y > state.height) {
       worm.takeDamage(100); // death by falling off map
       worm.y = state.height;
@@ -91,6 +99,14 @@ export class PhysicsEngine {
     proj.active = false;
     // Carve landscape
     state.landscape.createCrater(Math.floor(proj.x), Math.floor(proj.y), proj.explosionRadius);
+
+    // Add visual explosion effect
+    state.explosions.push(new Explosion(proj.x, proj.y, proj.explosionRadius));
+
+    // Trigger sound
+    if (this.onExplode) {
+      this.onExplode();
+    }
 
     // Damage nearby players
     for (const player of state.players) {

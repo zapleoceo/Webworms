@@ -27,6 +27,7 @@ export class CanvasRenderer {
     this.drawLandscape(state);
     this.drawProjectiles(state);
     this.drawPlayers(state);
+    this.drawExplosions(state);
     this.drawUI(state);
   }
 
@@ -135,13 +136,86 @@ export class CanvasRenderer {
   }
 
   private drawProjectiles(state: GameState): void {
-    this.ctx.fillStyle = 'black';
     for (const proj of state.projectiles) {
       if (proj.active) {
+        this.ctx.save();
+        this.ctx.translate(proj.x, proj.y);
+        
+        // Calculate angle based on velocity vector
+        const angle = Math.atan2(proj.vy, proj.vx);
+        this.ctx.rotate(angle);
+        
+        // Draw retro rocket (facing right by default)
+        this.ctx.fillStyle = '#808080'; // grey body
+        this.ctx.fillRect(-6, -3, 12, 6);
+        
+        this.ctx.fillStyle = '#FF0000'; // red nose
         this.ctx.beginPath();
-        this.ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+        this.ctx.moveTo(6, -3);
+        this.ctx.lineTo(12, 0);
+        this.ctx.lineTo(6, 3);
+        this.ctx.fill();
+
+        this.ctx.fillStyle = '#FF4500'; // red fins
+        this.ctx.beginPath();
+        this.ctx.moveTo(-6, -3);
+        this.ctx.lineTo(-9, -6);
+        this.ctx.lineTo(-2, -3);
+        this.ctx.fill();
+        this.ctx.beginPath();
+        this.ctx.moveTo(-6, 3);
+        this.ctx.lineTo(-9, 6);
+        this.ctx.lineTo(-2, 3);
+        this.ctx.fill();
+        
+        // Flicker exhaust flame
+        if (Math.random() > 0.5) {
+          this.ctx.fillStyle = '#FFA500';
+          this.ctx.beginPath();
+          this.ctx.moveTo(-6, -2);
+          this.ctx.lineTo(-12 + Math.random() * -4, 0);
+          this.ctx.lineTo(-6, 2);
+          this.ctx.fill();
+        }
+
+        this.ctx.restore();
+      }
+    }
+  }
+
+  private drawExplosions(state: GameState): void {
+    for (const exp of state.explosions) {
+      this.ctx.save();
+      this.ctx.translate(exp.x, exp.y);
+      
+      const progress = 1 - (exp.life / exp.maxLife);
+      const alpha = exp.life / exp.maxLife;
+      
+      this.ctx.globalAlpha = alpha;
+      
+      // Outer red/orange
+      this.ctx.fillStyle = '#FF4500';
+      this.ctx.beginPath();
+      this.ctx.arc(0, 0, exp.radius, 0, Math.PI * 2);
+      this.ctx.fill();
+      
+      // Inner yellow
+      if (exp.radius > 5) {
+        this.ctx.fillStyle = '#FFD700';
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, exp.radius * 0.7, 0, Math.PI * 2);
         this.ctx.fill();
       }
+      
+      // White core
+      if (exp.radius > 10 && progress < 0.5) {
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, exp.radius * 0.4, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+
+      this.ctx.restore();
     }
   }
 

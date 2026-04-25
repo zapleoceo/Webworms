@@ -27,10 +27,12 @@ export class Landscape {
   public generateTerrain(): void {
     // Simple sine wave terrain
     for (let x = 0; x < this.width; x++) {
+      const isBorder = x < 5 || x >= this.width - 5; // 5px unbreakable padding on sides
       const terrainHeight = this.height / 2 + Math.sin(x * 0.01) * 50 + Math.sin(x * 0.05) * 20;
+      
       for (let y = 0; y < this.height; y++) {
         // y is 0 at top, height at bottom
-        if (y > terrainHeight) {
+        if (isBorder || y > terrainHeight) {
           this.setSolid(x, y, true);
         } else {
           this.setSolid(x, y, false);

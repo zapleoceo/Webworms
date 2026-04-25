@@ -1,11 +1,13 @@
 import { Landscape } from './Landscape';
 import { Worm } from './Worm';
 import { Projectile } from './Projectile';
+import { Explosion } from './Explosion';
 
 export class GameState {
   public landscape: Landscape;
   public players: Worm[] = [];
   public projectiles: Projectile[] = [];
+  public explosions: Explosion[] = [];
   public currentPlayerIndex: number = 0;
   public width: number;
   public height: number;
