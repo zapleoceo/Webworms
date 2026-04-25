@@ -38,10 +38,22 @@ if (window.location.pathname === '/admin') {
       <button class="retro-btn" id="btn-close-auth" style="margin-top: 20px; font-size: 0.8rem; background-color: #555;">BACK TO MENU</button>
     </div>
 
-    <div id="main-menu" class="screen active">
+      <div id="profile-screen" class="screen" style="display: none; background: rgba(0,0,0,0.85); z-index: 100;">
+        <div style="background: #2a2a36; padding: 30px; border-radius: 8px; border: 2px solid #32CD32; text-align: center; max-width: 350px; width: 90%;">
+          <h2 style="color: #32CD32; font-family: 'Courier New'; margin-top: 0;">USER PROFILE</h2>
+          <p id="profile-stats-balance" style="color: #fff; font-family: 'Courier New'; margin-bottom: 20px;">Play Time: 0s</p>
+          
+          <input type="text" id="profile-username" class="retro-input" placeholder="New Username" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
+          <button id="btn-save-profile" class="retro-btn" style="width: 100%; margin-bottom: 10px; font-size: 1.2rem; padding: 10px;">SAVE NAME</button>
+          <button id="btn-logout" class="retro-btn" style="width: 100%; margin-bottom: 10px; font-size: 1.2rem; padding: 10px; background-color: #8B0000; border-color: #ff0000; color: #fff;">LOGOUT</button>
+          <button id="btn-close-profile" class="retro-btn" style="width: 100%; font-size: 1.2rem; padding: 10px; background-color: #555; border-color: #888;">CLOSE</button>
+        </div>
+      </div>
+
+      <div id="main-menu" class="screen active">
       <div style="position: absolute; top: 20px; right: 20px;">
         <button class="retro-btn" id="btn-open-auth" style="font-size: 0.8rem; padding: 5px 10px;">LOGIN / REGISTER</button>
-        <span id="user-display-name" class="retro-text" style="display: none; font-size: 0.8rem; color: #32CD32;"></span>
+        <button class="retro-btn" id="btn-user-profile" style="display: none; font-size: 0.8rem; padding: 5px 10px; background-color: #555; color: #fff; border-color: #fff;"></button>
       </div>
       <div class="logo-container">
         <img src="/logo.png" alt="Worms Logo" class="game-logo-img" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 style=\\'color:white\\'>Worms Logo</h1>')">
@@ -155,7 +167,11 @@ let userSessionName: string | null = null;
 let deductInterval: number | null = null;
 let syncModule: MultiplayerSync | null = null;
 
-document.getElementById('btn-open-auth')!.addEventListener('click', () => {
+const profileScreen = document.getElementById('profile-screen')!;
+const btnOpenAuth = document.getElementById('btn-open-auth')!;
+const btnUserProfile = document.getElementById('btn-user-profile') as HTMLButtonElement;
+
+btnOpenAuth.addEventListener('click', () => {
   menuScreen.classList.remove('active');
   authScreen.classList.add('active');
 });
@@ -163,6 +179,43 @@ document.getElementById('btn-open-auth')!.addEventListener('click', () => {
 document.getElementById('btn-close-auth')!.addEventListener('click', () => {
   authScreen.classList.remove('active');
   menuScreen.classList.add('active');
+});
+
+// Profile logic
+btnUserProfile.addEventListener('click', () => {
+  profileScreen.style.display = 'flex';
+  (document.getElementById('profile-username') as HTMLInputElement).value = userSessionName || '';
+  document.getElementById('profile-stats-balance')!.innerText = `Play Time Balance: ${Math.floor(userBalanceSeconds / 60)}m`;
+});
+
+document.getElementById('btn-close-profile')!.addEventListener('click', () => {
+  profileScreen.style.display = 'none';
+});
+
+document.getElementById('btn-logout')!.addEventListener('click', () => {
+  userSessionId = null;
+  userSessionName = null;
+  userBalanceSeconds = 0;
+  btnUserProfile.style.display = 'none';
+  btnOpenAuth.style.display = 'block';
+  profileScreen.style.display = 'none';
+});
+
+document.getElementById('btn-save-profile')!.addEventListener('click', async () => {
+  const input = document.getElementById('profile-username') as HTMLInputElement;
+  const newName = input.value.trim();
+  if (!newName) return;
+  
+  if (userSessionId) {
+    const res = await APIClient.updateProfile(userSessionId, newName);
+    if (res.success) {
+      userSessionName = res.username;
+      btnUserProfile.innerText = userSessionName || 'USER';
+      profileScreen.style.display = 'none';
+    } else {
+      alert(res.error || 'Failed to update username');
+    }
+  }
 });
 
 let isLoginMode = true;
@@ -223,10 +276,9 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
         menuScreen.classList.add('active');
         
         // Update UI
-        document.getElementById('btn-open-auth')!.style.display = 'none';
-        const displayEl = document.getElementById('user-display-name')!;
-        displayEl.style.display = 'inline';
-        displayEl.innerText = `[${userSessionName}]`;
+        btnOpenAuth.style.display = 'none';
+        btnUserProfile.style.display = 'block';
+        btnUserProfile.innerText = userSessionName || 'USER';
 
         const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
         const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);

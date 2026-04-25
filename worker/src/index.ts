@@ -44,6 +44,10 @@ export default {
       else if (url.pathname === '/api/auth/daily-reset' && request.method === 'POST') {
         response = await handleDailyReset(request, env);
       }
+      
+      else if (url.pathname === '/api/auth/profile' && request.method === 'PUT') {
+        response = await handleUpdateProfile(request, env);
+      }
 
       // 4. Admin Endpoints
       else if (url.pathname === '/api/admin/users' && request.method === 'GET') {
@@ -265,6 +269,26 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
 
   } catch (e: any) {
     return new Response(`Error: ${e.message}`, { status: 500 });
+  }
+}
+
+async function handleUpdateProfile(request: Request, env: Env): Promise<Response> {
+  try {
+    const { userId, username } = await request.json() as { userId: string, username: string };
+    if (!userId || !username || username.trim().length === 0) {
+      return new Response(JSON.stringify({ error: 'Valid username required' }), { status: 400 });
+    }
+
+    const existing = await env.DB.prepare('SELECT id FROM Users WHERE username = ? AND id != ?').bind(username, userId).first();
+    if (existing) {
+      return new Response(JSON.stringify({ error: 'Username already taken' }), { status: 409 });
+    }
+
+    await env.DB.prepare('UPDATE Users SET username = ? WHERE id = ?').bind(username, userId).run();
+
+    return new Response(JSON.stringify({ success: true, username }), { status: 200 });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
   }
 }
 

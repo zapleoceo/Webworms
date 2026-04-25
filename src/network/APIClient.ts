@@ -35,6 +35,20 @@ export class APIClient {
     }
   }
 
+  static async updateProfile(userId: string, newUsername: string) {
+    try {
+      const response = await fetch(`${this.BASE_URL}/auth/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, username: newUsername })
+      });
+      return await response.json();
+    } catch (e: any) {
+      console.error('[APIClient] Error updating profile:', e);
+      return { success: false, error: 'Network error.' };
+    }
+  }
+
   static async dailyReset(userId: string) {
     try {
       const response = await fetch(`${this.BASE_URL}/auth/daily-reset`, {
