@@ -27,6 +27,15 @@ export default {
     if (url.pathname === '/api/rooms' && request.method === 'POST') {
       return createRoom(request, env);
     }
+    
+    // Signaling endpoints
+    if (url.pathname.startsWith('/api/rooms/') && request.method === 'POST') {
+      return handleSignaling(request, env);
+    }
+    
+    if (url.pathname.startsWith('/api/rooms/') && request.method === 'GET') {
+      return handleSignalingGet(request, env);
+    }
 
     return new Response('Not Found', { status: 404 });
   },
@@ -121,11 +130,43 @@ async function handleDailyReset(request: Request, env: Env): Promise<Response> {
 async function createRoom(request: Request, env: Env): Promise<Response> {
   const roomId = 'room_' + Math.random().toString(36).substring(2, 8).toUpperCase();
   
-  // Create a room with 5 minute TTL (Time to Live)
-  // If the room is inactive for 5 minutes, Cloudflare KV automatically deletes it!
-  await env.ROOMS.put(roomId, JSON.stringify({ status: 'waiting', players: [] }), { expirationTtl: 300 });
+  // Create a room with 5 minute TTL
+  await env.ROOMS.put(roomId, JSON.stringify({ status: 'waiting' }), { expirationTtl: 300 });
 
-  return new Response(JSON.stringify({ roomId, message: 'Room created, expires in 5 mins if inactive' }), { 
+  return new Response(JSON.stringify({ roomId }), { 
     headers: { 'Content-Type': 'application/json' }
   });
+}
+
+async function handleSignaling(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/');
+  const roomId = parts[3]; // /api/rooms/{id}/{type}
+  const type = parts[4]; // offer, answer, ice-host, ice-client
+  
+  if (!roomId || !type) return new Response('Bad Request', { status: 400 });
+
+  const data = await request.text();
+  // Store the signaling data in KV with a short TTL (60 seconds)
+  await env.ROOMS.put(`${roomId}_${type}`, data, { expirationTtl: 60 });
+  
+  return new Response(JSON.stringify({ success: true }));
+}
+
+async function handleSignalingGet(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/');
+  const roomId = parts[3];
+  const type = parts[4];
+
+  if (!roomId || !type) return new Response('Bad Request', { status: 400 });
+
+  const data = await env.ROOMS.get(`${roomId}_${type}`);
+  if (data) {
+    // Optionally delete after reading to ensure one-time delivery
+    // await env.ROOMS.delete(`${roomId}_${type}`);
+    return new Response(data, { headers: { 'Content-Type': 'application/json' } });
+  }
+  
+  return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
 }

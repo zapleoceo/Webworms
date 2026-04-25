@@ -204,6 +204,7 @@ document.getElementById('btn-return-menu')!.addEventListener('click', () => {
   
   gameOverScreen.classList.remove('active');
   menuScreen.classList.add('active');
+  mobileControls.style.display = 'none'; // Ensure mobile controls are hidden on the menu
   
   // Update time UI
   const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);

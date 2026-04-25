@@ -38,4 +38,23 @@ export class APIClient {
       return { roomId: 'ROOM_LOCAL' };
     }
   }
+
+  // WebRTC Signaling
+  static async sendSignal(roomId: string, type: string, payload: any) {
+    try {
+      await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {}
+  }
+
+  static async getSignal(roomId: string, type: string) {
+    try {
+      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}`);
+      if (response.ok) return await response.json();
+    } catch (e) {}
+    return null;
+  }
 }

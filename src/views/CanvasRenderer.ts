@@ -5,6 +5,8 @@ export class CanvasRenderer {
   private ctx: CanvasRenderingContext2D;
   private terrainCanvas: HTMLCanvasElement;
   private terrainCtx: CanvasRenderingContext2D;
+  
+  private wormImages: { [key: string]: HTMLImageElement } = {};
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -19,6 +21,19 @@ export class CanvasRenderer {
     const terrainContext = this.terrainCanvas.getContext('2d');
     if (!terrainContext) throw new Error('Offscreen canvas not supported');
     this.terrainCtx = terrainContext;
+
+    // Load sprite images from pngimg.com (Free Worms Game PNGs)
+    this.wormImages['soldier'] = new Image();
+    this.wormImages['soldier'].crossOrigin = 'anonymous';
+    this.wormImages['soldier'].src = 'https://pngimg.com/uploads/worms_game/worms_game_PNG52126.png'; // Worm with Bazooka
+
+    this.wormImages['heavy'] = new Image();
+    this.wormImages['heavy'].crossOrigin = 'anonymous';
+    this.wormImages['heavy'].src = 'https://pngimg.com/uploads/worms_game/worms_game_PNG52103.png'; // Big worm
+
+    this.wormImages['scout'] = new Image();
+    this.wormImages['scout'].crossOrigin = 'anonymous';
+    this.wormImages['scout'].src = 'https://pngimg.com/uploads/worms_game/worms_game_PNG52117.png'; // Pointing/Ninja worm
   }
 
   public render(state: GameState): void {
@@ -192,45 +207,62 @@ export class CanvasRenderer {
       const renderHeight = player.height + squishY;
       const yOffset = -squishY / 2; // keep bottom grounded
 
-      // Draw Worm Body (Ellipse for squishing)
-      this.ctx.fillStyle = player.teamColor || '#FF69B4'; // Use team color
-      this.ctx.beginPath();
-      this.ctx.ellipse(0, yOffset, renderWidth / 2, renderHeight / 2, 0, 0, Math.PI * 2);
-      this.ctx.fill();
+      const img = this.wormImages[player.unitClass];
+      const hasImage = img && img.complete && img.naturalWidth !== 0;
 
-      // Equipment Layer (e.g. Helmet based on class)
-      if (player.unitClass === 'heavy') {
-        this.ctx.fillStyle = '#444'; // Heavy Iron Helmet
-        this.ctx.fillRect(-renderWidth/2 - 1, yOffset - renderHeight/2, renderWidth + 2, 4);
-      } else if (player.unitClass === 'scout') {
-        this.ctx.fillStyle = '#8B0000'; // Red Headband
-        this.ctx.fillRect(-renderWidth/2, yOffset - renderHeight/2 + 2, renderWidth, 2);
-        // Headband tails
-        if (player.facingRight) {
-          this.ctx.fillRect(-renderWidth/2 - 4, yOffset - renderHeight/2 + 2, 4, 2);
-        } else {
-          this.ctx.fillRect(renderWidth/2, yOffset - renderHeight/2 + 2, 4, 2);
+      if (hasImage) {
+        // Draw the PNG Image
+        this.ctx.save();
+        if (!player.facingRight) {
+          this.ctx.scale(-1, 1);
         }
+        // Scale down the large PNGs to fit the worm hit-box
+        const imgScale = (player.width * 2.5) / img.width;
+        const w = img.width * imgScale + squishX;
+        const h = img.height * imgScale + squishY;
+        this.ctx.drawImage(img, -w/2, yOffset - h/2, w, h);
+        this.ctx.restore();
       } else {
-        this.ctx.fillStyle = '#A0522D'; // Brown helmet (Soldier)
+        // Fallback: Draw Worm Body (Ellipse for squishing)
+        this.ctx.fillStyle = player.teamColor || '#FF69B4'; // Use team color
         this.ctx.beginPath();
-        this.ctx.arc(0, yOffset - 2, renderWidth / 2 + 1, Math.PI, Math.PI * 2);
+        this.ctx.ellipse(0, yOffset, renderWidth / 2, renderHeight / 2, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Equipment Layer (e.g. Helmet based on class)
+        if (player.unitClass === 'heavy') {
+          this.ctx.fillStyle = '#444'; // Heavy Iron Helmet
+          this.ctx.fillRect(-renderWidth/2 - 1, yOffset - renderHeight/2, renderWidth + 2, 4);
+        } else if (player.unitClass === 'scout') {
+          this.ctx.fillStyle = '#8B0000'; // Red Headband
+          this.ctx.fillRect(-renderWidth/2, yOffset - renderHeight/2 + 2, renderWidth, 2);
+          // Headband tails
+          if (player.facingRight) {
+            this.ctx.fillRect(-renderWidth/2 - 4, yOffset - renderHeight/2 + 2, 4, 2);
+          } else {
+            this.ctx.fillRect(renderWidth/2, yOffset - renderHeight/2 + 2, 4, 2);
+          }
+        } else {
+          this.ctx.fillStyle = '#A0522D'; // Brown helmet (Soldier)
+          this.ctx.beginPath();
+          this.ctx.arc(0, yOffset - 2, renderWidth / 2 + 1, Math.PI, Math.PI * 2);
+          this.ctx.fill();
+        }
+
+        // Eyes
+        this.ctx.fillStyle = 'white';
+        const eyeOffset = player.facingRight ? 2 : -2;
+        this.ctx.beginPath();
+        this.ctx.arc(eyeOffset, yOffset - 2, 1.5, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.fillStyle = 'black';
+        this.ctx.beginPath();
+        this.ctx.arc(eyeOffset + (player.facingRight ? 0.5 : -0.5), yOffset - 2, 0.5, 0, Math.PI * 2);
         this.ctx.fill();
       }
 
-      // Eyes
-      this.ctx.fillStyle = 'white';
-      const eyeOffset = player.facingRight ? 2 : -2;
-      this.ctx.beginPath();
-      this.ctx.arc(eyeOffset, yOffset - 2, 1.5, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.fillStyle = 'black';
-      this.ctx.beginPath();
-      this.ctx.arc(eyeOffset + (player.facingRight ? 0.5 : -0.5), yOffset - 2, 0.5, 0, Math.PI * 2);
-      this.ctx.fill();
-
       // Name and Health bar
-      this.ctx.fillStyle = 'black';
+      this.ctx.fillStyle = 'white';
       this.ctx.font = '10px Arial';
       this.ctx.textAlign = 'center';
       this.ctx.fillText(player.name, 0, -20);
