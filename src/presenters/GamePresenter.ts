@@ -207,19 +207,42 @@ export class GamePresenter {
     }
   }
 
+  public changeZoom(multiplier: number, pointerX: number, pointerY: number, canvasWidth: number, canvasHeight: number): void {
+    const newZoom = Math.max(0.5, Math.min(3.0, this.state.zoom * multiplier));
+    this.setZoom(newZoom, pointerX, pointerY, canvasWidth, canvasHeight);
+  }
+
+  public setZoom(newZoom: number, pointerX: number, pointerY: number, canvasWidth: number, canvasHeight: number): void {
+    // Calculate world coordinates of the pointer before zoom
+    const worldX = this.state.cameraX + pointerX / this.state.zoom;
+    const worldY = this.state.cameraY + pointerY / this.state.zoom;
+
+    // Set new zoom (clamp between 0.5 and 3.0)
+    this.state.zoom = Math.max(0.5, Math.min(3.0, newZoom));
+
+    // Calculate new camera position to keep the world point under the pointer
+    this.state.cameraX = worldX - pointerX / this.state.zoom;
+    this.state.cameraY = worldY - pointerY / this.state.zoom;
+
+    // Clamp camera
+    this.clampCamera(canvasWidth, canvasHeight);
+  }
+
   public moveCamera(dx: number, dy: number, canvasWidth: number, canvasHeight: number): void {
-    this.state.cameraX -= dx;
-    this.state.cameraY -= dy;
+    this.state.cameraX -= dx / this.state.zoom;
+    this.state.cameraY -= dy / this.state.zoom;
+    this.clampCamera(canvasWidth, canvasHeight);
+  }
+
+  private clampCamera(canvasWidth: number, canvasHeight: number): void {
+    const maxCamX = this.state.width - canvasWidth / this.state.zoom;
+    const maxCamY = this.state.height - canvasHeight / this.state.zoom;
     
-    // Clamp camera to map bounds
     if (this.state.cameraX < 0) this.state.cameraX = 0;
-    if (this.state.cameraX > this.state.width - canvasWidth) {
-      this.state.cameraX = Math.max(0, this.state.width - canvasWidth);
-    }
+    if (this.state.cameraX > maxCamX) this.state.cameraX = Math.max(0, maxCamX);
+    
     if (this.state.cameraY < 0) this.state.cameraY = 0;
-    if (this.state.cameraY > this.state.height - canvasHeight) {
-      this.state.cameraY = Math.max(0, this.state.height - canvasHeight);
-    }
+    if (this.state.cameraY > maxCamY) this.state.cameraY = Math.max(0, maxCamY);
   }
 
   private fireWeapon(player: Worm): void {

@@ -17,8 +17,10 @@ export class GameState {
   
   public cameraX: number = 0;
   public cameraY: number = 0;
+  public zoom: number = 1;
   
   public wind: number = 0; // Wind affecting projectiles
+  public windTarget: number = 0; // Target for smooth random transition
 
   constructor(width: number, height: number) {
     this.width = width;

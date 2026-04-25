@@ -24,8 +24,9 @@ export class CanvasRenderer {
   public render(state: GameState): void {
     this.clear();
     
-    // Apply camera translation
+    // Apply camera translation and zoom
     this.ctx.save();
+    this.ctx.scale(state.zoom, state.zoom);
     this.ctx.translate(-state.cameraX, -state.cameraY);
 
     this.drawSky(state);
@@ -306,11 +307,11 @@ export class CanvasRenderer {
 
   private drawOffscreenPointers(state: GameState): void {
     const viewLeft = state.cameraX;
-    const viewRight = state.cameraX + this.canvas.width;
+    const viewRight = state.cameraX + this.canvas.width / state.zoom;
     const viewTop = state.cameraY;
-    const viewBottom = state.cameraY + this.canvas.height;
-    const centerX = state.cameraX + this.canvas.width / 2;
-    const centerY = state.cameraY + this.canvas.height / 2;
+    const viewBottom = state.cameraY + this.canvas.height / state.zoom;
+    const centerX = state.cameraX + (this.canvas.width / state.zoom) / 2;
+    const centerY = state.cameraY + (this.canvas.height / state.zoom) / 2;
 
     for (const player of state.players) {
       if (player.x >= viewLeft && player.x <= viewRight && player.y >= viewTop && player.y <= viewBottom) {
@@ -360,28 +361,33 @@ export class CanvasRenderer {
   }
 
   private drawUI(state: GameState): void {
+    this.ctx.fillStyle = 'white';
+    this.ctx.font = '14px Courier New';
+    this.ctx.textAlign = 'left';
+    
+    // Draw wind indicator
+    this.ctx.fillText(`WIND: ${Math.round(state.wind)}`, 20, 20);
+    
+    // Draw wind bar
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    this.ctx.fillRect(20, 30, 100, 5);
+    
+    this.ctx.fillStyle = state.wind > 0 ? '#4CAF50' : '#FF4500';
+    const windBarLength = (state.wind / 200) * 50; // max wind ~200
+    this.ctx.fillRect(70, 30, windBarLength, 5);
+    
+    // Center line for wind
+    this.ctx.fillStyle = 'white';
+    this.ctx.fillRect(70, 28, 1, 9);
+    
     const player = state.getCurrentPlayer();
     if (!player) return;
 
-    this.ctx.fillStyle = 'black';
-    this.ctx.font = '16px "Comic Sans MS", Arial, sans-serif';
-    this.ctx.textAlign = 'left';
+    // Power bar
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    this.ctx.fillRect(20, 50, 100, 10);
 
-    this.ctx.fillText(`Health: ${Math.round(player.health)}`, 10, 20);
-    this.ctx.fillText(`Angle: ${Math.round(player.aimAngle)}°`, 10, 40);
-    this.ctx.fillText(`Wind: ${Math.round(state.wind)}`, 10, 60);
-
-    // Power Bar
-    this.ctx.fillText('Power:', 10, 85);
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    this.ctx.fillRect(70, 70, 100, 15);
-    
-    // Gradient for power
-    const grad = this.ctx.createLinearGradient(70, 70, 170, 70);
-    grad.addColorStop(0, 'yellow');
-    grad.addColorStop(0.5, 'orange');
-    grad.addColorStop(1, 'red');
-    this.ctx.fillStyle = grad;
-    this.ctx.fillRect(70, 70, player.aimPower, 15);
+    this.ctx.fillStyle = 'red';
+    this.ctx.fillRect(20, 50, player.aimPower, 10);
   }
 }

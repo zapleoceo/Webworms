@@ -25,6 +25,12 @@ export class PhysicsEngine {
     // Clean up inactive projectiles
     state.projectiles = state.projectiles.filter(p => p.active);
 
+    // Smoothly transition wind to target
+    if (Math.random() < 0.01) { // Random chance to change wind direction every frame
+      state.windTarget = (Math.random() - 0.5) * 150; // Random wind up to +/- 75 px/s
+    }
+    state.wind += (state.windTarget - state.wind) * dt * 0.5; // Lerp wind
+
     // Update explosions
     for (const exp of state.explosions) {
       exp.update(dt);
@@ -229,9 +235,10 @@ export class PhysicsEngine {
       }
     }
 
-    // Out of bounds
-    if (proj.y > state.height + 100 || proj.x < -100 || proj.x > state.width + 100) {
-      proj.active = false;
+    // Out of bounds / Hitting the unbreakable cosmic barrier (5px border)
+    if (proj.x <= 5 || proj.x >= state.width - 5 || proj.y >= state.height - 5) {
+      this.explode(proj, state);
+      return;
     }
   }
 

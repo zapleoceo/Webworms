@@ -33,6 +33,10 @@ export class InputHandler {
   private isDraggingCamera: boolean = false;
   private lastMouseX: number = 0;
   private lastMouseY: number = 0;
+  
+  private initialPinchDistance: number | null = null;
+  private initialZoom: number = 1;
+  
   private canvas: HTMLCanvasElement;
 
   constructor(presenter: GamePresenter, canvas: HTMLCanvasElement) {
@@ -44,7 +48,8 @@ export class InputHandler {
     window.addEventListener('keydown', this.handleKeyDown.bind(this));
     window.addEventListener('keyup', this.handleKeyUp.bind(this));
 
-    // Camera panning events
+    // Camera panning and zooming events
+    this.canvas.addEventListener('wheel', this.handleWheel.bind(this), { passive: false });
     this.canvas.addEventListener('mousedown', this.handlePointerDown.bind(this));
     window.addEventListener('mousemove', this.handlePointerMove.bind(this));
     window.addEventListener('mouseup', this.handlePointerUp.bind(this));
@@ -107,6 +112,16 @@ export class InputHandler {
   }
 
   private handlePointerDown(event: MouseEvent | TouchEvent): void {
+    if ('touches' in event && event.touches.length === 2) {
+      // Pinch to zoom start
+      this.isDraggingCamera = false;
+      const dx = event.touches[0].clientX - event.touches[1].clientX;
+      const dy = event.touches[0].clientY - event.touches[1].clientY;
+      this.initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
+      this.initialZoom = this.presenter.state.zoom;
+      return;
+    }
+
     this.isDraggingCamera = true;
     if ('touches' in event) {
       this.lastMouseX = event.touches[0].clientX;
@@ -118,6 +133,26 @@ export class InputHandler {
   }
 
   private handlePointerMove(event: MouseEvent | TouchEvent): void {
+    if ('touches' in event && event.touches.length === 2) {
+      if (this.initialPinchDistance) {
+        const dx = event.touches[0].clientX - event.touches[1].clientX;
+        const dy = event.touches[0].clientY - event.touches[1].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const ratio = dist / this.initialPinchDistance;
+        
+        const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+        const centerY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
+        
+        // Use getBoundingClientRect to get proper local canvas coordinates
+        const rect = this.canvas.getBoundingClientRect();
+        const localX = centerX - rect.left;
+        const localY = centerY - rect.top;
+
+        this.presenter.setZoom(this.initialZoom * ratio, localX, localY, this.canvas.width, this.canvas.height);
+      }
+      return;
+    }
+
     if (!this.isDraggingCamera) return;
 
     let currentX, currentY;
@@ -139,8 +174,22 @@ export class InputHandler {
     this.lastMouseY = currentY;
   }
 
-  private handlePointerUp(): void {
+  private handlePointerUp(event: MouseEvent | TouchEvent): void {
+    if ('touches' in event && event.touches.length < 2) {
+      this.initialPinchDistance = null;
+    }
     this.isDraggingCamera = false;
+  }
+
+  private handleWheel(event: WheelEvent): void {
+    event.preventDefault();
+    const zoomDelta = event.deltaY > 0 ? 0.9 : 1.1;
+    
+    const rect = this.canvas.getBoundingClientRect();
+    const localX = event.clientX - rect.left;
+    const localY = event.clientY - rect.top;
+
+    this.presenter.changeZoom(zoomDelta, localX, localY, this.canvas.width, this.canvas.height);
   }
 }
 
