@@ -107,13 +107,6 @@ if (window.location.pathname === '/admin') {
         <div id="game-container">
           <canvas id="gameCanvas" width="800" height="600"></canvas>
         </div>
-        
-        <div id="desktop-hints">
-          <p><b>Arrows:</b> Move / Aim</p>
-          <p><b>Space:</b> Jump</p>
-          <p><b>Enter:</b> Fire</p>
-          <p><b>Shift:</b> Switch Weapon</p>
-        </div>
 
         <div id="mobile-controls">
           <div class="d-pad">
@@ -283,6 +276,11 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
         const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
         const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
         timeBalanceEl.innerText = `Time Left: ${hrs}h ${mins}m`;
+
+        const joinRoomId = new URLSearchParams(window.location.search).get('room');
+        if (joinRoomId) {
+          startGame('friend');
+        }
       }
     } else {
       alert('Authentication failed: ' + (res.error || 'Unknown error'));
@@ -317,6 +315,17 @@ window.presenter = presenter;
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+
+window.addEventListener('resize', () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  // If the landscape needs a re-render because of new width/height, we should handle it,
+  // but for now just updating the canvas resolution is enough for the camera.
+  if (window.presenter && window.presenter.state && window.presenter.state.landscape) {
+    window.presenter.state.landscape.needsUpdate = true;
+  }
+});
+
 const renderer = new CanvasRenderer(canvas);
 window.renderer = renderer;
 window.inputHandler = new InputHandler(window.presenter, canvas, [
@@ -391,8 +400,6 @@ canvas.addEventListener('touchmove', (e) => {
   
   window.presenter.reset(selectedWeapons, unitClass, mapSize);
   
-  loaderScreen.classList.remove('active');
-  gameScreen.classList.add('active');
   
   // Show controls on mobile
   if (window.innerWidth <= 768) {
@@ -415,10 +422,10 @@ canvas.addEventListener('touchmove', (e) => {
     syncModule = new MultiplayerSync();
     
     // Check if we are joining a room via URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const joinRoomId = urlParams.get('room') || undefined;
+  const urlParams = new URLSearchParams(window.location.search);
+  const joinRoomId = urlParams.get('room') || undefined;
 
-    syncModule.onReady = () => {
+  syncModule.onReady = () => {
       invitePanel.style.display = 'none';
       loaderScreen.classList.remove('active');
       gameScreen.classList.add('active');
@@ -544,6 +551,15 @@ let lastTime = performance.now();
 
   requestAnimationFrame(gameLoop);
   // Add orientation check if needed.
+
+// Auto-join logic if room URL param exists
+const initUrlParams = new URLSearchParams(window.location.search);
+if (initUrlParams.get('room')) {
+  setTimeout(() => {
+    alert("You have been invited to a game! Please login to join.");
+    document.getElementById('btn-open-auth')!.click();
+  }, 500);
+}
 
 // Override render method to connect View layer
 (GamePresenter.prototype as any).render = function (this: any) {

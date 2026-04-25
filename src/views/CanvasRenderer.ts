@@ -28,14 +28,14 @@ export class CanvasRenderer {
     this.terrainCtx = terrainContext;
 
     // Load sprite images from local assets
-    this.wormImages['soldier'] = this.loadImg('/worm_soldier.png');
-    this.wormImages['heavy'] = this.loadImg('/worm_heavy.png');
-    this.wormImages['scout'] = this.loadImg('/worm_scout.png');
+    this.wormImages['soldier'] = this.loadImg('/worm_soldier.svg');
+    this.wormImages['heavy'] = this.loadImg('/worm_heavy.svg');
+    this.wormImages['scout'] = this.loadImg('/worm_scout.svg');
     
     // Load brand assets for airdrops
-    this.wormImages['brand_apple'] = this.loadImg('/brand_apple.png');
-    this.wormImages['brand_windows'] = this.loadImg('/brand_windows.png');
-    this.wormImages['brand_android'] = this.loadImg('/brand_android.png');
+    this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg');
+    this.wormImages['brand_windows'] = this.loadImg('/brand_windows.svg');
+    this.wormImages['brand_android'] = this.loadImg('/brand_android.svg');
   }
 
   public render(state: GameState): void {
