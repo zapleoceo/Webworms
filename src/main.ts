@@ -26,7 +26,7 @@ declare global {
 
     document.getElementById('load-users')!.addEventListener('click', async () => {
       try {
-        const res = await fetch('/api/admin/users');
+        const res = await fetch(APIClient.BASE_URL + '/admin/users');
         const users = await res.json();
         const list = document.getElementById('users-list')!;
         list.innerHTML = users.map((u: any) => `
@@ -34,6 +34,7 @@ declare global {
             <p><b>ID:</b> ${u.id}</p>
             <p><b>Email:</b> ${u.email}</p>
             <p><b>Username:</b> ${u.username}</p>
+            <p><b>Active (Verified):</b> ${u.is_active ? 'Yes' : 'No'}</p>
             <p><b>Balance:</b> ${u.play_time_balance}s</p>
             <p><b>Created:</b> ${u.created_at}</p>
             <label>
@@ -49,7 +50,7 @@ declare global {
             const id = (e.target as HTMLButtonElement).dataset.id;
             const cb = document.querySelector(`.access-cb[data-id="${id}"]`) as HTMLInputElement;
             
-            await fetch('/api/admin/users', {
+            await fetch(APIClient.BASE_URL + '/admin/users', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ id, access_allowed: cb.checked })
@@ -69,10 +70,14 @@ declare global {
       <div class="logo-container">
         <img src="/assets/logo.png" alt="Worms Logo" class="game-logo-img">
       </div>
-      <h2 class="retro-text blink" style="margin-bottom: 30px;">LOGIN</h2>
-      <input type="email" id="auth-email" class="retro-input" placeholder="Email (Magic Link)">
-      <input type="text" id="auth-username" class="retro-input" placeholder="Username">
-      <button class="retro-btn" id="btn-login" style="margin-top: 20px;">ENTER THE ARENA</button>
+      <h2 class="retro-text blink" id="auth-title" style="margin-bottom: 30px;">LOGIN</h2>
+      <input type="email" id="auth-email" class="retro-input" placeholder="Email">
+      <input type="text" id="auth-username" class="retro-input" placeholder="Username" style="display: none;">
+      <input type="password" id="auth-password" class="retro-input" placeholder="Password">
+      <button class="retro-btn" id="btn-submit-auth" style="margin-top: 20px;">ENTER THE ARENA</button>
+      <p id="auth-toggle-text" style="color: #fff; font-family: Courier New; margin-top: 15px; cursor: pointer; text-decoration: underline;">
+        Need an account? Register here.
+      </p>
     </div>
 
     <div id="main-menu" class="screen">
@@ -186,16 +191,29 @@ let deductInterval: number | null = null;
 let syncModule: MultiplayerSync | null = null;
 
 // Auth Flow
-document.getElementById('btn-login')!.addEventListener('click', async () => {
+let isLoginMode = true;
+
+document.getElementById('auth-toggle-text')!.addEventListener('click', () => {
+  isLoginMode = !isLoginMode;
+  document.getElementById('auth-title')!.innerText = isLoginMode ? 'LOGIN' : 'REGISTER';
+  document.getElementById('auth-username')!.style.display = isLoginMode ? 'none' : 'block';
+  document.getElementById('btn-submit-auth')!.innerText = isLoginMode ? 'ENTER THE ARENA' : 'REGISTER NOW';
+  document.getElementById('auth-toggle-text')!.innerText = isLoginMode 
+    ? 'Need an account? Register here.' 
+    : 'Already have an account? Login here.';
+});
+
+document.getElementById('btn-submit-auth')!.addEventListener('click', async () => {
   const email = (document.getElementById('auth-email') as HTMLInputElement).value;
   const username = (document.getElementById('auth-username') as HTMLInputElement).value;
+  const password = (document.getElementById('auth-password') as HTMLInputElement).value;
   
-  if (!email || !username) {
-    alert('Please enter both email and username!');
+  if (!email || !password || (!isLoginMode && !username)) {
+    alert('Please fill in all required fields!');
     return;
   }
   
-  const btn = document.getElementById('btn-login') as HTMLButtonElement;
+  const btn = document.getElementById('btn-submit-auth') as HTMLButtonElement;
   btn.innerText = 'CONNECTING...';
   btn.disabled = true;
 
@@ -204,23 +222,43 @@ document.getElementById('btn-login')!.addEventListener('click', async () => {
   const ref = urlParams.get('ref') || undefined;
 
   try {
-    const res = await APIClient.register(email, username, ref);
-    if (res.success) {
-      userSessionId = res.user.id;
-      console.log('Session ID:', userSessionId); // Use variable
-      // In a real app, balance would come from the API
-      userBalanceSeconds = 3600; 
-      
-      authScreen.classList.remove('active');
-      menuScreen.classList.add('active');
+    let res;
+    if (isLoginMode) {
+      res = await APIClient.login(email, password);
     } else {
-      alert('Login failed: ' + (res.error || 'Unknown error'));
-      btn.innerText = 'ENTER THE ARENA';
-      btn.disabled = false;
+      res = await APIClient.register(email, username, password, ref);
+    }
+
+    if (res.success) {
+      if (!isLoginMode) {
+        // Registration success, requires email validation
+        alert(res.message + '\n\n' + (res.dev_token_link ? `[DEV SIMULATION] Your activation link: ${res.dev_token_link}` : ''));
+        if (res.dev_token_link) {
+          console.log('Activation Link:', res.dev_token_link);
+        }
+        // Switch back to login mode
+        document.getElementById('auth-toggle-text')!.click();
+      } else {
+        // Login success
+        userSessionId = res.user.id;
+        console.log('Session ID:', userSessionId);
+        userBalanceSeconds = res.user.play_time_balance || 3600; 
+        
+        authScreen.classList.remove('active');
+        menuScreen.classList.add('active');
+        
+        // Update UI
+        const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
+        const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
+        timeBalanceEl.innerText = `Time Left: ${hrs}h ${mins}m`;
+      }
+    } else {
+      alert('Authentication failed: ' + (res.error || 'Unknown error'));
     }
   } catch (e) {
-    alert('Network error during login');
-    btn.innerText = 'ENTER THE ARENA';
+    alert('Network error during authentication');
+  } finally {
+    btn.innerText = isLoginMode ? 'ENTER THE ARENA' : 'REGISTER NOW';
     btn.disabled = false;
   }
 });

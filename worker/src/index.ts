@@ -18,6 +18,14 @@ export default {
     if (url.pathname === '/api/auth/register' && request.method === 'POST') {
       return handleRegister(request, env);
     }
+    
+    if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+      return handleLogin(request, env);
+    }
+    
+    if (url.pathname === '/api/auth/verify' && request.method === 'GET') {
+      return handleVerify(request, env);
+    }
 
     if (url.pathname === '/api/auth/daily-reset' && request.method === 'POST') {
       return handleDailyReset(request, env);
@@ -52,50 +60,51 @@ export default {
 // Handlers
 // --------------------------------------------------------------------
 
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function handleRegister(request: Request, env: Env): Promise<Response> {
   try {
-    const { email, username, referred_by } = await request.json() as { email: string, username: string, referred_by?: string };
+    const { email, username, password, referred_by } = await request.json() as { email: string, username: string, password?: string, referred_by?: string };
     
-    if (!email || !username) {
-      return new Response(JSON.stringify({ error: 'Email and username are required' }), { status: 400 });
+    if (!email || !username || !password) {
+      return new Response(JSON.stringify({ error: 'Email, username, and password are required' }), { status: 400 });
     }
 
     // Check if user exists
-    const existingUser = await env.DB.prepare('SELECT * FROM Users WHERE email = ?').bind(email).first<any>();
+    const existingUser = await env.DB.prepare('SELECT * FROM Users WHERE email = ? OR username = ?').bind(email, username).first<any>();
 
     if (existingUser) {
-      if (existingUser.access_allowed === 0 || existingUser.access_allowed === false) {
-        return new Response(JSON.stringify({ error: 'Account suspended' }), { status: 403 });
-      }
-
-      // Update last login and username if changed
-      await env.DB.prepare('UPDATE Users SET last_login = CURRENT_TIMESTAMP, username = ? WHERE email = ?')
-        .bind(username, email)
-        .run();
-      
-      return new Response(JSON.stringify({ success: true, user: existingUser, message: 'Logged in' }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({ error: 'User with this email or username already exists' }), { status: 409 });
     }
 
-    // Generate simple ID (In production, use UUID or similar)
+    // Generate simple ID
     const id = 'user_' + Math.random().toString(36).substring(2, 10);
     const initialBalance = 3600; // 1 hour
+    
+    const hashedPassword = await hashPassword(password);
+    const token = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
 
     // If no referral, just insert user
     if (!referred_by) {
       await env.DB.prepare(
-        `INSERT INTO Users (id, email, username, play_time_balance) VALUES (?, ?, ?, ?)`
-      ).bind(id, email, username, initialBalance).run();
+        `INSERT INTO Users (id, email, username, password_hash, is_active, verification_token, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).bind(id, email, username, hashedPassword, 0, token, initialBalance).run();
       
-      return new Response(JSON.stringify({ success: true, user: { id, username } }), { status: 201 });
+      const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: 'Registration successful. Please check your email to activate your account.',
+        dev_token_link: verifyLink // Sending it in response for dev testing
+      }), { status: 201 });
     }
 
     // OPTIMIZED REFERRAL PYRAMID (Batch Transaction)
-    // 1. Insert new user
-    // 2. Give +3600s to Parent (Level 1)
-    // 3. Give +900s to Grandparent (Level 2)
-    
     // Find parent and grandparent
     const parentRow = await env.DB.prepare(
       `SELECT id, referred_by FROM Users WHERE id = ? OR username = ?`
@@ -105,8 +114,8 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
 
     // Insert user
     stmts.push(env.DB.prepare(
-      `INSERT INTO Users (id, email, username, referred_by, play_time_balance) VALUES (?, ?, ?, ?, ?)`
-    ).bind(id, email, username, parentRow?.id || null, initialBalance));
+      `INSERT INTO Users (id, email, username, password_hash, is_active, verification_token, referred_by, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, email, username, hashedPassword, 0, token, parentRow?.id || null, initialBalance));
 
     if (parentRow) {
       // Add 1 hour to parent
@@ -125,10 +134,91 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
     // Execute all in one transaction
     await env.DB.batch(stmts);
 
-    return new Response(JSON.stringify({ success: true, user: { id, username }, referral_applied: !!parentRow }), { status: 201 });
+    const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: 'Registration successful. Please check your email to activate your account.',
+      referral_applied: !!parentRow,
+      dev_token_link: verifyLink
+    }), { status: 201 });
 
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+async function handleLogin(request: Request, env: Env): Promise<Response> {
+  try {
+    const { email, password } = await request.json() as { email?: string, password?: string };
+    
+    if (!email || !password) {
+      return new Response(JSON.stringify({ error: 'Email and password are required' }), { status: 400 });
+    }
+
+    const user = await env.DB.prepare('SELECT * FROM Users WHERE email = ?').bind(email).first<any>();
+
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401 });
+    }
+
+    if (user.access_allowed === 0 || user.access_allowed === false) {
+      return new Response(JSON.stringify({ error: 'Account suspended' }), { status: 403 });
+    }
+
+    if (user.is_active === 0 || user.is_active === false) {
+      return new Response(JSON.stringify({ error: 'Account not activated. Please check your email.' }), { status: 403 });
+    }
+
+    const hashedPassword = await hashPassword(password);
+    if (user.password_hash !== hashedPassword) {
+      return new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401 });
+    }
+
+    // Update last login
+    await env.DB.prepare('UPDATE Users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').bind(user.id).run();
+
+    // Remove sensitive data
+    delete user.password_hash;
+    delete user.verification_token;
+
+    return new Response(JSON.stringify({ success: true, user, message: 'Logged in' }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+async function handleVerify(request: Request, env: Env): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const token = url.searchParams.get('token');
+
+    if (!token) {
+      return new Response('Invalid verification token', { status: 400 });
+    }
+
+    const result = await env.DB.prepare(
+      `UPDATE Users SET is_active = 1, verification_token = NULL WHERE verification_token = ? RETURNING id`
+    ).bind(token).first();
+
+    if (!result) {
+      return new Response('Token invalid or already used', { status: 400 });
+    }
+
+    // Redirect to main page after success
+    const frontendUrl = url.origin; // If worker is hosted separately, this might be different. Let's just return a script to redirect.
+    return new Response(`
+      <html><body>
+        <h3>Account successfully activated!</h3>
+        <p>Redirecting to the game...</p>
+        <script>setTimeout(() => window.location.href = '/', 2000);</script>
+      </body></html>
+    `, { headers: { 'Content-Type': 'text/html' } });
+
+  } catch (e: any) {
+    return new Response(`Error: ${e.message}`, { status: 500 });
   }
 }
 

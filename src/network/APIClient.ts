@@ -1,18 +1,31 @@
 export class APIClient {
-  static BASE_URL = '/api'; // Can be changed in production
+  static BASE_URL = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
 
-  static async register(email: string, username: string, refCode?: string) {
+  static async register(email: string, username: string, password?: string, refCode?: string) {
     try {
       const response = await fetch(`${this.BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, username, referred_by: refCode })
+        body: JSON.stringify({ email, username, password, referred_by: refCode })
       });
       return await response.json();
     } catch (e) {
       console.warn('Backend not running locally, returning mock auth');
-      // Mock for local dev without backend
       return { success: true, user: { id: 'mock_' + Date.now(), username } };
+    }
+  }
+
+  static async login(email: string, password?: string) {
+    try {
+      const response = await fetch(`${this.BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      return await response.json();
+    } catch (e) {
+      console.warn('Backend not running locally, returning mock auth');
+      return { success: true, user: { id: 'mock_' + Date.now(), username: email } };
     }
   }
 

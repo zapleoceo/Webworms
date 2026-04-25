@@ -1,8 +1,14 @@
+-- Drop the table for clean schema update since this is development
+DROP TABLE IF EXISTS Users;
+
 -- Create Users Table
 CREATE TABLE IF NOT EXISTS Users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE,
   username TEXT UNIQUE,
+  password_hash TEXT,
+  is_active BOOLEAN DEFAULT FALSE,
+  verification_token TEXT,
   play_time_balance INTEGER DEFAULT 3600, -- 1 hour in seconds
   access_allowed BOOLEAN DEFAULT TRUE,
   last_daily_reset DATETIME DEFAULT CURRENT_TIMESTAMP,
