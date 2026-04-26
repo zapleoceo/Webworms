@@ -279,8 +279,9 @@ export class GamePresenter {
 
     const aimSpeed = 90; // degrees per second
     const chargeSpeed = 100; // max power per second
-    const moveForce = 800 * player.speedMultiplier; // pixels per second squared (acceleration)
-    const maxSpeed = 100 * player.speedMultiplier; // pixels per second
+    // Halved speeds as per user request
+    const moveForce = 400 * player.speedMultiplier; // pixels per second squared (acceleration)
+    const maxSpeed = 50 * player.speedMultiplier; // pixels per second
     const airControl = 0.5; // 50% control while in the air
 
     if (this.activeInputs.has('up')) {

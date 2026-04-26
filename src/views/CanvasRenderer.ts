@@ -28,9 +28,9 @@ export class CanvasRenderer {
     this.terrainCtx = terrainContext;
 
     // Load sprite images from local assets (cache busted)
-    this.wormImages['soldier'] = this.loadImg('/worm_soldier.svg?v=3');
-    this.wormImages['heavy'] = this.loadImg('/worm_heavy.svg?v=3');
-    this.wormImages['scout'] = this.loadImg('/worm_scout.svg?v=3');
+    this.wormImages['soldier'] = this.loadImg('/worm_soldier.png?v=4');
+    this.wormImages['heavy'] = this.loadImg('/worm_heavy.png?v=4');
+    this.wormImages['scout'] = this.loadImg('/worm_scout.png?v=4');
     
     // Load brand assets for airdrops
     this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg?v=3');
@@ -171,10 +171,12 @@ export class CanvasRenderer {
           
           if (mat === 1) { // Lunar Dirt
             data[idx] = 150; data[idx+1] = 150; data[idx+2] = 150;
-            // Add some noise texture to dirt
-            if (Math.random() > 0.8) { data[idx]-=10; data[idx+1]-=10; data[idx+2]-=10; }
+            // Add some deterministic noise texture to dirt to avoid flickering on redraws
+            if ((x * 31 + y * 17) % 100 > 80) { data[idx]-=10; data[idx+1]-=10; data[idx+2]-=10; }
           } else if (mat === 2) { // Meteorite
             data[idx] = 70; data[idx+1] = 70; data[idx+2] = 75;
+            // Add deterministic noise to rock
+            if ((x * 13 + y * 37) % 100 > 75) { data[idx]-=8; data[idx+1]-=8; data[idx+2]-=8; }
           } else if (mat === 3) { // Ice
             data[idx] = 170; data[idx+1] = 221; data[idx+2] = 255;
           } else if (mat === 4) { // Metal Platform (Destructible)
@@ -273,29 +275,72 @@ export class CanvasRenderer {
       this.ctx.save();
       this.ctx.translate(player.x, player.y);
 
-      // Walk cycle squish animation
-      const squishY = Math.sin(player.walkCycle) * 2; // -2 to +2
-      const squishX = -squishY; // Conservation of volume
-      const renderWidth = player.width + squishX;
-      const renderHeight = player.height + squishY;
+      // Advanced Canvas Animation for Worms
+      const isMoving = Math.abs(player.vx) > 5 && player.health > 0 && !player.isJumping;
+      const isAiming = player.aimAngle !== 0;
+
+      // 1. Walk cycle squish (breathing/walking)
+      let squishY = 0;
+      let squishX = 0;
+      let rotation = 0;
+
+      if (isMoving) {
+        // Walking wobble
+        squishY = Math.sin(player.walkCycle) * 3; // Vertical bounce
+        rotation = Math.sin(player.walkCycle) * 0.2; // Slight rocking
+      } else {
+        // Idle breathing
+        squishY = Math.sin(Date.now() / 300) * 1.5;
+      }
+      
+      squishX = -squishY * 0.5; // Conservation of volume
+
+      // Jump stretch
+      if (player.isJumping) {
+        squishY = 5;
+        squishX = -3;
+      }
+
       const yOffset = -squishY / 2; // keep bottom grounded
 
       const img = this.wormImages[player.unitClass];
       const hasImage = img && img.complete && img.naturalWidth !== 0;
 
       if (hasImage) {
-        // Draw the PNG Image
+        // Draw the original PNG Image with advanced transformations
         this.ctx.save();
+
+        // Base flip for direction
         if (!player.facingRight) {
           this.ctx.scale(-1, 1);
         }
-        // Scale down the large PNGs to fit the worm hit-box
+
+        // Apply walking rotation wobble
+        this.ctx.rotate(rotation);
+
+        // Apply aim rotation if aiming (lean into the aim)
+        if (isAiming) {
+          const aimLean = player.aimAngle * 0.5; // Lean halfway into the aim angle
+          this.ctx.rotate(-aimLean);
+        }
+
+        // Scale down the large PNGs to fit the worm hit-box (typically 20x20 or so)
+        // Original PNGs might be 500x500. We scale them down to roughly 30-40px.
         const imgScale = (player.width * 2.5) / img.width;
-        const w = img.width * imgScale + squishX;
-        const h = img.height * imgScale + squishY;
-        this.ctx.drawImage(img, -w/2, yOffset - h/2, w, h);
+        
+        // Apply squish scale
+        this.ctx.scale(1 + (squishX / player.width), 1 + (squishY / player.height));
+
+        const w = img.width * imgScale;
+        const h = img.height * imgScale;
+        
+        // Draw centered and grounded
+        this.ctx.drawImage(img, -w/2, -h + player.height/2, w, h);
+        
         this.ctx.restore();
       } else {
+        const renderWidth = player.width + squishX;
+        const renderHeight = player.height + squishY;
         // Fallback: Draw Worm Body (Ellipse for squishing)
         this.ctx.fillStyle = player.teamColor || '#FF69B4'; // Use team color
         this.ctx.beginPath();

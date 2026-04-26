@@ -549,7 +549,16 @@ canvas {
 @media (max-width: 768px) {
   .huge-text { font-size: 3rem; }
   .main-logo { width: 300px; }
-  
+
+  #game-container {
+    align-items: flex-start; /* Push canvas to the top in mobile */
+  }
+
+  canvas {
+    max-height: calc(100vh - 140px); /* Leave room for controls at bottom */
+    margin-top: env(safe-area-inset-top, 0px); /* Avoid notch */
+  }
+
   .hud-top { padding: 10px; }
   .team-status { min-width: 90px; padding: 8px; }
   .team-name { font-size: 1rem; }

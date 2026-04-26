@@ -442,31 +442,54 @@ export class PhysicsEngine {
     if (state.wind) {
       proj.vx += state.wind * dt * proj.windMultiplier; // Apply wind based on weapon stats
     }
-    
+
+    const oldX = proj.x;
+    const oldY = proj.y;
+
     proj.updatePosition(dt);
 
-    // Collision with landscape
-    // Check a small bounding box around the projectile to prevent tunneling and hitting invisible 1-pixel edges
-    const px = Math.floor(proj.x);
-    const py = Math.floor(proj.y);
+    const newX = proj.x;
+    const newY = proj.y;
+
+    // Raycast / Substepping to prevent tunneling through terrain
+    const dist = Math.hypot(newX - oldX, newY - oldY);
+    const steps = Math.max(1, Math.ceil(dist)); // roughly 1 step per pixel
     const pr = Math.max(1, Math.floor(proj.radius * 0.8)); // slightly smaller than visual radius for forgiveness
-    
+
     let hitTerrain = false;
     let hitMaterial = 0;
-    
-    for (let y = py - pr; y <= py + pr; y++) {
-      for (let x = px - pr; x <= px + pr; x++) {
-        if (x >= 0 && x < state.width && y >= 0 && y < state.height) {
-          const mat = state.landscape.getMaterial(x, y);
-          if (mat > 0) {
-            hitTerrain = true;
-            hitMaterial = mat;
-            break;
+    let hitX = newX;
+    let hitY = newY;
+
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const checkX = oldX + (newX - oldX) * t;
+      const checkY = oldY + (newY - oldY) * t;
+
+      const px = Math.floor(checkX);
+      const py = Math.floor(checkY);
+
+      for (let y = py - pr; y <= py + pr; y++) {
+        for (let x = px - pr; x <= px + pr; x++) {
+          if (x >= 0 && x < state.width && y >= 0 && y < state.height) {
+            const mat = state.landscape.getMaterial(x, y);
+            if (mat > 0) {
+              hitTerrain = true;
+              hitMaterial = mat;
+              hitX = checkX;
+              hitY = checkY;
+              break;
+            }
           }
         }
+        if (hitTerrain) break;
       }
       if (hitTerrain) break;
     }
+
+    // Move projectile to exact collision point
+    proj.x = hitX;
+    proj.y = hitY;
 
     if (hitTerrain) {
       // Determine material strength modifier for explosion radius
@@ -475,7 +498,7 @@ export class PhysicsEngine {
       else if (hitMaterial === 4) radiusModifier = 0.5; // Metal Platform is very hard
       else if (hitMaterial === 5) radiusModifier = 2.0; // Snow is very weak
       else if (hitMaterial === 255) radiusModifier = 0.3; // Barely scratches the indestructible border
-      
+
       this.explode(proj, state, radiusModifier);
       return;
     }

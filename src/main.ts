@@ -326,42 +326,7 @@ touchActions.forEach(({ id, action }) => {
   }, { passive: false });
 });
 
-// Drag to aim globally on canvas
-let isAiming = false;
-canvas.addEventListener('touchstart', (e) => {
-  isAiming = true;
-  handleAim(e.touches[0]);
-}, { passive: false });
-
-canvas.addEventListener('touchmove', (e) => {
-  if (isAiming) handleAim(e.touches[0]);
-}, { passive: false });
-
-canvas.addEventListener('touchend', () => {
-  isAiming = false;
-  if (window.presenter) {
-    window.presenter.handleInput('up', false);
-    window.presenter.handleInput('down', false);
-  }
-});
-
-function handleAim(touch: Touch) {
-  if (window.presenter && window.presenter.state && window.presenter.state.players.length > 0) {
-    const activeTeam = window.presenter.state.currentPlayerIndex === 0 ? 'team1' : 'team2';
-    if (window.presenter.localTeam && activeTeam !== window.presenter.localTeam) return;
-
-    // We would calculate angle from worm position to touch point, 
-    // but for now we simulate Up/Down based on Y drag relative to screen center
-    const dy = touch.clientY - (window.innerHeight / 2);
-    if (dy < -20) {
-      window.presenter.handleInput('down', false);
-      window.presenter.handleInput('up', true);
-    } else if (dy > 20) {
-      window.presenter.handleInput('up', false);
-      window.presenter.handleInput('down', true);
-    }
-  }
-}
+// (Aiming via screen touch removed to prevent conflicts with camera panning)
 
 
 
