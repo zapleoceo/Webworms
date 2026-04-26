@@ -32,6 +32,12 @@ export class CanvasRenderer {
     this.wormImages['heavy'] = this.loadImg('/worm_heavy.png?v=4');
     this.wormImages['scout'] = this.loadImg('/worm_scout.png?v=4');
     
+    // Load weapon assets
+    this.wormImages['weapon_bazooka'] = this.loadImg('/weapon_bazooka.png?v=1');
+    this.wormImages['weapon_minigun'] = this.loadImg('/weapon_minigun.png?v=1');
+    this.wormImages['weapon_triple'] = this.loadImg('/weapon_triple.png?v=1');
+    this.wormImages['weapon_rocket'] = this.loadImg('/weapon_rocket.png?v=1');
+
     // Load brand assets for airdrops
     this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg?v=3');
     this.wormImages['brand_windows'] = this.loadImg('/brand_windows.svg?v=3');
@@ -336,6 +342,33 @@ export class CanvasRenderer {
         
         // Draw centered and grounded
         this.ctx.drawImage(img, -w/2, -h + player.height/2, w, h);
+
+        // Draw weapon sprite if not jumping
+        if (!player.isJumping) {
+          const weapon = player.getCurrentWeapon();
+          if (weapon) {
+            const weaponImg = this.wormImages[`weapon_${weapon.id}`];
+            if (weaponImg && weaponImg.complete && weaponImg.naturalWidth !== 0) {
+              this.ctx.save();
+              
+              // Shift weapon slightly down and forward
+              this.ctx.translate(10, player.height/2 - 15);
+
+              // Rotate weapon based on aim angle
+              this.ctx.rotate((player.aimAngle) * Math.PI / 180);
+              
+              // Scale down weapon
+              const wScale = 15 / weaponImg.width;
+              const ww = weaponImg.width * wScale;
+              const wh = weaponImg.height * wScale;
+              
+              // Draw weapon centered on the pivot point
+              this.ctx.drawImage(weaponImg, -ww/2, -wh/2, ww, wh);
+              
+              this.ctx.restore();
+            }
+          }
+        }
         
         this.ctx.restore();
       } else {

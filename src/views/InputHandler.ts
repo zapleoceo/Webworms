@@ -15,7 +15,7 @@ export class InputHandler {
     'ArrowDown': 'down',
     's': 'down',
     'S': 'down',
-    ' ': 'jump', // Space
+    ' ': 'jump', // Space key
     'Enter': 'fire',
     'f': 'fire',
     'F': 'fire',

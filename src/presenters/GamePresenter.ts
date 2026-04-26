@@ -12,6 +12,15 @@ export class GamePresenter {
   private lastTime: number = 0;
   private isRunning: boolean = false;
   private activeInputs: Set<string> = new Set(); // Track held keys/buttons
+  
+  // Track analog joystick inputs (-1.0 to 1.0)
+  private analogX: number = 0;
+  private analogY: number = 0;
+
+  public handleAnalogInput(x: number, y: number): void {
+    this.analogX = x;
+    this.analogY = y;
+  }
   private soundManager: SoundManager;
   private initialWidth: number;
   private initialHeight: number;
@@ -287,12 +296,24 @@ export class GamePresenter {
     const maxSpeed = 35 * player.speedMultiplier; // pixels per second
     const airControl = 0.3; // 30% control while in the air
 
-    if (this.activeInputs.has('up')) {
-      player.updateAim(aimSpeed * dt); // Rotate counter-clockwise (up)
+    // --- Handle Aiming (Keyboard + Analog Joystick) ---
+    // If using analog stick Y axis, calculate target angle based on Y deflection
+    if (Math.abs(this.analogY) > 0.1) {
+      const targetAngle = this.analogY * 90; 
+      player.aimAngle += (targetAngle - player.aimAngle) * dt * 5;
+      
+      // Clamp angle
+      if (player.aimAngle < -90) player.aimAngle = -90;
+      if (player.aimAngle > 90) player.aimAngle = 90;
+    } else {
+      if (this.activeInputs.has('up')) {
+        player.updateAim(aimSpeed * dt); // Rotate counter-clockwise (up)
+      }
+      if (this.activeInputs.has('down')) {
+        player.updateAim(-aimSpeed * dt); // Rotate clockwise (down)
+      }
     }
-    if (this.activeInputs.has('down')) {
-      player.updateAim(-aimSpeed * dt); // Rotate clockwise (down)
-    }
+
     if (this.activeInputs.has('fire')) {
       const weapon = player.getCurrentWeapon();
       if (weapon && player.weaponCooldowns[weapon.id] <= 0) {
@@ -310,17 +331,26 @@ export class GamePresenter {
     }
     
     // Apply movement continuously as a force to overcome friction/slopes
-    if (this.activeInputs.has('left')) {
+    let isMovingLeft = this.activeInputs.has('left') || this.analogX < -0.1;
+    let isMovingRight = this.activeInputs.has('right') || this.analogX > 0.1;
+
+    // Determine analog speed modifier (0 to 1)
+    let analogSpeedMod = 1.0;
+    if (Math.abs(this.analogX) > 0) {
+      analogSpeedMod = Math.abs(this.analogX); // The further you push, the faster you go
+    }
+
+    if (isMovingLeft) {
       player.facingRight = false;
       if (!player.isJumping) {
-        player.vx = -maxSpeed; // Instant speed on ground
+        player.vx = -maxSpeed * analogSpeedMod; // Instant speed on ground
       } else {
         player.vx -= moveForce * airControl * dt; // Gradual acceleration in air
       }
-    } else if (this.activeInputs.has('right')) {
+    } else if (isMovingRight) {
       player.facingRight = true;
       if (!player.isJumping) {
-        player.vx = maxSpeed; // Instant speed on ground
+        player.vx = maxSpeed * analogSpeedMod; // Instant speed on ground
       } else {
         player.vx += moveForce * airControl * dt; // Gradual acceleration in air
       }
@@ -421,6 +451,8 @@ export class GamePresenter {
           } else {
             player.switchWeapon();
           }
+          
+          this.updateMobileWeaponIcon(player);
         }
         break;
     }
@@ -530,6 +562,16 @@ export class GamePresenter {
       const proj = new Projectile(startX, startY, vx, vy, weapon);
       (proj as any).owner = player; // Attach owner for stats tracking
       this.state.projectiles.push(proj);
+    }
+  }
+
+  public updateMobileWeaponIcon(player: any) {
+    const iconEl = document.getElementById('current-weapon-icon') as HTMLImageElement;
+    if (iconEl && player) {
+      const weapon = player.getCurrentWeapon();
+      if (weapon) {
+        iconEl.src = `/weapon_${weapon.id}.png`;
+      }
     }
   }
 }

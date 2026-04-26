@@ -40,6 +40,15 @@
               </select>
             </div>
             <div class="setting-group">
+              <label>Weapons (Choose 2):</label>
+              <div class="weapon-selection" id="weapon-selection-container">
+                <label><input type="checkbox" class="weapon-cb" value="bazooka" checked> Bazooka</label>
+                <label><input type="checkbox" class="weapon-cb" value="minigun" checked> Minigun</label>
+                <label><input type="checkbox" class="weapon-cb" value="triple"> Triple-Barrel</label>
+                <label><input type="checkbox" class="weapon-cb" value="rocket"> Rocket Launcher</label>
+              </div>
+            </div>
+            <div class="setting-group">
               <label>Map:</label>
               <select id="map-size-select" class="retro-select">
                 <option value="small">Small</option>
@@ -141,15 +150,22 @@
             </div>
 
             <!-- Mobile Controls Overlay -->
-            <div id="mobile-controls" class="mobile-overlay" style="display: none;">
-              <div class="joystick-zone" id="joystick-move">
-                <div class="joystick-base">
+            <div id="mobile-controls" class="mobile-hud">
+              <div class="mobile-joystick-container">
+                <div id="joystick-move" class="joystick-zone">
+                  <div class="joystick-base"></div>
                   <div class="joystick-stick"></div>
                 </div>
               </div>
-              <div class="action-buttons">
-                <button class="action-btn btn-jump" id="btn-jump">JUMP</button>
-                <button class="action-btn btn-fire" id="btn-fire">FIRE</button>
+
+              <div class="mobile-actions">
+                <div class="weapon-switch-container">
+                  <button id="btn-switch" class="action-btn btn-switch">
+                    <img id="current-weapon-icon" src="/weapon_bazooka.png" alt="W" />
+                  </button>
+                </div>
+                <button id="btn-jump" class="action-btn btn-jump">UP</button>
+                <button id="btn-fire" class="action-btn btn-fire">FIRE</button>
               </div>
             </div>
             

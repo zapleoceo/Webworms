@@ -275,35 +275,34 @@ if (joystickMove) {
     isDraggingMove = false;
     moveStick.style.transform = `translate(-50%, -50%)`;
     if (window.presenter) {
-      window.presenter.handleInput('left', false);
-      window.presenter.handleInput('right', false);
+      window.presenter.handleAnalogInput(0, 0); // Stop movement and aiming
     }
   });
 
   function handleMove(touch: Touch) {
-    if (!moveBaseRect) return;
+    if (!moveBaseRect || !window.presenter) return;
     const centerX = moveBaseRect.left + moveBaseRect.width / 2;
+    const centerY = moveBaseRect.top + moveBaseRect.height / 2;
     const dx = touch.clientX - centerX;
-    
+    const dy = touch.clientY - centerY;
+
     // Visual limit
     const maxDist = moveBaseRect.width / 2 - 25;
-    const dist = Math.min(Math.abs(dx), maxDist);
-    const sign = Math.sign(dx);
     
-    moveStick.style.transform = `translate(calc(-50% + ${dist * sign}px), -50%)`;
+    // Calculate angle and constrained distance for visual stick
+    const angle = Math.atan2(dy, dx);
+    const dist = Math.min(Math.sqrt(dx * dx + dy * dy), maxDist);
+    
+    const stickX = Math.cos(angle) * dist;
+    const stickY = Math.sin(angle) * dist;
 
-    if (window.presenter) {
-      if (dx < -10) {
-        window.presenter.handleInput('right', false);
-        window.presenter.handleInput('left', true);
-      } else if (dx > 10) {
-        window.presenter.handleInput('left', false);
-        window.presenter.handleInput('right', true);
-      } else {
-        window.presenter.handleInput('left', false);
-        window.presenter.handleInput('right', false);
-      }
-    }
+    moveStick.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
+
+    // Normalize input values between -1 and 1
+    const normalizedX = stickX / maxDist;
+    const normalizedY = stickY / maxDist;
+
+    window.presenter.handleAnalogInput(normalizedX, normalizedY);
   }
 }
 
@@ -374,7 +373,6 @@ touchActions.forEach(({ id, action }) => {
   function showControls() {
     if (window.innerWidth <= 768) {
       mobileControls.style.display = 'flex';
-      document.getElementById('game-hud')!.style.pointerEvents = 'none'; // Ensure canvas gets touches
     }
   }
 
@@ -538,7 +536,7 @@ window.presenter.onStateUpdate = (state: any) => {
   hpEnemyEl.style.width = `${Math.min(100, Math.max(0, (enemyHp / 100) * 100))}%`;
 
   // Update Turn Timer & Wind
-  turnTimer.innerText = Math.ceil(state.turnTimeLeft).toString();
+  turnTimer.innerText = state.turnTimeLeft >= 0 ? Math.ceil(state.turnTimeLeft).toString() : '0';
   windIndicator.innerText = `Wind: ${state.wind > 0 ? '→' : state.wind < 0 ? '←' : '0'}`;
 
   // Turn Change Notification
