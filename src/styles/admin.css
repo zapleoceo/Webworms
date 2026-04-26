@@ -11,6 +11,10 @@
   box-sizing: border-box;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .admin-auth-card {
@@ -32,7 +36,7 @@
   display: flex;
   width: 100%;
   max-width: 1200px;
-  height: 90vh;
+  height: 90%;
   background-color: #2a2a36;
   border-radius: 12px;
   overflow: hidden;

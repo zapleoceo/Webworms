@@ -66,6 +66,11 @@ export class GamePresenter {
     this.physics.onHeavyImpact = () => this.soundManager.playHeavyImpact();
   }
 
+  public updateScreenSize(width: number, height: number): void {
+    this.initialWidth = width;
+    this.initialHeight = height;
+  }
+
   public reset(
     selectedWeapons: string[] = ['bazooka', 'blaster'], 
     unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier',
@@ -83,8 +88,8 @@ export class GamePresenter {
     }
 
     this.state = new GameState(worldWidth, worldHeight);
-    this.state.cameraX = (worldWidth - this.initialWidth) / 2;
-    this.state.cameraY = (worldHeight - this.initialHeight) / 2;
+    this.state.cameraX = Math.max(0, (worldWidth - this.initialWidth) / 2);
+    this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
     this.matchTime = 0;
     this.nextAirdropTime = 60;
@@ -405,9 +410,17 @@ export class GamePresenter {
     
     if (this.state.cameraX < margin) this.state.cameraX = margin;
     if (this.state.cameraX > maxCamX - margin) this.state.cameraX = Math.max(margin, maxCamX - margin);
-    
+
     if (this.state.cameraY < margin) this.state.cameraY = margin;
     if (this.state.cameraY > maxCamY - margin) this.state.cameraY = Math.max(margin, maxCamY - margin);
+    
+    // Fallback if screen is larger than map
+    if (canvasWidth / this.state.zoom > this.state.width) {
+      this.state.cameraX = (this.state.width - canvasWidth / this.state.zoom) / 2;
+    }
+    if (canvasHeight / this.state.zoom > this.state.height) {
+      this.state.cameraY = (this.state.height - canvasHeight / this.state.zoom) / 2;
+    }
   }
 
   private fireWeapon(player: Worm): void {

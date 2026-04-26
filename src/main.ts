@@ -319,10 +319,12 @@ canvas.height = window.innerHeight;
 window.addEventListener('resize', () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
-  // If the landscape needs a re-render because of new width/height, we should handle it,
-  // but for now just updating the canvas resolution is enough for the camera.
-  if (window.presenter && window.presenter.state && window.presenter.state.landscape) {
-    window.presenter.state.landscape.needsUpdate = true;
+  
+  if (window.presenter) {
+    window.presenter.updateScreenSize(window.innerWidth, window.innerHeight);
+    if (window.presenter.state && window.presenter.state.landscape) {
+      window.presenter.state.landscape.needsUpdate = true;
+    }
   }
 });
 
@@ -401,9 +403,23 @@ canvas.addEventListener('touchmove', (e) => {
   window.presenter.reset(selectedWeapons, unitClass, mapSize);
   
   
-  // Show controls on mobile
-  if (window.innerWidth <= 768) {
-    mobileControls.style.display = 'flex';
+  const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
+  
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    if (window.presenter) {
+      window.presenter.updateScreenSize(window.innerWidth, window.innerHeight);
+      if (window.presenter.state && window.presenter.state.landscape) {
+        window.presenter.state.landscape.needsUpdate = true;
+      }
+    }
+  }
+
+  function showControls() {
+    if (window.innerWidth <= 768) {
+      mobileControls.style.display = 'flex';
+    }
   }
 
   // Handle Multiplayer Mode
@@ -429,6 +445,8 @@ canvas.addEventListener('touchmove', (e) => {
       invitePanel.style.display = 'none';
       loaderScreen.classList.remove('active');
       gameScreen.classList.add('active');
+      resizeCanvas();
+      showControls();
       window.presenter.start();
     };
 
@@ -468,6 +486,8 @@ canvas.addEventListener('touchmove', (e) => {
     // Training mode starts immediately
     loaderScreen.classList.remove('active');
     gameScreen.classList.add('active');
+    resizeCanvas();
+    showControls();
     window.presenter.start();
   }
 

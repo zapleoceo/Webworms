@@ -150,7 +150,7 @@ export class CanvasRenderer {
 
   private drawLandscape(state: GameState): void {
     // 1. Only do a full redraw on initialization (or when needsUpdate is explicitly true)
-    if (state.landscape.needsUpdate) {
+    if (state.landscape.needsUpdate || this.terrainCanvas.width !== state.landscape.width || this.terrainCanvas.height !== state.landscape.height) {
       const width = state.landscape.width;
       const height = state.landscape.height;
       
