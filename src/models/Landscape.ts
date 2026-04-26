@@ -6,6 +6,7 @@ export class Landscape {
   public grid: Uint8Array;
   public needsUpdate: boolean = true; // Flag for full renderer caching (init only)
   public newCraters: {x: number, y: number, r: number}[] = []; // Queue for fast erasure
+  public newStamps: {imgKey: string, x: number, y: number, w: number, h: number}[] = []; // Queue for stamping images
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -70,6 +71,11 @@ export class Landscape {
     // Inform renderer with original radius for visual effects, 
     // physics clears a slightly larger area to guarantee no invisible solid pixels
     this.newCraters.push({x: cx, y: cy, r: radius});
+  }
+
+  public stampImage(imgKey: string, cx: number, cy: number, w: number, h: number): void {
+    // Add to stamp queue for the renderer to process into the grid and offscreen canvas
+    this.newStamps.push({ imgKey, x: Math.floor(cx), y: Math.floor(cy), w: Math.floor(w), h: Math.floor(h) });
   }
 
   public getTopSolidY(x: number): number {

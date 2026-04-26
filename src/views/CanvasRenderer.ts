@@ -73,76 +73,28 @@ export class CanvasRenderer {
 
   private drawProps(state: GameState): void {
     for (const prop of state.props) {
+      if (prop.health <= 0) continue;
+
       this.ctx.save();
       this.ctx.translate(prop.x, prop.y);
       this.ctx.rotate(prop.rotation);
 
-      if (prop.type === 'crate') {
-        this.ctx.fillStyle = '#8B4513'; // wood
-        this.ctx.fillRect(-prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
-        this.ctx.strokeStyle = '#5c2e0e';
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(-prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
-        
-        // Crate cross pattern
-        this.ctx.beginPath();
-        this.ctx.moveTo(-prop.radius, -prop.radius);
-        this.ctx.lineTo(prop.radius, prop.radius);
-        this.ctx.moveTo(prop.radius, -prop.radius);
-        this.ctx.lineTo(-prop.radius, prop.radius);
-        this.ctx.stroke();
-      } else if (prop.type === 'brand' && prop.brandImage) {
-        // Draw Brand Logo PNG
-        // Extract 'brand_apple' from '/assets/brand_apple.png'
-        const imgKey = prop.brandImage.split('/').pop()?.split('.')[0] || '';
-        const img = this.wormImages[imgKey];
-        
-        if (img && img.complete && img.naturalWidth !== 0) {
-          this.ctx.save();
-          this.ctx.translate(prop.x, prop.y);
-          this.ctx.rotate(prop.angle);
-          
-          // Draw white background circle for visibility
-          this.ctx.fillStyle = 'rgba(255,255,255,0.8)';
-          this.ctx.beginPath();
-          this.ctx.arc(0, 0, prop.radius, 0, Math.PI * 2);
-          this.ctx.fill();
+      const imgKey = prop.brandImage?.split('/').pop()?.split('.')[0] || 'brand_apple';
+      let img = this.wormImages[imgKey];
+      if (!img) img = this.wormImages[`brand_${imgKey}`]; // fallback for brands
 
-          // Draw the brand
-          this.ctx.drawImage(img, -prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
-          this.ctx.restore();
-        } else {
-          // Fallback box
-          this.ctx.fillStyle = 'white';
-          this.ctx.fillRect(prop.x - prop.radius, prop.y - prop.radius, prop.radius * 2, prop.radius * 2);
-        }
+      if (img && img.complete && img.naturalWidth !== 0) {
+        this.ctx.drawImage(img, -prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
       } else {
-        // Asteroid / Rock
-        this.ctx.fillStyle = '#555';
+        // Fallback
+        this.ctx.fillStyle = '#ff8800';
         this.ctx.beginPath();
-        // Draw jagged rock
-        for (let i = 0; i < 6; i++) {
-          const angle = (i / 6) * Math.PI * 2;
-          const r = prop.radius * (0.8 + (i % 2) * 0.4); // irregular shape
-          this.ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
-        }
-        this.ctx.closePath();
+        this.ctx.arc(0, 0, prop.radius, 0, Math.PI * 2);
         this.ctx.fill();
-        this.ctx.strokeStyle = '#333';
-        this.ctx.lineWidth = 1.5;
+        this.ctx.fillStyle = '#000';
         this.ctx.stroke();
       }
 
-      // Draw Prop Health Bar
-      this.ctx.restore(); // restore to draw health bar without rotation
-      this.ctx.save();
-      this.ctx.translate(prop.x, prop.y);
-      
-      this.ctx.fillStyle = 'red';
-      this.ctx.fillRect(-prop.radius, -prop.radius - 8, prop.radius * 2, 3);
-      this.ctx.fillStyle = '#32CD32'; // Lime green
-      this.ctx.fillRect(-prop.radius, -prop.radius - 8, (prop.radius * 2) * (prop.health / prop.maxHealth), 3);
-      
       this.ctx.restore();
     }
   }
@@ -263,6 +215,45 @@ export class CanvasRenderer {
           this.terrainCtx.putImageData(imgData, minX, minY);
         }
       }
+    }
+
+    // Apply new stamps dynamically to both grid and offscreen canvas
+    if (state.landscape.newStamps && state.landscape.newStamps.length > 0) {
+      for (const stamp of state.landscape.newStamps) {
+        let img = this.wormImages[stamp.imgKey];
+        if (!img) {
+          // It might be a brand image
+          img = this.wormImages[`brand_${stamp.imgKey}`] || this.wormImages[stamp.imgKey];
+        }
+        
+        if (img && img.complete) {
+          // Draw to a temporary canvas to get pixel data
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = stamp.w;
+          tempCanvas.height = stamp.h;
+          const tCtx = tempCanvas.getContext('2d');
+          if (tCtx) {
+            tCtx.drawImage(img, 0, 0, stamp.w, stamp.h);
+            const imgData = tCtx.getImageData(0, 0, stamp.w, stamp.h);
+            
+            // Map alpha > 0 pixels to terrain grid
+            const startX = Math.floor(stamp.x - stamp.w / 2);
+            const startY = Math.floor(stamp.y - stamp.h / 2);
+            
+            for (let y = 0; y < stamp.h; y++) {
+              for (let x = 0; x < stamp.w; x++) {
+                const alpha = imgData.data[(y * stamp.w + x) * 4 + 3];
+                if (alpha > 128) {
+                  state.landscape.setMaterial(startX + x, startY + y, 6); // 6 = Solid Prop Material
+                }
+              }
+            }
+          }
+          // Draw visually on the terrain canvas
+          this.terrainCtx.drawImage(img, stamp.x - stamp.w / 2, stamp.y - stamp.h / 2, stamp.w, stamp.h);
+        }
+      }
+      state.landscape.newStamps = [];
     }
 
     // Draw the cached landscape onto the main canvas (SUPER FAST)

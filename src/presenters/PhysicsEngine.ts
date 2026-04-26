@@ -163,9 +163,10 @@ export class PhysicsEngine {
         
         prop.y = searchY - prop.radius;
         
+        AudioManager.playLand();
+        
         // High speed impact (dig into terrain)
         if (oldVy > 250) {
-          AudioManager.playLand();
           // Prop damages terrain based on its hardness
           const digRadius = prop.radius * 0.8;
           for (let dy = -digRadius; dy <= digRadius; dy++) {
@@ -184,33 +185,12 @@ export class PhysicsEngine {
             }
           }
           state.landscape.needsUpdate = true;
-          // Kill momentum, it's stuck in the dirt
-          prop.vy = 0;
-          prop.vx = 0;
-        } else {
-          // Low speed - no bounce, just slide/roll
-          prop.vy = 0;
-          prop.vx *= 0.5; // heavy friction
-          
-          if (oldVy > 50) {
-            AudioManager.playLand();
-          }
-
-          // Calculate slope to rotate
-          const leftSolid = state.landscape.isSolid(cx - 5, bottomY);
-          const rightSolid = state.landscape.isSolid(cx + 5, bottomY);
-
-          if (leftSolid && !rightSolid) {
-            prop.rotation += 0.05;
-            prop.vx += 10; // roll right
-          } else if (!leftSolid && rightSolid) {
-            prop.rotation -= 0.05;
-            prop.vx -= 10; // roll left
-          } else {
-            // Flatten out slightly if on flat ground
-            prop.rotation *= 0.9;
-          }
         }
+        
+        // STAMP into terrain and remove the physical prop
+        const imgKey = prop.brandImage?.split('/').pop()?.split('.')[0] || 'brand_apple';
+        state.landscape.stampImage(imgKey, prop.x, prop.y, prop.radius * 2, prop.radius * 2);
+        prop.health = 0; // kill it
       } else {
         // Free falling rotation
         prop.rotation += prop.vx * dt * 0.01;
@@ -307,14 +287,31 @@ export class PhysicsEngine {
     state.floatingTexts.push({ x, y, text, color, life: 2.0, maxLife: 2.0 });
   }
 
+  private isBoxSolid(landscape: any, cx: number, cy: number, hw: number, hh: number): boolean {
+    const left = Math.floor(cx - hw);
+    const right = Math.floor(cx + hw);
+    const top = Math.floor(cy - hh);
+    const bottom = Math.floor(cy + hh);
+    
+    // Check perimeter
+    for (let x = left; x <= right; x += 2) {
+      if (landscape.isSolid(x, top) || landscape.isSolid(x, bottom)) return true;
+    }
+    for (let y = top; y <= bottom; y += 2) {
+      if (landscape.isSolid(left, y) || landscape.isSolid(right, y)) return true;
+    }
+    return false;
+  }
+
   private updateWorm(worm: any, state: GameState, dt: number): void {
     if (worm.health <= 0) return;
 
-    const cx = Math.floor(worm.x);
-    const bottomY = Math.floor(worm.y + worm.height / 2);
+    // Hitbox sizes
+    const hw = 6;  // Half width
+    const hh = 10; // Half height
 
-    // Ground check (is there a solid pixel exactly below the worm?)
-    const isGrounded = state.landscape.isSolid(cx, bottomY) || state.landscape.isSolid(cx, bottomY + 1);
+    // Ground check
+    const isGrounded = this.isBoxSolid(state.landscape, worm.x, worm.y + 1, hw, hh);
 
     if (!isGrounded || worm.isJumping) {
       worm.vy += this.gravity * dt;
@@ -332,21 +329,19 @@ export class PhysicsEngine {
     // Attempt Horizontal Movement (with slope logic)
     const dx = worm.vx * dt;
     if (dx !== 0) {
+      const oldX = worm.x;
       worm.x += dx;
       
-      // Screen bounds with 30px padding (clamp before checking terrain to avoid infinite push-up bug)
+      // Screen bounds with 30px padding
       if (worm.x < 30) { worm.x = 30; worm.vx = 0; }
       if (worm.x > state.width - 30) { worm.x = state.width - 30; worm.vx = 0; }
 
-      const cx = Math.floor(worm.x);
-      const bottomY = Math.floor(worm.y + worm.height / 2);
-
       // Slope limit check
-      if (state.landscape.isSolid(cx, bottomY)) {
+      if (this.isBoxSolid(state.landscape, worm.x, worm.y, hw, hh)) {
         let step = 0;
-        const maxStep = 3; // Allow climbing up to ~60 degree slope (approx 3px up for 1-2px across)
+        const maxStep = 4; // Allow climbing up to ~60 degree slope
         
-        while (step <= maxStep && state.landscape.isSolid(cx, bottomY - step)) {
+        while (step <= maxStep && this.isBoxSolid(state.landscape, worm.x, worm.y - step, hw, hh)) {
           step++;
         }
 
@@ -355,13 +350,14 @@ export class PhysicsEngine {
           worm.y -= step;
         } else {
           // Too steep! Hit a wall. Revert X movement and kill horizontal speed
-          worm.x -= dx;
+          worm.x = oldX;
           worm.vx = 0;
         }
       }
     }
 
     // Attempt Vertical Movement
+    const oldY = worm.y;
     const dy = worm.vy * dt;
     worm.y += dy;
     
@@ -379,9 +375,9 @@ export class PhysicsEngine {
       }
     }
 
-    // Ground collision (falling)
-      const currentBottomY = Math.floor(worm.y + worm.height / 2);
-      if (worm.vy >= 0 && state.landscape.isSolid(cx, currentBottomY)) {
+    // Vertical collision
+    if (this.isBoxSolid(state.landscape, worm.x, worm.y, hw, hh)) {
+      if (worm.vy >= 0) {
         // Stop falling sound
         if (worm.isFallingSoundPlaying) {
           worm.isFallingSoundPlaying = false;
@@ -389,15 +385,14 @@ export class PhysicsEngine {
         }
   
         // Push up to exactly the surface level (no infinite loops)
-        let searchY = currentBottomY;
+        let searchY = worm.y;
         let pushedUp = 0;
-        while (state.landscape.isSolid(cx, searchY) && searchY > 0 && pushedUp < 20) { // Limit push up to prevent infinite loops if buried
+        while (this.isBoxSolid(state.landscape, worm.x, searchY, hw, hh) && searchY > 0 && pushedUp < 20) { // Limit push up to prevent infinite loops if buried
           searchY--;
           pushedUp++;
         }
         
-        const newY = searchY - worm.height / 2;
-        worm.y = newY;
+        worm.y = searchY;
         
         const oldVy = worm.vy;
         const wasJumping = worm.isJumping;
@@ -418,10 +413,12 @@ export class PhysicsEngine {
           if (this.onHurt) this.onHurt();
           AudioManager.playDamage();
         }
-    } 
-    // Ceiling collision (jumping up into something)
-    else if (worm.vy < 0 && state.landscape.isSolid(cx, Math.floor(worm.y - worm.height / 2))) {
-      worm.vy = 0; // Bonk head, stop moving up
+      } 
+      // Ceiling collision (jumping up into something)
+      else if (worm.vy < 0) {
+        worm.y = oldY;
+        worm.vy = 0; // Bonk head, stop moving up
+      }
     }
 
     // Check if falling off the map
@@ -432,7 +429,7 @@ export class PhysicsEngine {
     }
 
     // Apply friction or wind
-    if (!worm.isJumping) {
+    if (!worm.isJumping && this.isBoxSolid(state.landscape, worm.x, worm.y + 1, hw, hh)) {
       // Ground friction
       worm.vx *= 0.8;
       if (Math.abs(worm.vx) < 5) worm.vx = 0; // complete stop
