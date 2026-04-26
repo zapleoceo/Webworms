@@ -192,12 +192,12 @@ async function hashPassword(password: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function sendResendEmail(env: Env, to: string, token: string, host: string) {
+async function sendResendEmail(env: Env, to: string, token: string, host: string): Promise<string | null> {
   if (!env.RESEND_API_KEY) {
     console.warn("RESEND_API_KEY is not set. Skipping email sending.");
-    return;
+    return "RESEND_API_KEY missing";
   }
-  
+
   const verifyLink = `${host}/api/auth/verify?token=${token}`;
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
@@ -214,7 +214,7 @@ async function sendResendEmail(env: Env, to: string, token: string, host: string
   `;
 
   try {
-    await fetch('https://api.resend.com/emails', {
+    const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${env.RESEND_API_KEY}`,
@@ -227,8 +227,16 @@ async function sendResendEmail(env: Env, to: string, token: string, host: string
         html: htmlContent
       })
     });
-  } catch (err) {
+    
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Resend API error:", errText);
+      return errText;
+    }
+    return null;
+  } catch (err: any) {
     console.error("Failed to send email via Resend:", err);
+    return err.message;
   }
 }
 
@@ -261,17 +269,18 @@ async function handleRegister(request: Request, env: Env, ctx: ExecutionContext)
       await env.DB.prepare(
         `INSERT INTO Users (id, email, username, password_hash, is_active, is_admin, verification_token, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(id, email, username, hashedPassword, 0, isAdmin, token, initialBalance).run();
-      
-      const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
-      
-      // Async fire and forget the email sending
-      ctx.waitUntil(sendResendEmail(env, email, token, new URL(request.url).origin));
 
-      return new Response(JSON.stringify({ 
-        success: true, 
+      const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
+
+      // Async fire and wait for email sending so we can see the error
+      const emailError = await sendResendEmail(env, email, token, new URL(request.url).origin);
+
+      return new Response(JSON.stringify({
+        success: true,
         message: 'Registration successful. Please check your email to activate your account.',
+        email_error: emailError, // Send the exact Resend error to the client for debugging
         dev_token_link: verifyLink // Sending it in response for dev testing
-      }), { status: 201 });
+      }), { status: 201, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
     // OPTIMIZED REFERRAL PYRAMID (Batch Transaction)
@@ -306,14 +315,15 @@ async function handleRegister(request: Request, env: Env, ctx: ExecutionContext)
 
     const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
     
-    ctx.waitUntil(sendResendEmail(env, email, token, new URL(request.url).origin));
+    const emailError = await sendResendEmail(env, email, token, new URL(request.url).origin);
 
     return new Response(JSON.stringify({ 
       success: true, 
       message: 'Registration successful. Please check your email to activate your account.',
       referral_applied: !!parentRow,
+      email_error: emailError,
       dev_token_link: verifyLink
-    }), { status: 201 });
+    }), { status: 201, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500 });

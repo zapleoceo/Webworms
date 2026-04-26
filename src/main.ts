@@ -79,7 +79,7 @@ function updateTimeBalanceDisplay() {
 // Add PayPal Button Rendering
 function renderPayPalButton() {
   const container = document.getElementById('paypal-subscription-container');
-  const buttonContainer = document.getElementById('paypal-container-KBN94J66ZTRL4');
+  const buttonContainer = document.getElementById('paypal-container-Y6VMR7NQXRJRA');
   
   if (!container || !buttonContainer) return;
   
@@ -106,8 +106,8 @@ function renderPayPalButton() {
     try {
       // @ts-ignore
       paypal.HostedButtons({
-        hostedButtonId: "KBN94J66ZTRL4", // Assuming this is a valid ID based on the script provided, wait the user didn't provide hostedButtonId. Let's create a generic Smart Button.
-      }).render("#paypal-container-KBN94J66ZTRL4");
+        hostedButtonId: "Y6VMR7NQXRJRA",
+      }).render("#paypal-container-Y6VMR7NQXRJRA");
     } catch(e) {
       // Fallback if hosted buttons fail - use Smart Buttons
       buttonContainer.innerHTML = '';
@@ -116,7 +116,7 @@ function renderPayPalButton() {
         createOrder: function(_data: any, actions: any) {
           return actions.order.create({
             purchase_units: [{
-              amount: { value: '4.99', currency_code: 'USD' },
+              amount: { value: '1.00', currency_code: 'USD' },
               description: '7 Days Unlimited Play Time'
             }]
           });
@@ -144,7 +144,7 @@ function renderPayPalButton() {
             });
           });
         }
-      }).render('#paypal-container-KBN94J66ZTRL4');
+      }).render('#paypal-container-Y6VMR7NQXRJRA');
     }
   }
 }
