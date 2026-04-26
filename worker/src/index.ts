@@ -624,6 +624,8 @@ async function addAdminUserTime(request: Request, env: Env): Promise<Response> {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
+
+async function updateAdminUser(request: Request, env: Env): Promise<Response> {
   if (!(await checkAdminAuth(request, env))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
