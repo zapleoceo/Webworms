@@ -411,6 +411,8 @@ async function updateTurnTime(request: Request, env: Env): Promise<Response> {
     return new Response(JSON.stringify({ error: e.message }), { status: 500 });
   }
 }
+
+async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
   const email = request.headers.get('X-Admin-Email');
   const password = request.headers.get('X-Admin-Password');
   
