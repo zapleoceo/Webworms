@@ -7,10 +7,169 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>game</title>
+    <title>WebWorms</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- MAIN MENU -->
+      <div id="main-menu" class="screen active">
+        <div class="menu-header">
+          <button class="icon-btn auth-toggle-btn" id="btn-open-auth">👤 LOGIN</button>
+          <button class="icon-btn auth-toggle-btn" id="btn-user-profile" style="display: none;"></button>
+        </div>
+
+        <div class="logo-container">
+          <img src="/logo.png?v=3" alt="Worms Logo" class="main-logo bounce-anim" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 class=\\'fallback-logo\\'>WEBWORMS</h1>')">
+        </div>
+
+        <div class="menu-actions">
+          <button class="primary-btn pulse-anim" id="btn-play-training">PLAY NOW</button>
+          <button class="secondary-btn" id="btn-play-friends">PLAY WITH FRIEND</button>
+          <p class="tutorial-hint">Hover / Drag to aim. First match is a tutorial!</p>
+        </div>
+
+        <div class="menu-footer">
+          <div class="game-settings">
+            <div class="setting-group">
+              <label>Class:</label>
+              <select id="unit-class-select" class="retro-select">
+                <option value="soldier">Soldier</option>
+                <option value="scout">Scout</option>
+                <option value="heavy">Heavy</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label>Map:</label>
+              <select id="map-size-select" class="retro-select">
+                <option value="small">Small</option>
+                <option value="medium" selected>Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LOADER / INVITE SCREEN -->
+      <div id="loader-screen" class="screen">
+        <h2 id="loader-text" class="comic-text">LOADING...</h2>
+        <div class="spinner"></div>
+        <div id="invite-panel" style="display: none;" class="modal-box">
+          <p>Send this link to your friend:</p>
+          <input type="text" id="invite-link" readonly class="share-input">
+          <button id="btn-copy-invite" class="secondary-btn small-btn">COPY LINK</button>
+          <button id="btn-cancel-invite" class="danger-btn small-btn">CANCEL</button>
+        </div>
+      </div>
+
+      <!-- AUTH MODAL -->
+      <div id="auth-screen" class="modal-overlay" style="display: none;">
+        <div class="modal-box">
+          <button class="close-modal" id="btn-close-auth">&times;</button>
+          <h2 id="auth-title" class="comic-text">LOGIN</h2>
+          <input type="email" id="auth-email" class="retro-input" placeholder="Email">
+          <input type="text" id="auth-username" class="retro-input" placeholder="Username (Register only)" style="display:none;">
+          <input type="password" id="auth-password" class="retro-input" placeholder="Password">
+          <button id="btn-submit-auth" class="primary-btn w-full">SUBMIT</button>
+          <p class="toggle-link" id="auth-toggle-text">Need an account? Register here</p>
+        </div>
+      </div>
+
+      <!-- PROFILE MODAL -->
+      <div id="profile-screen" class="modal-overlay" style="display: none;">
+        <div class="modal-box profile-box">
+          <button class="close-modal" id="btn-close-profile">&times;</button>
+          <h2 class="comic-text">PROFILE</h2>
+          <div class="stats-card">
+            <p id="profile-stats-balance">Play Time: 0s</p>
+          </div>
+          <input type="text" id="profile-username" class="retro-input" placeholder="New Username">
+          <button id="btn-save-profile" class="secondary-btn w-full mb-10">SAVE NAME</button>
+          <button id="btn-logout" class="danger-btn w-full">LOGOUT</button>
+        </div>
+      </div>
+
+      <!-- GAME HUD & CANVAS -->
+      <div id="game-screen" class="screen">
+        <div id="game-container">
+          <canvas id="gameCanvas"></canvas>
+          
+          <!-- HUD Overlay -->
+          <div id="game-hud" class="hud-overlay">
+            
+            <!-- Top Bar -->
+            <div class="hud-top">
+              <div class="team-status left-team">
+                <div class="team-name">YOU</div>
+                <div class="hp-bar-container"><div class="hp-bar fill-green" id="hp-local"></div></div>
+              </div>
+              
+              <div class="match-info">
+                <div id="turn-timer" class="timer-bubble">30</div>
+                <div id="wind-indicator" class="wind-bubble">Wind: 0</div>
+              </div>
+              
+              <div class="team-status right-team">
+                <div class="team-name">ENEMY</div>
+                <div class="hp-bar-container"><div class="hp-bar fill-red" id="hp-enemy"></div></div>
+              </div>
+            </div>
+
+            <!-- Central Notifications -->
+            <div id="turn-notification" class="center-notification comic-text" style="display: none;">
+              YOUR TURN!
+            </div>
+
+            <!-- Bottom Weapons Bar -->
+            <div class="hud-bottom">
+              <div class="weapon-carousel" id="weapon-carousel">
+                <div class="weapon-slot active" data-weapon="Bazooka">
+                  <img src="/brand_apple.svg" alt="Bazooka">
+                  <span class="weapon-name">Bazooka</span>
+                </div>
+                <div class="weapon-slot" data-weapon="Grenade">
+                  <img src="/brand_android.svg" alt="Grenade">
+                  <span class="weapon-name">Grenade</span>
+                </div>
+                <div class="weapon-slot" data-weapon="Shotgun">
+                  <img src="/brand_windows.svg" alt="Shotgun">
+                  <span class="weapon-name">Shotgun</span>
+                </div>
+                <!-- Future weapons here -->
+              </div>
+            </div>
+
+            <!-- Mobile Controls Overlay -->
+            <div id="mobile-controls" class="mobile-overlay" style="display: none;">
+              <div class="joystick-zone" id="joystick-move">
+                <div class="joystick-base">
+                  <div class="joystick-stick"></div>
+                </div>
+              </div>
+              <div class="action-buttons">
+                <button class="action-btn btn-jump" id="btn-jump">JUMP</button>
+                <button class="action-btn btn-fire" id="btn-fire">FIRE</button>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+      </div>
+
+      <!-- GAME OVER SCREEN -->
+      <div id="game-over-screen" class="screen modal-overlay">
+        <div class="modal-box win-box bounce-anim">
+          <h1 id="game-over-title" class="comic-text huge-text">VICTORY!</h1>
+          <p id="game-over-stats" class="stats-text">You earned +10 mins</p>
+          <div class="game-over-actions">
+            <button id="btn-share-clip" class="secondary-btn w-full mb-10">🎬 SHARE CLIP</button>
+            <button id="btn-return-menu" class="primary-btn w-full">RETURN TO MENU</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -144,25 +144,37 @@ if (window.location.pathname === '/admin') {
   </div>
 `;
 
-// Screen Management
+// DOM Elements
 const authScreen = document.getElementById('auth-screen')!;
 const menuScreen = document.getElementById('main-menu')!;
 const loaderScreen = document.getElementById('loader-screen')!;
 const gameScreen = document.getElementById('game-screen')!;
 const gameOverScreen = document.getElementById('game-over-screen')!;
-const winnerText = document.getElementById('winner-text')!;
+const winnerText = document.getElementById('game-over-title')!;
 const mobileControls = document.getElementById('mobile-controls')!;
-const timeBalanceEl = document.getElementById('time-balance')!;
+const profileScreen = document.getElementById('profile-screen')!;
+const btnOpenAuth = document.getElementById('btn-open-auth')!;
+const btnUserProfile = document.getElementById('btn-user-profile') as HTMLButtonElement;
+const timeBalanceEl = document.getElementById('profile-stats-balance')!;
+
+// Weapon Carousel Logic
+const weaponSlots = document.querySelectorAll('.weapon-slot');
+
+weaponSlots.forEach((slot) => {
+  slot.addEventListener('click', () => {
+    weaponSlots.forEach(s => s.classList.remove('active'));
+    slot.classList.add('active');
+    if (window.presenter) {
+      window.presenter.handleInput('switch', true);
+    }
+  });
+});
 
 let userSessionId: string | null = localStorage.getItem('userSessionId');
 let userSessionName: string | null = localStorage.getItem('userSessionName');
 let userBalanceSeconds = parseInt(localStorage.getItem('userBalanceSeconds') || '3600');
 let deductInterval: number | null = null;
 let syncModule: MultiplayerSync | null = null;
-
-const profileScreen = document.getElementById('profile-screen')!;
-const btnOpenAuth = document.getElementById('btn-open-auth')!;
-const btnUserProfile = document.getElementById('btn-user-profile') as HTMLButtonElement;
 
 // Auto-login check
 if (userSessionId && userSessionName) {
@@ -189,7 +201,9 @@ document.getElementById('btn-close-auth')!.addEventListener('click', () => {
 btnUserProfile.addEventListener('click', () => {
   profileScreen.style.display = 'flex';
   (document.getElementById('profile-username') as HTMLInputElement).value = userSessionName || '';
-  document.getElementById('profile-stats-balance')!.innerText = `Play Time Balance: ${Math.floor(userBalanceSeconds / 60)}m`;
+  const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
+  const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
+  timeBalanceEl.innerText = `Play Time Balance: ${hrs}h ${mins}m`;
 });
 
 document.getElementById('btn-close-profile')!.addEventListener('click', () => {
@@ -266,12 +280,7 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
 
     if (res.success) {
       if (!isLoginMode) {
-        // Registration success, requires email validation
-        alert(res.message + '\n\n' + (res.dev_token_link ? `[DEV SIMULATION] Your activation link: ${res.dev_token_link}` : ''));
-        if (res.dev_token_link) {
-          console.log('Activation Link:', res.dev_token_link);
-        }
-        // Switch back to login mode
+        alert('Registration successful! Please login.');
         document.getElementById('auth-toggle-text')!.click();
       } else {
         // Login success
@@ -283,19 +292,15 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
         localStorage.setItem('userSessionName', userSessionName || '');
         localStorage.setItem('userBalanceSeconds', userBalanceSeconds.toString());
         
-        console.log('Session ID:', userSessionId); 
+        authScreen.style.display = 'none';
         
-        authScreen.classList.remove('active');
-        menuScreen.classList.add('active');
-        
-        // Update UI
         btnOpenAuth.style.display = 'none';
         btnUserProfile.style.display = 'block';
         btnUserProfile.innerText = userSessionName || 'USER';
 
         const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
         const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
-        timeBalanceEl.innerText = `Time Left: ${hrs}h ${mins}m`;
+        timeBalanceEl.innerText = `Play Time Balance: ${hrs}h ${mins}m`;
 
         const joinRoomId = new URLSearchParams(window.location.search).get('room');
         if (joinRoomId) {
@@ -377,24 +382,112 @@ canvas.addEventListener('mousemove', (e) => {
   }
 });
 
-// Touch drag for camera
-let lastTouchX = 0;
-let lastTouchY = 0;
+// Mobile Controls Setup
+const joystickMove = document.getElementById('joystick-move') as HTMLElement;
+const moveStick = joystickMove?.querySelector('.joystick-stick') as HTMLElement;
+
+let isDraggingMove = false;
+let moveBaseRect: DOMRect | null = null;
+
+if (joystickMove) {
+  joystickMove.addEventListener('touchstart', (e) => {
+    isDraggingMove = true;
+    moveBaseRect = joystickMove.getBoundingClientRect();
+    handleMove(e.touches[0]);
+  }, { passive: false });
+
+  joystickMove.addEventListener('touchmove', (e) => {
+    if (isDraggingMove) handleMove(e.touches[0]);
+  }, { passive: false });
+
+  joystickMove.addEventListener('touchend', () => {
+    isDraggingMove = false;
+    moveStick.style.transform = `translate(-50%, -50%)`;
+    if (window.presenter) {
+      window.presenter.handleInput('left', false);
+      window.presenter.handleInput('right', false);
+    }
+  });
+
+  function handleMove(touch: Touch) {
+    if (!moveBaseRect) return;
+    const centerX = moveBaseRect.left + moveBaseRect.width / 2;
+    const dx = touch.clientX - centerX;
+    
+    // Visual limit
+    const maxDist = moveBaseRect.width / 2 - 25;
+    const dist = Math.min(Math.abs(dx), maxDist);
+    const sign = Math.sign(dx);
+    
+    moveStick.style.transform = `translate(calc(-50% + ${dist * sign}px), -50%)`;
+
+    if (window.presenter) {
+      if (dx < -10) {
+        window.presenter.handleInput('right', false);
+        window.presenter.handleInput('left', true);
+      } else if (dx > 10) {
+        window.presenter.handleInput('left', false);
+        window.presenter.handleInput('right', true);
+      } else {
+        window.presenter.handleInput('left', false);
+        window.presenter.handleInput('right', false);
+      }
+    }
+  }
+}
+
+const touchActions = [
+  { id: 'btn-jump', action: 'jump' },
+  { id: 'btn-fire', action: 'fire' }
+];
+
+touchActions.forEach(({ id, action }) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (window.presenter) window.presenter.handleInput(action, true);
+  }, { passive: false });
+  
+  el.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    if (window.presenter) window.presenter.handleInput(action, false);
+  }, { passive: false });
+});
+
+// Drag to aim globally on canvas
+let isAiming = false;
 canvas.addEventListener('touchstart', (e) => {
-  if (e.touches.length === 1) {
-    lastTouchX = e.touches[0].clientX;
-    lastTouchY = e.touches[0].clientY;
-  }
-});
+  isAiming = true;
+  handleAim(e.touches[0]);
+}, { passive: false });
+
 canvas.addEventListener('touchmove', (e) => {
-  if (e.touches.length === 1) {
-    const dx = e.touches[0].clientX - lastTouchX;
-    const dy = e.touches[0].clientY - lastTouchY;
-    window.presenter.moveCamera(dx, dy, canvas.width, canvas.height);
-    lastTouchX = e.touches[0].clientX;
-    lastTouchY = e.touches[0].clientY;
+  if (isAiming) handleAim(e.touches[0]);
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => {
+  isAiming = false;
+  if (window.presenter) {
+    window.presenter.handleInput('up', false);
+    window.presenter.handleInput('down', false);
   }
 });
+
+function handleAim(touch: Touch) {
+  if (window.presenter && window.presenter.state && window.presenter.state.players.length > 0) {
+    // We would calculate angle from worm position to touch point, 
+    // but for now we simulate Up/Down based on Y drag relative to screen center
+    const dy = touch.clientY - (window.innerHeight / 2);
+    if (dy < -20) {
+      window.presenter.handleInput('down', false);
+      window.presenter.handleInput('up', true);
+    } else if (dy > 20) {
+      window.presenter.handleInput('up', false);
+      window.presenter.handleInput('down', true);
+    }
+  }
+}
 
 
 
@@ -408,11 +501,11 @@ canvas.addEventListener('touchmove', (e) => {
   if (selectedWeapons.length === 0) selectedWeapons.push('bazooka'); // Fallback
 
 
-  const classSelect = document.getElementById('class-select') as HTMLSelectElement;
-  const unitClass = classSelect.value as 'soldier' | 'heavy' | 'scout';
+  const classSelect = document.getElementById('unit-class-select') as HTMLSelectElement;
+  const unitClass = (classSelect ? classSelect.value : 'soldier') as 'soldier' | 'heavy' | 'scout';
 
   const mapSizeSelect = document.getElementById('map-size-select') as HTMLSelectElement;
-  const mapSize = mapSizeSelect.value as 'small' | 'medium' | 'large';
+  const mapSize = (mapSizeSelect ? mapSizeSelect.value : 'medium') as 'small' | 'medium' | 'large';
 
   menuScreen.classList.remove('active');
   loaderScreen.classList.add('active');
@@ -439,6 +532,7 @@ canvas.addEventListener('touchmove', (e) => {
   function showControls() {
     if (window.innerWidth <= 768) {
       mobileControls.style.display = 'flex';
+      document.getElementById('game-hud')!.style.pointerEvents = 'none'; // Ensure canvas gets touches
     }
   }
 
@@ -526,9 +620,8 @@ canvas.addEventListener('touchmove', (e) => {
 
   // End Game Helpers
 
-document.getElementById('btn-mode-training')!.addEventListener('click', () => startGame('training'));
-document.getElementById('btn-mode-friend')!.addEventListener('click', () => startGame('friend'));
-document.getElementById('btn-mode-random')!.addEventListener('click', () => startGame('random'));
+document.getElementById('btn-play-training')!.addEventListener('click', () => startGame('training'));
+document.getElementById('btn-play-friends')!.addEventListener('click', () => startGame('friend'));
 
 document.getElementById('btn-return-menu')!.addEventListener('click', () => {
     if (deductInterval) clearInterval(deductInterval);
@@ -557,6 +650,42 @@ document.getElementById('btn-return-menu')!.addEventListener('click', () => {
   }
 });
 
+// Update HUD elements
+const hpLocalEl = document.getElementById('hp-local')!;
+const hpEnemyEl = document.getElementById('hp-enemy')!;
+const windIndicator = document.getElementById('wind-indicator')!;
+const turnTimer = document.getElementById('turn-timer')!;
+const turnNotification = document.getElementById('turn-notification')!;
+
+window.presenter.onStateUpdate = (state: any) => {
+  // Update local HP (team1)
+  const localWorms = state.players.filter((w: any) => w.team === 'team1');
+  const localHp = localWorms.reduce((sum: number, w: any) => sum + w.health, 0);
+  hpLocalEl.style.width = `${Math.min(100, Math.max(0, (localHp / 100) * 100))}%`;
+
+  // Update enemy HP (team2)
+  const enemyWorms = state.players.filter((w: any) => w.team === 'team2');
+  const enemyHp = enemyWorms.reduce((sum: number, w: any) => sum + w.health, 0);
+  hpEnemyEl.style.width = `${Math.min(100, Math.max(0, (enemyHp / 100) * 100))}%`;
+
+  // Update Turn Timer & Wind
+  turnTimer.innerText = Math.ceil(state.turnTimeLeft).toString();
+  windIndicator.innerText = `Wind: ${state.wind > 0 ? '→' : state.wind < 0 ? '←' : '0'}`;
+
+  // Turn Change Notification
+  const isMyTurn = state.players[state.activePlayerIndex]?.team === 'team1';
+  if (state.turnTimeLeft === 30) {
+    turnNotification.style.display = 'block';
+    turnNotification.innerText = isMyTurn ? 'YOUR TURN!' : 'ENEMY TURN!';
+    turnNotification.style.color = isMyTurn ? 'var(--color-primary)' : 'var(--color-danger)';
+    
+    // Auto-hide after 2s
+    setTimeout(() => {
+      turnNotification.style.display = 'none';
+    }, 2000);
+  }
+};
+
 window.presenter.onGameOver = (winner: any, stats: any) => {
   gameScreen.classList.remove('active');
   mobileControls.style.display = 'none';
@@ -564,22 +693,23 @@ window.presenter.onGameOver = (winner: any, stats: any) => {
 
   if (deductInterval) clearInterval(deductInterval);
 
-  if (winner) {
-    winnerText.innerText = `${winner.name} WINS!`;
-    winnerText.style.color = winner.teamColor;
-    
-    // Add reward for winning
-    userBalanceSeconds += 600; // +10 minutes
-    document.getElementById('stat-reward')!.style.display = 'block';
+  if (winner === 'draw') {
+    winnerText.innerText = 'DRAW!';
+    winnerText.style.color = 'var(--color-secondary)';
   } else {
-    winnerText.innerText = `DRAW!`;
-    winnerText.style.color = '#fff';
-    document.getElementById('stat-reward')!.style.display = 'none';
+    const isLocalWinner = (winner === 'team1');
+    winnerText.innerText = isLocalWinner ? 'VICTORY!' : 'DEFEAT!';
+    winnerText.style.color = isLocalWinner ? 'var(--color-primary)' : 'var(--color-danger)';
   }
 
-  // Update Stats UI
-  document.getElementById('stat-p1-dmg')!.innerText = `P1 Damage Dealt: ${stats.p1Dmg}`;
-  document.getElementById('stat-p2-dmg')!.innerText = `P2 Damage Dealt: ${stats.p2Dmg}`;
+  const isLocalWinner = (winner === 'team1');
+  const statsEl = document.getElementById('game-over-stats')!;
+  
+  if (isLocalWinner && currentMode !== 'training') {
+    statsEl.innerText = `You earned +10 mins\nDamage Dealt: ${stats.p1Dmg}`;
+  } else {
+    statsEl.innerText = `Damage Dealt: ${stats.p1Dmg}`;
+  }
 };
 
 } // End of else block for game init

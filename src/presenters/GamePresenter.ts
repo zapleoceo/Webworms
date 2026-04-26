@@ -26,8 +26,9 @@ export class GamePresenter {
   private lastExplosionX: number = 0;
   private lastExplosionY: number = 0;
 
-  public onGameOver?: (winner: Worm | null, stats: {p1Dmg: number, p2Dmg: number}) => void;
+  public onGameOver?: (winner: string | null, stats: {p1Dmg: number, p2Dmg: number}) => void;
   public onLocalAction?: (action: string, isActive: boolean) => void;
+  public onStateUpdate: ((state: any) => void) | null = null;
 
 
   constructor(width: number, height: number) {
@@ -170,7 +171,23 @@ export class GamePresenter {
     this.processActiveInputs(dt);
     this.physics.update(this.state, dt);
     this.updateCamera(dt);
-    this.checkGameOver();
+
+    // Check if game over
+    const winner = this.checkGameOver();
+    if (winner !== undefined) {
+      this.isRunning = false;
+      const stats = {
+        p1Dmg: Math.round(this.state.players[0]?.damageDealt || 0),
+        p2Dmg: Math.round(this.state.players[1]?.damageDealt || 0)
+      };
+      if (this.onGameOver) this.onGameOver(winner === null ? 'draw' : winner, stats);
+      return;
+    }
+
+    // Call onStateUpdate for HUD
+    if (this.onStateUpdate) {
+      this.onStateUpdate(this.state);
+    }
   }
 
   private spawnAirdrop(): void {
@@ -231,17 +248,18 @@ export class GamePresenter {
     }
   }
 
-  private checkGameOver(): void {
+  private checkGameOver() {
     const alivePlayers = this.state.players.filter(p => p.health > 0);
     // If we started with more than 1 player and now only 1 or 0 remain
     if (this.state.players.length > 1 && alivePlayers.length <= 1) {
       this.stop();
-      const p1Dmg = Math.round(this.state.players[0]?.damageDealt || 0);
-      const p2Dmg = Math.round(this.state.players[1]?.damageDealt || 0);
-      if (this.onGameOver) {
-        this.onGameOver(alivePlayers[0] || null, {p1Dmg, p2Dmg});
+      let result: string | null = 'draw';
+      if (alivePlayers.length === 1) {
+        result = alivePlayers[0] === this.state.players[0] ? 'team1' : 'team2';
       }
+      return result;
     }
+    return undefined;
   }
 
   private processActiveInputs(dt: number): void {
