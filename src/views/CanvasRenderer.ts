@@ -284,7 +284,6 @@ export class CanvasRenderer {
 
       // Advanced Canvas Animation for Worms
       const isMoving = Math.abs(player.vx) > 5 && player.health > 0 && !player.isJumping;
-      const isAiming = player.aimAngle !== 0;
 
       // 1. Walk cycle squish (breathing/walking)
       let squishY = 0;
@@ -324,12 +323,6 @@ export class CanvasRenderer {
 
         // Apply walking rotation wobble
         this.ctx.rotate(rotation);
-
-        // Apply aim rotation if aiming (lean into the aim)
-        if (isAiming) {
-          const aimLean = player.aimAngle * 0.5; // Lean halfway into the aim angle
-          this.ctx.rotate(-aimLean);
-        }
 
         // Scale down the large PNGs to fit the worm hit-box (typically 20x20 or so)
         // Original PNGs might be 500x500. We scale them down to roughly 30-40px.
