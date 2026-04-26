@@ -31,73 +31,14 @@
 
         <div class="menu-footer">
           <div class="game-settings">
-          <!-- Class Selection -->
+          <!-- Map Selection Only -->
           <div class="mb-10 text-center">
-            <h3 class="mb-5">SELECT CLASS</h3>
-            <div class="class-selection">
-              <label class="class-card">
-                <input type="radio" name="unitClass" value="soldier" checked>
-                <div class="card-content">
-                  <div class="icon-container" style="overflow:hidden; width:60px; height:60px; margin: 0 auto;">
-                    <img src="/sprites/Worms/wwalk.png" style="object-fit: none; object-position: 0 0; width: 60px; height: 60px;" alt="Soldier">
-                  </div>
-                  <span>Soldier</span>
-                </div>
-              </label>
-              <label class="class-card">
-                <input type="radio" name="unitClass" value="heavy">
-                <div class="card-content">
-                  <div class="icon-container" style="overflow:hidden; width:60px; height:60px; margin: 0 auto;">
-                    <img src="/sprites/Worms/wlazy.png" style="object-fit: none; object-position: 0 0; width: 60px; height: 60px;" alt="Heavy">
-                  </div>
-                  <span>Heavy</span>
-                </div>
-              </label>
-              <label class="class-card">
-                <input type="radio" name="unitClass" value="scout">
-                <div class="card-content">
-                  <div class="icon-container" style="overflow:hidden; width:60px; height:60px; margin: 0 auto;">
-                    <img src="/sprites/Worms/wjump.png" style="object-fit: none; object-position: 0 0; width: 60px; height: 60px;" alt="Scout">
-                  </div>
-                  <span>Scout</span>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <!-- Weapon Selection -->
-          <div class="mb-10 text-center">
-            <h3 class="mb-5">CHOOSE 2 WEAPONS</h3>
-            <div class="weapon-selection" id="weapon-selection">
-              <label class="weapon-card">
-                <input type="checkbox" name="weapons" value="bazooka" checked>
-                <div class="card-content">
-                  <img src="/sprites/Weapon Icons/bazooka.1.png" alt="Bazooka">
-                  <span>Bazooka</span>
-                </div>
-              </label>
-              <label class="weapon-card">
-                <input type="checkbox" name="weapons" value="minigun">
-                <div class="card-content">
-                  <img src="/sprites/Weapon Icons/minigun.1.png" alt="Minigun">
-                  <span>Minigun</span>
-                </div>
-              </label>
-              <label class="weapon-card">
-                <input type="checkbox" name="weapons" value="triple">
-                <div class="card-content">
-                  <img src="/sprites/Weapon Icons/shotgun.1.png" alt="Triple-Barrel">
-                  <span>Triple</span>
-                </div>
-              </label>
-              <label class="weapon-card">
-                <input type="checkbox" name="weapons" value="rocket" checked>
-                <div class="card-content">
-                  <img src="/sprites/Weapon Icons/hmissile.1.png" alt="Rocket">
-                  <span>Rocket</span>
-                </div>
-              </label>
-            </div>
+            <h3 class="mb-5">SELECT MAP</h3>
+            <select id="map-type-select" class="retro-input" style="width: 200px;">
+              <option value="islands">Islands</option>
+              <option value="cave">Cave</option>
+              <option value="flat">Flat</option>
+            </select>
           </div>
             <div class="setting-group">
               <label>Map:</label>
@@ -148,10 +89,9 @@
             <label>DISPLAY NAME:</label>
             <input type="text" id="profile-username" class="retro-input" placeholder="ENTER NEW NAME" />
           </div>
-          <div class="form-group" style="position: relative;">
+          <div class="form-group">
             <label>NEW PASSWORD (OPTIONAL):</label>
-            <input type="password" id="profile-password" class="retro-input" placeholder="ENTER NEW PASSWORD" />
-            <button id="toggle-password-vis" type="button" style="position: absolute; right: 10px; top: 38px; background: none; border: none; font-size: 20px; cursor: pointer;">👁️</button>
+            <input type="text" id="profile-password" class="retro-input" placeholder="ENTER NEW PASSWORD" />
           </div>
           <button id="btn-save-profile" class="secondary-btn w-full mb-10">SAVE</button>
           <button id="btn-logout" class="danger-btn w-full">LOGOUT</button>
@@ -187,6 +127,13 @@
             <!-- Central Notifications -->
             <div id="turn-notification" class="center-notification comic-text" style="display: none;">
               YOUR TURN!
+            </div>
+
+            <!-- Active Worm Selection Panel (Desktop / Bottom) -->
+            <div id="worm-selection-panel" class="worm-selection-panel">
+              <button class="worm-btn" data-index="0"><img src="/sprites/Worms/wbrth.png" alt="W1"><span class="hp">100</span></button>
+              <button class="worm-btn" data-index="1"><img src="/sprites/Worms/wbrth.png" alt="W2"><span class="hp">100</span></button>
+              <button class="worm-btn" data-index="2"><img src="/sprites/Worms/wbrth.png" alt="W3"><span class="hp">100</span></button>
             </div>
 
             <!-- Bottom Weapons Bar (Removed) -->

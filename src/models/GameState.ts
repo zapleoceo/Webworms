@@ -44,9 +44,14 @@ export class GameState {
     this.players.push(worm);
   }
 
+  public getAlivePlayers(team: string): Worm[] {
+    return this.players.filter(p => p.team === team && p.health > 0);
+  }
+
   public getCurrentPlayer(): Worm | null {
     if (this.players.length === 0) return null;
-    return this.players[this.currentPlayerIndex];
+    // currentPlayerIndex points to the active worm
+    return this.players[this.currentPlayerIndex] || null;
   }
 
   public nextTurn(): void {

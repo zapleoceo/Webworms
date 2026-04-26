@@ -35,6 +35,7 @@ export class CanvasRenderer {
       'jump': { src: '/sprites/Worms/wjump.png', frameWidth: 60, frameHeight: 60, frameCount: 10 },
       'backflip': { src: '/sprites/Worms/wkamjmp.png', frameWidth: 60, frameHeight: 60, frameCount: 10 }, // approximation
       'idle': { src: '/sprites/Worms/wbrth.png', frameWidth: 60, frameHeight: 60, frameCount: 15 }, // breathing
+      'grave': { src: '/sprites/Misc/grave1.png', frameWidth: 24, frameHeight: 32, frameCount: 1 }, // Grave
       // Weapons
       'bazooka': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'minigun': { src: '/sprites/Worms/wminlnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // using minigun
@@ -272,21 +273,26 @@ export class CanvasRenderer {
 
   private drawPlayers(state: GameState): void {
     for (const player of state.players) {
-      if (player.health <= 0) continue; // Don't draw dead worms
-      
       this.ctx.save();
       this.ctx.translate(player.x, player.y);
 
       // Advanced Canvas Animation for Worms
       const isMoving = Math.abs(player.vx) > 5 && player.health > 0 && !player.isJumping;
-      const isActive = player === state.getCurrentPlayer();
+      const isActive = player === state.getCurrentPlayer() && player.health > 0;
       const weapon = player.getCurrentWeapon();
 
       // Determine animation state
       let animKey = 'idle';
       let frameIndex = 0;
+      let offsetY = 24; // Default offset for worms
+      let flipX = player.facingRight; // Default flipX logic for worms
       
-      if (player.isJumping) {
+      if (player.health <= 0) {
+        animKey = 'grave';
+        frameIndex = 0;
+        offsetY = 16; // Adjust for smaller grave sprite
+        flipX = false;
+      } else if (player.isJumping) {
         animKey = 'jump';
         frameIndex = Math.floor((Date.now() / 100) % this.animCtrl.getAnimLength(animKey));
       } else if (isMoving) {
@@ -322,25 +328,27 @@ export class CanvasRenderer {
         0,
         player.height / 2, // Ground point
         1.0, // Scale
-        player.facingRight, // FlipX (if sprite default faces LEFT, we flip when facing RIGHT)
-        24 // offsetY: move the sprite down more so the worm's feet touch the ground exactly
+        flipX,
+        offsetY
       );
 
       // Draw name and health
-    this.ctx.fillStyle = player.teamColor || '#00ffff';
-    this.ctx.font = '14px "Bangers", cursive';
-    this.ctx.textAlign = 'center';
-    
-    // Draw outline for readability
-    this.ctx.strokeStyle = '#000';
-    this.ctx.lineWidth = 2;
-    this.ctx.strokeText(player.name, 0, -player.height - 15);
-    this.ctx.fillText(player.name, 0, -player.height - 15);
+      if (player.health > 0) {
+        this.ctx.fillStyle = player.teamColor || '#00ffff';
+        this.ctx.font = '14px "Bangers", cursive';
+        this.ctx.textAlign = 'center';
+        
+        // Draw outline for readability
+        this.ctx.strokeStyle = '#000';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeText(player.name, 0, -player.height - 15);
+        this.ctx.fillText(player.name, 0, -player.height - 15);
 
-    // Draw Health Value
-    this.ctx.fillStyle = player.teamColor || '#00ff00';
-    this.ctx.strokeText(Math.ceil(player.health).toString(), 0, -player.height - 30);
-    this.ctx.fillText(Math.ceil(player.health).toString(), 0, -player.height - 30);
+        // Draw Health Value
+        this.ctx.fillStyle = player.teamColor || '#00ff00';
+        this.ctx.strokeText(Math.ceil(player.health).toString(), 0, -player.height - 30);
+        this.ctx.fillText(Math.ceil(player.health).toString(), 0, -player.height - 30);
+      }
 
       // Draw active player indicator
       if (isActive) {
@@ -352,8 +360,8 @@ export class CanvasRenderer {
         this.ctx.fill();
       }
 
-      // Aiming Reticle (only for current player)
-      if (player === state.getCurrentPlayer() && !player.isJumping) {
+      // Aiming Reticle (only for current player and alive)
+      if (player === state.getCurrentPlayer() && !player.isJumping && player.health > 0) {
         let globalAimAngle = player.aimAngle;
         if (!player.facingRight) {
           globalAimAngle = 180 - player.aimAngle;

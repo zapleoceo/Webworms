@@ -26,6 +26,7 @@ export class Worm {
   public walkCycle: number = 0;
 
   // Visual/team identifier
+  public team: string;
   public teamColor: string;
   public name: string;
   public unitClass: 'soldier' | 'heavy' | 'scout';
@@ -43,6 +44,7 @@ export class Worm {
     this.y = y;
     this.name = name;
     this.unitClass = unitClass;
+    this.team = isDummy ? 'team2' : 'team1';
     
     // Apply Class Stats
     if (unitClass === 'heavy') {

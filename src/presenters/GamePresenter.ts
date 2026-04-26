@@ -26,6 +26,9 @@ export class GamePresenter {
   private cameraFreeMode: boolean = false;
 
   private matchTime: number = 0;
+  private turnTimeLeft: number = 30;
+  public maxTurnTime: number = 30;
+  public hasFiredThisTurn: boolean = false;
   public brandAssets: string[] = ['apple', 'android', 'windows'];
   
   // Camera delay after explosion
@@ -82,6 +85,9 @@ export class GamePresenter {
   public localTeam: string | null = null;
 
   public startGame(settings: any) {
+    this.maxTurnTime = settings.mode === 'training' ? Infinity : (settings.turnTime || 30);
+    this.turnTimeLeft = this.maxTurnTime;
+    
     let worldWidth = this.initialWidth * 1.5;
     let worldHeight = this.initialHeight * 1.2;
     this.state = new GameState(worldWidth, worldHeight);
@@ -92,19 +98,33 @@ export class GamePresenter {
 
     this.state.landscape.generateTerrain();
 
-    // Add two worms for Phase 1 with Safe Spawn
+    // Add teams of 3 worms
     const spawnPoints: {x: number, y: number}[] = [];
+    const availableWeapons = ['bazooka', 'minigun', 'triple', 'rocket'];
+    const availableClasses: ('soldier'|'heavy'|'scout')[] = ['soldier', 'heavy', 'scout'];
 
-    const s1 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
-    spawnPoints.push(s1);
-    const p1 = new Worm(s1.x, s1.y, false, 'Player 1', settings.class, settings.weapons);
+    // Team 1 (Player 1)
+    for (let i = 0; i < 3; i++) {
+      const s = this.state.landscape.getSafeSpawn(spawnPoints, 150);
+      spawnPoints.push(s);
+      const wpn = availableWeapons[Math.floor(Math.random() * availableWeapons.length)];
+      const cls = availableClasses[Math.floor(Math.random() * availableClasses.length)];
+      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, cls, [wpn]);
+      this.state.addPlayer(p);
+    }
 
-    const s2 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
-    spawnPoints.push(s2);
-    const p2 = new Worm(s2.x, s2.y, true, 'Player 2', 'heavy', settings.weapons); // Dummy
+    // Team 2 (Player 2 or AI)
+    for (let i = 0; i < 3; i++) {
+      const s = this.state.landscape.getSafeSpawn(spawnPoints, 150);
+      spawnPoints.push(s);
+      const wpn = availableWeapons[Math.floor(Math.random() * availableWeapons.length)];
+      const cls = availableClasses[Math.floor(Math.random() * availableClasses.length)];
+      const p = new Worm(s.x, s.y, true, `Enemy ${i+1}`, cls, [wpn]);
+      this.state.addPlayer(p);
+    }
 
-    this.state.addPlayer(p1);
-    this.state.addPlayer(p2);
+    // Set initial active player (first alive worm of team 1)
+    this.state.currentPlayerIndex = 0;
 
     // Set initial wind
     this.state.wind = (Math.random() - 0.5) * 40;
@@ -150,6 +170,27 @@ export class GamePresenter {
 
     if (this.isRunning) {
       this.matchTime += dt;
+
+      // Timer countdown logic
+      if (!this.hasFiredThisTurn) {
+        if (this.turnTimeLeft > 0 && this.turnTimeLeft !== Infinity) {
+          const oldTime = Math.ceil(this.turnTimeLeft);
+          this.turnTimeLeft -= dt;
+          const newTime = Math.ceil(this.turnTimeLeft);
+          
+          // Tick sound at 5 seconds left
+          if (newTime <= 5 && newTime > 0 && oldTime !== newTime) {
+            // Optional: Play tick sound here
+            // this.soundManager.playTick();
+            // We just let UI handle it, but it's good to have it triggered
+          }
+          
+          if (this.turnTimeLeft <= 0) {
+            this.turnTimeLeft = 0;
+            this.nextTurn();
+          }
+        }
+      }
     }
 
     this.processActiveInputs(dt);
@@ -227,23 +268,18 @@ export class GamePresenter {
 
   private checkGameOver() {
     if (!this.isRunning || this.state.players.length === 0) return undefined;
-    
-    // Wait until we have at least 2 players in the state to check game over
-    if (this.state.players.length < 2) return undefined;
-    
-    const alivePlayers = this.state.players.filter(p => p.health > 0);
-    
-    // We only trigger game over if we started with players, and now 1 or 0 remain
-    // We also need to check if the game has actually properly initialized (e.g. players were added)
-    if (this.state.players.length > 1 && alivePlayers.length <= 1) {
-      this.stop();
-      let result: string | null = 'draw';
-      if (alivePlayers.length === 1) {
-        result = alivePlayers[0] === this.state.players[0] ? 'team1' : 'team2';
-      }
-      return result;
+
+    const team1Alive = this.state.getAlivePlayers('team1').length > 0;
+    const team2Alive = this.state.getAlivePlayers('team2').length > 0;
+
+    if (team1Alive && team2Alive) {
+      return undefined; // Game continues
     }
-    return undefined;
+
+    this.stop();
+    if (team1Alive && !team2Alive) return 'team1';
+    if (!team1Alive && team2Alive) return 'team2';
+    return 'draw';
   }
 
   private processActiveInputs(dt: number): void {
@@ -415,13 +451,24 @@ export class GamePresenter {
         break;
       case 'switch':
         if (isActive) {
-          if (payload !== undefined && typeof payload === 'number') {
-            player.setWeaponIndex(payload);
-          } else {
-            player.switchWeapon();
+          if (this.hasFiredThisTurn) break;
+
+          const team = player.team;
+          const teamAliveWorms = this.state.players
+            .map((p, index) => ({ p, index }))
+            .filter(item => item.p.team === team && item.p.health > 0);
+
+          if (teamAliveWorms.length > 1) {
+            // Find next index
+            const currentIndexInTeam = teamAliveWorms.findIndex(item => item.index === this.state.currentPlayerIndex);
+            const nextIndexInTeam = (currentIndexInTeam + 1) % teamAliveWorms.length;
+            this.state.currentPlayerIndex = teamAliveWorms[nextIndexInTeam].index;
+            
+            const newPlayer = this.state.getCurrentPlayer();
+            if (newPlayer) {
+              this.updateMobileWeaponIcon(newPlayer);
+            }
           }
-          
-          this.updateMobileWeaponIcon(player);
         }
         break;
     }
@@ -561,6 +608,38 @@ export class GamePresenter {
         const spriteName = weaponSpriteMap[weapon.id] || 'bazooka.1.png';
         iconEl.src = `/sprites/Weapon Icons/${spriteName}`;
       }
+    }
+  }
+
+  public nextTurn() {
+    const totalPlayers = this.state.players.length;
+    if (totalPlayers === 0) return;
+
+    this.hasFiredThisTurn = false;
+
+    const currentPlayer = this.state.getCurrentPlayer();
+    const currentTeam = currentPlayer ? currentPlayer.team : 'team1';
+    const nextTeam = currentTeam === 'team1' ? 'team2' : 'team1';
+
+    const nextTeamAliveWorms = this.state.players
+      .map((p, index) => ({ p, index }))
+      .filter(item => item.p.team === nextTeam && item.p.health > 0);
+
+    if (nextTeamAliveWorms.length === 0) {
+      return;
+    }
+
+    const nextIndex = nextTeamAliveWorms[0].index;
+    this.state.currentPlayerIndex = nextIndex;
+    
+    const player = this.state.getCurrentPlayer();
+    if (player) {
+      this.updateMobileWeaponIcon(player);
+      player.vx = 0;
+      player.vy = 0;
+      player.isJumping = false;
+      this.turnTimeLeft = this.maxTurnTime;
+      this.state.wind = (Math.random() - 0.5) * 40;
     }
   }
 }

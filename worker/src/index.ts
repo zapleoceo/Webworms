@@ -21,6 +21,18 @@ export default {
     const url = new URL(request.url);
 
     try {
+      await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS Settings (
+          key TEXT PRIMARY KEY,
+          value TEXT
+        )
+      `).run();
+      
+      // Insert default turn time if not exists
+      await env.DB.prepare(`
+        INSERT OR IGNORE INTO Settings (key, value) VALUES ('turn_time', '30')
+      `).run();
+
       let response: Response;
 
       // 1. Healthcheck / Ping
@@ -51,7 +63,16 @@ export default {
         response = await handleUpdateProfile(request, env);
       }
 
-      // 4. Admin Endpoints
+      else if (url.pathname === '/api/auth/password' && request.method === 'PUT') {
+        response = await handleUpdatePassword(request, env);
+      }
+
+      else if (url.pathname === '/api/settings/turn_time' && request.method === 'GET') {
+        response = await getTurnTime(env);
+      }
+      else if (url.pathname === '/api/settings/turn_time' && request.method === 'PUT') {
+        response = await updateTurnTime(request, env);
+      }
       else if (url.pathname === '/api/admin/users' && request.method === 'GET') {
         response = await getAdminUsers(request, env);
       }
@@ -323,17 +344,20 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
 
 async function handleUpdateProfile(request: Request, env: Env): Promise<Response> {
   try {
-    const { userId, username } = await request.json() as { userId: string, username: string };
-    if (!userId || !username || username.trim().length === 0) {
-      return new Response(JSON.stringify({ error: 'Valid username required' }), { status: 400 });
+    const { username } = await request.json() as { username: string };
+    const authHeader = request.headers.get('Authorization');
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     }
 
-    const existing = await env.DB.prepare('SELECT id FROM Users WHERE username = ? AND id != ?').bind(username, userId).first();
-    if (existing) {
-      return new Response(JSON.stringify({ error: 'Username already taken' }), { status: 409 });
+    const sessionId = authHeader.split(' ')[1];
+
+    if (!username) {
+      return new Response(JSON.stringify({ error: 'Username is required' }), { status: 400 });
     }
 
-    await env.DB.prepare('UPDATE Users SET username = ? WHERE id = ?').bind(username, userId).run();
+    await env.DB.prepare('UPDATE Users SET username = ? WHERE id = ?').bind(username, sessionId).run();
 
     return new Response(JSON.stringify({ success: true, username }), { status: 200 });
   } catch (e: any) {
@@ -341,7 +365,52 @@ async function handleUpdateProfile(request: Request, env: Env): Promise<Response
   }
 }
 
-async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
+async function handleUpdatePassword(request: Request, env: Env): Promise<Response> {
+  try {
+    const { password } = await request.json() as { password: string };
+    const authHeader = request.headers.get('Authorization');
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+
+    const sessionId = authHeader.split(' ')[1];
+
+    if (!password) {
+      return new Response(JSON.stringify({ error: 'Password is required' }), { status: 400 });
+    }
+
+    const hashedPassword = await hashPassword(password);
+    await env.DB.prepare('UPDATE Users SET password_hash = ? WHERE id = ?').bind(hashedPassword, sessionId).run();
+
+    return new Response(JSON.stringify({ success: true, message: 'Password updated successfully' }), { status: 200 });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+async function getTurnTime(env: Env): Promise<Response> {
+  try {
+    const res = await env.DB.prepare("SELECT value FROM Settings WHERE key = 'turn_time'").first<{value: string}>();
+    return new Response(JSON.stringify({ turn_time: parseInt(res?.value || '30') }), { status: 200 });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+async function updateTurnTime(request: Request, env: Env): Promise<Response> {
+  if (!await checkAdminAuth(request, env)) {
+    return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+  }
+
+  try {
+    const { turn_time } = await request.json() as { turn_time: number };
+    await env.DB.prepare("UPDATE Settings SET value = ? WHERE key = 'turn_time'").bind(turn_time.toString()).run();
+    return new Response(JSON.stringify({ success: true, turn_time }), { status: 200 });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
   const email = request.headers.get('X-Admin-Email');
   const password = request.headers.get('X-Admin-Password');
   

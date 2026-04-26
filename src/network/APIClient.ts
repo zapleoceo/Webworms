@@ -35,18 +35,38 @@ export class APIClient {
     }
   }
 
-  static async updateProfile(userId: string, newUsername: string) {
+  public static async updateProfile(sessionId: string, username: string): Promise<any> {
+    const res = await fetch(`${this.BASE_URL}/auth/profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${sessionId}`
+      },
+      body: JSON.stringify({ username })
+    });
+    return res.json();
+  }
+
+  public static async getTurnTime(): Promise<number> {
     try {
-      const response = await fetch(`${this.BASE_URL}/auth/profile`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, username: newUsername })
-      });
-      return await response.json();
-    } catch (e: any) {
-      console.error('[APIClient] Error updating profile:', e);
-      return { success: false, error: 'Network error.' };
+      const res = await fetch(`${this.BASE_URL}/settings/turn_time`);
+      const data = await res.json();
+      return data.turn_time || 30;
+    } catch {
+      return 30;
     }
+  }
+
+  public static async updatePassword(sessionId: string, password: string): Promise<any> {
+    const res = await fetch(`${this.BASE_URL}/auth/password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${sessionId}`
+      },
+      body: JSON.stringify({ password })
+    });
+    return res.json();
   }
 
   static async dailyReset(userId: string) {

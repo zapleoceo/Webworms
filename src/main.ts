@@ -101,20 +101,7 @@ document.getElementById('btn-logout')!.addEventListener('click', () => {
   profileScreen.style.display = 'none';
 });
 
-// Toggle Password Visibility
-const togglePasswordVisBtn = document.getElementById('toggle-password-vis');
 const profilePasswordInput = document.getElementById('profile-password') as HTMLInputElement;
-if (togglePasswordVisBtn && profilePasswordInput) {
-  togglePasswordVisBtn.addEventListener('click', () => {
-    if (profilePasswordInput.type === 'password') {
-      profilePasswordInput.type = 'text';
-      togglePasswordVisBtn.innerText = '🙈';
-    } else {
-      profilePasswordInput.type = 'password';
-      togglePasswordVisBtn.innerText = '👁️';
-    }
-  });
-}
 
 document.getElementById('btn-save-profile')!.addEventListener('click', async () => {
   const newName = (document.getElementById('profile-username') as HTMLInputElement).value.trim();
@@ -138,10 +125,12 @@ document.getElementById('btn-save-profile')!.addEventListener('click', async () 
       }
       
       if (newPassword) {
-        // Ideally we would send the new password to the API here
-        // const res = await APIClient.updatePassword(userSessionId, newPassword);
-        // For now, we alert that the API endpoint is needed
-        alert('Password update requested. (API Endpoint needed)');
+        const res = await APIClient.updatePassword(userSessionId, newPassword);
+        if (res.success) {
+          alert('Password updated successfully.');
+        } else {
+          alert(res.error || 'Failed to update password');
+        }
         profilePasswordInput.value = '';
       }
       
@@ -365,16 +354,6 @@ touchActions.forEach(({ id, action }) => {
   async function startGame(mode: 'training' | 'friend' | 'random') {
   currentMode = mode;
 
-  const selectedWeapons = Array.from(document.querySelectorAll('#weapon-selection input[type="checkbox"]:checked'))
-    .map(cb => (cb as HTMLInputElement).value);
-    
-  if (selectedWeapons.length !== 2) {
-    alert('Please select exactly 2 weapons!');
-    return;
-  }
-  
-  const unitClass = (document.querySelector('input[name="unitClass"]:checked') as HTMLInputElement)?.value as 'soldier' | 'heavy' | 'scout' || 'soldier';
-
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
   const mapType = (mapTypeSelect?.value || 'islands') as 'islands' | 'cave' | 'flat';
 
@@ -406,12 +385,14 @@ touchActions.forEach(({ id, action }) => {
   // Re-bind events for the new presenter
   bindPresenterEvents();
 
+  const turnTime = await APIClient.getTurnTime();
+
   window.presenter.startGame({
     width: 1500,
     height: 800,
     mapType: mapType,
-    weapons: selectedWeapons,
-    class: unitClass
+    mode: mode,
+    turnTime: turnTime
   });
   window.presenter.localTeam = mode === 'training' ? null : null; // To be set if multiplayer
   window.presenter.start();
@@ -554,36 +535,58 @@ document.getElementById('btn-share-clip')!.addEventListener('click', () => {
 });
 
 document.getElementById('btn-return-menu')!.addEventListener('click', () => {
-  if (deductInterval) clearInterval(deductInterval);
-  gameOverScreen.classList.remove('active');
-  gameOverScreen.style.display = 'none'; // Fallback
-  menuScreen.classList.add('active');
-  mobileControls.style.display = 'none'; // Ensure mobile controls are hidden on the menu
-  window.presenter.stop();
-
-  if (syncModule) {
-    syncModule.peerConnection?.close();
-    syncModule = null;
-  }
-
-  // Update time UI
-  const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
-  const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
-  timeBalanceEl.innerText = `Time Left: ${hrs}h ${mins}m`;
-  if (userBalanceSeconds <= 0) {
-    timeBalanceEl.innerText += ' (Grace Period)';
-    timeBalanceEl.style.color = '#FF4500';
-  }
-  
-  // Clean URL if we joined via link
-  if (window.location.search) {
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }
+  location.reload();
 });
 
 // Update HUD elements
 const hpLocalEl = document.getElementById('hp-local')!;
 const hpEnemyEl = document.getElementById('hp-enemy')!;
+function updateWormSelectionUI(state: any) {
+  const panel = document.getElementById('worm-selection-panel');
+  if (!panel) return;
+
+  const currentPlayer = state.getCurrentPlayer();
+  const currentTeam = currentPlayer ? currentPlayer.team : 'team1';
+  
+  // Show only if it's local team's turn (or player 1 in local multiplayer)
+  const isMyTurn = window.presenter.localTeam ? currentTeam === window.presenter.localTeam : currentTeam === 'team1';
+  
+  if (!isMyTurn) {
+    panel.style.display = 'none';
+    return;
+  }
+  
+  panel.style.display = 'flex';
+  
+  // Find all worms of the current team
+  const teamWorms = state.players
+    .map((p: any, index: number) => ({ p, index }))
+    .filter((item: any) => item.p.team === currentTeam);
+
+  panel.innerHTML = ''; // Clear existing buttons
+  
+  teamWorms.forEach((item: any, i: number) => {
+    const btn = document.createElement('button');
+    btn.className = `worm-btn ${item.index === state.currentPlayerIndex ? 'active' : ''} ${item.p.health <= 0 ? 'dead' : ''}`;
+    btn.dataset.index = item.index.toString();
+    
+    const spriteUrl = item.p.health > 0 ? '/sprites/Worms/wbrth.png' : '/sprites/Misc/grave1.png';
+    const hpStr = Math.ceil(Math.max(0, item.p.health)).toString();
+    
+    btn.innerHTML = `<img src="${spriteUrl}" alt="W${i+1}"><span class="hp">${hpStr}</span>`;
+    
+    btn.addEventListener('click', () => {
+      if (item.p.health > 0 && !window.presenter.hasFiredThisTurn) {
+        window.presenter.state.currentPlayerIndex = item.index;
+        window.presenter.updateMobileWeaponIcon(item.p);
+        updateWormSelectionUI(window.presenter.state); // Force re-render immediately
+      }
+    });
+    
+    panel.appendChild(btn);
+  });
+}
+
 function bindPresenterEvents() {
   const turnTimer = document.getElementById('turn-timer')!;
   const turnNotification = document.getElementById('turn-notification')!;
@@ -605,17 +608,30 @@ function bindPresenterEvents() {
 
     // Update Turn Timer & Wind
     if (turnTimer) {
-      turnTimer.innerText = state.turnTimeLeft >= 0 ? Math.ceil(state.turnTimeLeft).toString() : '0';
+      const timeStr = state.turnTimeLeft === Infinity ? '∞' : Math.ceil(state.turnTimeLeft).toString();
+      turnTimer.innerText = timeStr;
+      
+      // Visual ticking at 5 seconds
+      if (state.turnTimeLeft <= 5 && state.turnTimeLeft !== Infinity && state.turnTimeLeft > 0) {
+        turnTimer.classList.add('ticking');
+      } else {
+        turnTimer.classList.remove('ticking');
+      }
     }
     if (windIndicatorEl) {
       windIndicatorEl.innerText = `Wind: ${state.wind > 0 ? '→' : state.wind < 0 ? '←' : '0'}`;
     }
 
     // Turn Change Notification
-    const activeTeam = state.currentPlayerIndex === 0 ? 'team1' : 'team2';
+    const activeTeam = state.currentPlayerIndex !== undefined && state.players[state.currentPlayerIndex] 
+      ? state.players[state.currentPlayerIndex].team 
+      : 'team1';
     const isMyTurn = window.presenter.localTeam ? activeTeam === window.presenter.localTeam : activeTeam === 'team1';
 
-    if (state.turnTimeLeft === 30) {
+    // Update Worm Selection UI
+    updateWormSelectionUI(state);
+
+    if (state.turnTimeLeft === window.presenter.maxTurnTime) {
       turnNotification.style.display = 'block';
       turnNotification.innerText = isMyTurn ? 'YOUR TURN!' : 'ENEMY TURN!';
       turnNotification.style.color = isMyTurn ? 'var(--color-primary)' : 'var(--color-danger)';
