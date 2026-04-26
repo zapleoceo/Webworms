@@ -97,6 +97,18 @@ export class APIClient {
       return { success: false, error: 'Network error' };
     }
   }
+  public static async getSession(sessionId: string): Promise<any> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/auth/session`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${sessionId}` }
+      });
+      return await res.json();
+    } catch {
+      return { success: false };
+    }
+  }
+
   public static async updatePassword(sessionId: string, password: string): Promise<any> {
     const res = await fetch(`${this.BASE_URL}/auth/password`, {
       method: 'PUT',

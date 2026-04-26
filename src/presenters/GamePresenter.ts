@@ -86,6 +86,23 @@ export class GamePresenter {
   public localTeam: string | null = null;
 
   public startGame(settings: any) {
+    if (settings.mode !== 'training') {
+      const premiumStr = localStorage.getItem('premiumUntil');
+      let isPremium = false;
+      if (premiumStr) {
+        const premiumUntil = parseInt(premiumStr);
+        if (premiumUntil > Date.now()) {
+          isPremium = true;
+        }
+      }
+
+      if (!isPremium) {
+        let balance = parseInt(localStorage.getItem('playTimeBalance') || '0');
+        balance = Math.max(0, balance - 1);
+        localStorage.setItem('playTimeBalance', balance.toString());
+      }
+    }
+
     this.maxTurnTime = settings.mode === 'training' ? Infinity : (settings.turnTime || 30);
     this.turnTimeLeft = this.maxTurnTime;
     

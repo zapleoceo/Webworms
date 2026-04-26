@@ -42,10 +42,10 @@ export class CanvasRenderer {
       'shotgun': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'rocket': { src: '/sprites/Worms/wmollnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       // Projectiles
-      'proj_bazooka': { src: '/sprites/Misc/missile.png', frameWidth: 32, frameHeight: 32, frameCount: 1 },
-      'proj_minigun': { src: '/sprites/Misc/bullet.png', frameWidth: 16, frameHeight: 16, frameCount: 1 },
-      'proj_shotgun': { src: '/sprites/Misc/bullet.png', frameWidth: 16, frameHeight: 16, frameCount: 1 },
-      'proj_rocket': { src: '/sprites/Misc/missile.png', frameWidth: 32, frameHeight: 32, frameCount: 1 },
+      'proj_bazooka': { src: '/sprites/Weapons/missile.png', frameWidth: 32, frameHeight: 32, frameCount: 1 },
+      'proj_minigun': { src: '/sprites/Weapons/bullet.png', frameWidth: 16, frameHeight: 16, frameCount: 1 },
+      'proj_shotgun': { src: '/sprites/Weapons/bullet.png', frameWidth: 16, frameHeight: 16, frameCount: 1 },
+      'proj_rocket': { src: '/sprites/Weapons/missile.png', frameWidth: 32, frameHeight: 32, frameCount: 1 },
     });
 
     // Load brand assets for airdrops

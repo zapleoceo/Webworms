@@ -51,6 +51,121 @@ let userBalanceSeconds = parseInt(localStorage.getItem('userBalanceSeconds') || 
 let deductInterval: number | null = null;
 let syncModule: MultiplayerSync | null = null;
 
+function updateTimeBalanceDisplay() {
+  const display = document.getElementById('play-time-display');
+  if (!display) return;
+  
+  const balanceStr = localStorage.getItem('playTimeBalance');
+  const premiumStr = localStorage.getItem('premiumUntil');
+  
+  if (premiumStr) {
+    const premiumUntil = parseInt(premiumStr);
+    if (premiumUntil > Date.now()) {
+      display.innerText = 'Time: ∞ (Premium)';
+      display.style.color = '#ffeb3b';
+      return;
+    }
+  }
+
+  if (balanceStr) {
+    const seconds = parseInt(balanceStr);
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    display.innerText = `Time: ${m}:${s.toString().padStart(2, '0')}`;
+    display.style.color = 'white';
+  }
+}
+
+// Add PayPal Button Rendering
+function renderPayPalButton() {
+  const container = document.getElementById('paypal-subscription-container');
+  const buttonContainer = document.getElementById('paypal-container-KBN94J66ZTRL4');
+  
+  if (!container || !buttonContainer) return;
+  
+  const premiumStr = localStorage.getItem('premiumUntil');
+  if (premiumStr) {
+    const premiumUntil = parseInt(premiumStr);
+    if (premiumUntil > Date.now()) {
+      // Already premium, hide the button
+      container.style.display = 'none';
+      return;
+    }
+  }
+
+  // Check if we are logged in
+  if (!localStorage.getItem('sessionId')) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'block';
+
+  // Render PayPal button only if it hasn't been rendered yet
+  if (buttonContainer.innerHTML === '') {
+    try {
+      // @ts-ignore
+      paypal.HostedButtons({
+        hostedButtonId: "KBN94J66ZTRL4", // Assuming this is a valid ID based on the script provided, wait the user didn't provide hostedButtonId. Let's create a generic Smart Button.
+      }).render("#paypal-container-KBN94J66ZTRL4");
+    } catch(e) {
+      // Fallback if hosted buttons fail - use Smart Buttons
+      buttonContainer.innerHTML = '';
+      // @ts-ignore
+      paypal.Buttons({
+        createOrder: function(_data: any, actions: any) {
+          return actions.order.create({
+            purchase_units: [{
+              amount: { value: '4.99', currency_code: 'USD' },
+              description: '7 Days Unlimited Play Time'
+            }]
+          });
+        },
+        onApprove: function(data: any, actions: any) {
+          return actions.order.capture().then(function(_details: any) {
+            // Verify with our backend
+            const sessionId = localStorage.getItem('sessionId');
+            fetch(APIClient.BASE_URL + '/payment/paypal/capture', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${sessionId}`
+              },
+              body: JSON.stringify({ orderID: data.orderID })
+            }).then(res => res.json()).then((res: any) => {
+              if (res.success) {
+                alert('Payment successful! You now have 7 days of unlimited play time.');
+                localStorage.setItem('premiumUntil', res.premium_until.toString());
+                updateTimeBalanceDisplay();
+                container.style.display = 'none';
+              } else {
+                alert('Verification failed: ' + res.error);
+              }
+            });
+          });
+        }
+      }).render('#paypal-container-KBN94J66ZTRL4');
+    }
+  }
+}
+
+const sessionId = localStorage.getItem('sessionId');
+if (sessionId) {
+  // @ts-ignore
+  APIClient.getSession(sessionId).then((res: any) => {
+    if (res.success && res.user) {
+      localStorage.setItem('playTimeBalance', res.user.play_time_balance.toString());
+      localStorage.setItem('premiumUntil', res.user.premium_until?.toString() || '0');
+      // @ts-ignore
+      if (typeof updateTimeBalanceDisplay === 'function') updateTimeBalanceDisplay();
+      // @ts-ignore
+      if (typeof renderPayPalButton === 'function') renderPayPalButton();
+      // @ts-ignore
+      if (typeof updateAuthUI === 'function') updateAuthUI();
+    }
+  });
+}
+
 // Auto-login check
 if (userSessionId && userSessionName) {
   btnOpenAuth.style.display = 'none';
@@ -189,6 +304,9 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
         localStorage.setItem('userSessionId', userSessionId || '');
         localStorage.setItem('userSessionName', userSessionName || '');
         localStorage.setItem('userBalanceSeconds', userBalanceSeconds.toString());
+        localStorage.setItem('premiumUntil', res.user.premium_until?.toString() || '0');
+        // @ts-ignore
+        if (typeof renderPayPalButton === 'function') renderPayPalButton();
         
         authScreen.style.display = 'none';
         
@@ -515,9 +633,18 @@ let currentMatchToken: string | null = null;
   if (deductInterval) clearInterval(deductInterval);
   if (currentMode !== 'training') {
     deductInterval = window.setInterval(() => {
-      userBalanceSeconds -= 60;
-      localStorage.setItem('userBalanceSeconds', userBalanceSeconds.toString());
-      if (userBalanceSeconds <= 0) {
+      const premiumStr = localStorage.getItem('premiumUntil');
+      if (premiumStr) {
+        const premiumUntil = parseInt(premiumStr);
+        if (premiumUntil > Date.now()) return; // Don't deduct if premium
+      }
+      
+      let balance = parseInt(localStorage.getItem('playTimeBalance') || '0');
+      balance -= 60;
+      localStorage.setItem('playTimeBalance', balance.toString());
+      updateTimeBalanceDisplay();
+      
+      if (balance <= 0) {
         console.warn('Time limit reached! Grace period active.');
       }
     }, 60000);

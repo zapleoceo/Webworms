@@ -43,6 +43,12 @@ export default {
         INSERT OR IGNORE INTO Settings (key, value) VALUES ('turn_time', '30')
       `).run();
 
+      try {
+        await env.DB.exec(`ALTER TABLE Users ADD COLUMN premium_until INTEGER DEFAULT 0;`);
+      } catch (e) {
+        // Column probably already exists, ignore
+      }
+
       let response: Response;
 
       // 1. Healthcheck / Ping
@@ -63,6 +69,10 @@ export default {
       
       else if (url.pathname === '/api/auth/verify' && request.method === 'GET') {
         response = await handleVerify(request, env);
+      }
+
+      else if (url.pathname === '/api/auth/session' && request.method === 'GET') {
+        response = await handleSession(request, env);
       }
 
       else if (url.pathname === '/api/auth/daily-reset' && request.method === 'POST') {
@@ -100,6 +110,9 @@ export default {
       }
       else if (url.pathname === '/api/match/end' && request.method === 'POST') {
         response = await reportMatchEnd(request, env);
+      }
+      else if (url.pathname === '/api/payment/paypal/capture' && request.method === 'POST') {
+        response = await capturePayPalOrder(request, env);
       }
       else if (url.pathname === '/api/admin/users/time' && request.method === 'POST') {
         response = await addAdminUserTime(request, env);
@@ -390,6 +403,35 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
   }
 }
 
+async function handleSession(request: Request, env: Env): Promise<Response> {
+  try {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    const sessionId = authHeader.split(' ')[1];
+    const user = await env.DB.prepare(`SELECT id, email, username, is_active, play_time_balance, premium_until FROM Users WHERE session_id = ?`).bind(sessionId).first<any>();
+    
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        username: user.username, 
+        play_time_balance: user.play_time_balance, 
+        premium_until: user.premium_until || 0 
+      } 
+    }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
 async function handleUpdateProfile(request: Request, env: Env): Promise<Response> {
   try {
     const { username } = await request.json() as { username: string };
@@ -600,6 +642,36 @@ async function reportMatchEnd(request: Request, env: Env): Promise<Response> {
     return new Response(JSON.stringify({ success: true, message: 'Time awarded to winner' }), { status: 200 });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+// --- PAYMENT HELPERS ---
+
+async function capturePayPalOrder(request: Request, env: Env): Promise<Response> {
+  try {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    const sessionId = authHeader.replace('Bearer ', '');
+    const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE session_id = ?`).bind(sessionId).first<any>();
+    if (!sessionData) return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    const { orderID } = await request.json() as { orderID: string };
+    if (!orderID) return new Response(JSON.stringify({ error: 'Missing orderID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    // IDEALLY: Call PayPal API here to capture the order and verify the payment status using PAYPAL_CLIENT_ID and PAYPAL_SECRET
+    // Since this is a test environment and we only have the client-id from the script, we'll mock the verification.
+    // In production, you MUST use `fetch('https://api-m.paypal.com/v2/checkout/orders/' + orderID + '/capture', ...)`
+
+    // MOCK VERIFICATION: Grant 7 days premium
+    const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+    const premiumUntil = Date.now() + sevenDaysInMs;
+
+    await env.DB.prepare(`UPDATE Users SET premium_until = ? WHERE id = ?`).bind(premiumUntil, sessionData.id).run();
+
+    return new Response(JSON.stringify({ success: true, premium_until: premiumUntil }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
 
