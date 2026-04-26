@@ -251,8 +251,12 @@ export class GamePresenter {
   }
 
   private checkGameOver() {
+    if (!this.isRunning || this.state.players.length === 0) return undefined;
+    
     const alivePlayers = this.state.players.filter(p => p.health > 0);
-    // If we started with more than 1 player and now only 1 or 0 remain
+    
+    // We only trigger game over if we started with players, and now 1 or 0 remain
+    // We also need to check if the game has actually properly initialized (e.g. players were added)
     if (this.state.players.length > 1 && alivePlayers.length <= 1) {
       this.stop();
       let result: string | null = 'draw';
