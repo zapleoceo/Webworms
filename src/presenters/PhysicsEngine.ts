@@ -73,13 +73,15 @@ export class PhysicsEngine {
     this.updateSnowflakes(state, dt);
   }
 
-  private updateSnowflakes(state: GameState, dt: number): void {
+  private updateSnowflakes(_state: GameState, _dt: number): void {
+    // SNOW DISABLED TEMPORARILY
+    /*
     const flakes = state.snowflakes;
     if (!flakes) return;
-    
+
     // Spawn new flakes randomly
     // Spawn rate relative to map width
-    const spawnRate = state.width * 0.05; 
+    const spawnRate = state.width * 0.05;
     for (let i = 0; i < spawnRate; i++) {
       if (Math.random() < 0.1) {
         flakes.push({
@@ -95,7 +97,7 @@ export class PhysicsEngine {
       const flake = flakes[i];
       // Wind affects horizontal speed
       flake.vx = state.wind * 0.5;
-      
+
       flake.x += flake.vx * dt;
       flake.y += flake.vy * dt;
 
@@ -115,7 +117,7 @@ export class PhysicsEngine {
         while (targetY > 0 && state.landscape.isSolid(px, targetY)) {
           targetY--;
         }
-        
+
         // Become snow (material 5)
         if (targetY > 0) {
           state.landscape.setMaterial(px, targetY, 5);
@@ -123,6 +125,7 @@ export class PhysicsEngine {
         flakes.splice(i, 1);
       }
     }
+    */
   }
 
   private updateProps(state: GameState, dt: number): void {

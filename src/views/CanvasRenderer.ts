@@ -50,7 +50,7 @@ export class CanvasRenderer {
     this.drawLandscape(state);
     this.drawProps(state);
     this.drawProjectiles(state);
-    this.drawSnowflakes(state);
+    // this.drawSnowflakes(state);
     this.drawPlayers(state);
     this.drawExplosions(state);
     
@@ -256,6 +256,7 @@ export class CanvasRenderer {
     this.ctx.drawImage(this.terrainCanvas, 0, 0);
   }
 
+  /*
   private drawSnowflakes(state: GameState): void {
     if (!state.snowflakes) return;
     this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
@@ -263,6 +264,7 @@ export class CanvasRenderer {
       this.ctx.fillRect(Math.floor(flake.x), Math.floor(flake.y), 1, 1);
     }
   }
+  */
 
   private drawPlayers(state: GameState): void {
     for (const player of state.players) {
