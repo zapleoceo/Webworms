@@ -210,25 +210,18 @@ weaponCheckboxes.forEach(cb => {
 let currentMode: 'training' | 'friend' | 'random' = 'training';
 
 
+const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
+const GAME_WIDTH = 1280;
+const GAME_HEIGHT = 720;
+canvas.width = GAME_WIDTH;
+canvas.height = GAME_HEIGHT;
+
 // Set up global game objects
-const presenter = new GamePresenter(window.innerWidth, window.innerHeight);
+const presenter = new GamePresenter(GAME_WIDTH, GAME_HEIGHT);
 window.presenter = presenter;
 
-// Add the canvas and setup renderer
-const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-
 window.addEventListener('resize', () => {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  
-  if (window.presenter) {
-    window.presenter.updateScreenSize(window.innerWidth, window.innerHeight);
-    if (window.presenter.state && window.presenter.state.landscape) {
-      window.presenter.state.landscape.needsUpdate = true;
-    }
-  }
+  // We no longer change internal canvas resolution. CSS object-fit handles responsive scaling.
 });
 
 const renderer = new CanvasRenderer(canvas);
@@ -402,10 +395,11 @@ function handleAim(touch: Touch) {
   const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
   
   function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // Canvas internal size remains fixed for proper physics/camera calculations
+    canvas.width = GAME_WIDTH;
+    canvas.height = GAME_HEIGHT;
     if (window.presenter) {
-      window.presenter.updateScreenSize(window.innerWidth, window.innerHeight);
+      window.presenter.updateScreenSize(GAME_WIDTH, GAME_HEIGHT);
       if (window.presenter.state && window.presenter.state.landscape) {
         window.presenter.state.landscape.needsUpdate = true;
       }

@@ -108,6 +108,16 @@ export class InputHandler {
     }
   }
 
+  private getLocalCoordinates(clientX: number, clientY: number): { x: number, y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  }
+
   private handlePointerDown(event: MouseEvent | TouchEvent): void {
     if ('touches' in event && event.touches.length === 2) {
       // Pinch to zoom start
@@ -119,13 +129,17 @@ export class InputHandler {
     }
 
     this.isDraggingCamera = true;
+    let clientX, clientY;
     if ('touches' in event) {
-      this.lastMouseX = event.touches[0].clientX;
-      this.lastMouseY = event.touches[0].clientY;
+      clientX = event.touches[0].clientX;
+      clientY = event.touches[0].clientY;
     } else {
-      this.lastMouseX = (event as MouseEvent).clientX;
-      this.lastMouseY = (event as MouseEvent).clientY;
+      clientX = (event as MouseEvent).clientX;
+      clientY = (event as MouseEvent).clientY;
     }
+    const local = this.getLocalCoordinates(clientX, clientY);
+    this.lastMouseX = local.x;
+    this.lastMouseY = local.y;
   }
 
   private handlePointerMove(event: MouseEvent | TouchEvent): void {
@@ -135,17 +149,14 @@ export class InputHandler {
         const dy = event.touches[0].clientY - event.touches[1].clientY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const pinchDelta = dist - this.initialPinchDistance;
-        
+
         const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
         const centerY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
-        
-        // Use getBoundingClientRect to get proper local canvas coordinates
-        const rect = this.canvas.getBoundingClientRect();
-        const localX = centerX - rect.left;
-        const localY = centerY - rect.top;
+
+        const local = this.getLocalCoordinates(centerX, centerY);
 
         // Pass negative delta because pinch out = positive delta = zoom in
-        this.presenter.changeZoom(-pinchDelta * 0.05, this.canvas.width, this.canvas.height, localX, localY);
+        this.presenter.changeZoom(-pinchDelta * 0.05, this.canvas.width, this.canvas.height, local.x, local.y);
         this.initialPinchDistance = dist;
       }
       return;
@@ -153,23 +164,24 @@ export class InputHandler {
 
     if (!this.isDraggingCamera) return;
 
-    let currentX, currentY;
+    let clientX, clientY;
     if ('touches' in event) {
-      currentX = event.touches[0].clientX;
-      currentY = event.touches[0].clientY;
+      clientX = event.touches[0].clientX;
+      clientY = event.touches[0].clientY;
     } else {
-      currentX = (event as MouseEvent).clientX;
-      currentY = (event as MouseEvent).clientY;
+      clientX = (event as MouseEvent).clientX;
+      clientY = (event as MouseEvent).clientY;
     }
 
-    const dx = currentX - this.lastMouseX;
-    const dy = currentY - this.lastMouseY;
+    const local = this.getLocalCoordinates(clientX, clientY);
+    const dx = local.x - this.lastMouseX;
+    const dy = local.y - this.lastMouseY;
 
-    // Move camera based on physical pixels (you might want to scale this if canvas is scaled)
+    // Move camera based on scaled pixels
     this.presenter.moveCamera(dx, dy, this.canvas.width, this.canvas.height);
 
-    this.lastMouseX = currentX;
-    this.lastMouseY = currentY;
+    this.lastMouseX = local.x;
+    this.lastMouseY = local.y;
   }
 
   private handlePointerUp(event: MouseEvent | TouchEvent): void {
@@ -182,12 +194,10 @@ export class InputHandler {
   private handleWheel(event: WheelEvent): void {
     event.preventDefault();
     const zoomDelta = event.deltaY > 0 ? 0.9 : 1.1;
-    
-    const rect = this.canvas.getBoundingClientRect();
-    const localX = event.clientX - rect.left;
-    const localY = event.clientY - rect.top;
 
-    this.presenter.changeZoom(zoomDelta, localX, localY, this.canvas.width, this.canvas.height);
+    const local = this.getLocalCoordinates(event.clientX, event.clientY);
+
+    this.presenter.changeZoom(zoomDelta, local.x, local.y, this.canvas.width, this.canvas.height);
   }
 }
 
