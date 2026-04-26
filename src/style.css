@@ -45,11 +45,20 @@ body {
   display: none;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%); /* Solid background for each screen */
   z-index: 10;
-  padding: 20px;
+  padding: 40px 20px;
   box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 769px) {
+  .screen {
+    justify-content: center;
+    padding: 20px;
+  }
 }
 
 .screen.active {
@@ -246,6 +255,7 @@ h1.game-title {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  overflow: hidden;
 }
 #game-screen.active {
   display: flex;
@@ -256,6 +266,7 @@ h1.game-title {
   flex-direction: column;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   align-items: center;
   justify-content: center;
 }

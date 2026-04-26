@@ -25,7 +25,7 @@ if (window.location.pathname === '/admin') {
   <div id="game-wrapper">
     <div id="auth-screen" class="screen">
       <div class="logo-container">
-        <img src="/logo.png?v=2" alt="Worms Logo" class="game-logo-img" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 style=\\'color:white\\'>Worms Logo</h1>')">
+        <img src="/logo.png?v=3" alt="Worms Logo" class="game-logo-img" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 style=\\'color:white\\'>Worms Logo</h1>')">
       </div>
       <h2 class="retro-text blink" id="auth-title" style="margin-bottom: 30px;">LOGIN</h2>
       <input type="email" id="auth-email" class="retro-input" placeholder="Email">
@@ -56,7 +56,7 @@ if (window.location.pathname === '/admin') {
         <button class="retro-btn" id="btn-user-profile" style="display: none; font-size: 0.8rem; padding: 5px 10px; background-color: #555; color: #fff; border-color: #fff;"></button>
       </div>
       <div class="logo-container">
-        <img src="/logo.png?v=2" alt="Worms Logo" class="game-logo-img" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 style=\\'color:white\\'>Worms Logo</h1>')">
+        <img src="/logo.png?v=3" alt="Worms Logo" class="game-logo-img" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 style=\\'color:white\\'>Worms Logo</h1>')">
       </div>
       <div id="time-balance" class="retro-text" style="color: #32CD32; margin-bottom: 20px; font-size: 1.2rem;">Time Left: 1h 0m</div>
       <div class="weapon-selection">

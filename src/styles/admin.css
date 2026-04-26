@@ -9,6 +9,8 @@
   font-family: 'Courier New', Courier, monospace;
   padding: 20px;
   box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .admin-auth-card {
@@ -154,10 +156,12 @@
 @media (max-width: 768px) {
   .admin-container {
     padding: 0;
+    align-items: flex-start;
   }
   .admin-dashboard-layout {
     flex-direction: column;
-    height: 100%;
+    height: auto;
+    min-height: 100%;
     border-radius: 0;
   }
   
@@ -182,7 +186,8 @@
 
   .admin-main-content {
     padding: 15px;
-    height: calc(100vh - 100px); /* rough estimate of sidebar height */
+    height: auto;
+    flex: 1;
   }
 }
 

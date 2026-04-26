@@ -19,7 +19,7 @@ export class GamePresenter {
   private matchTime: number = 0;
   private nextAirdropTime: number = 60;
   private currentAirdropBrand: string = '';
-  private brandAssets = ['/brand_apple.svg?v=2', '/brand_windows.svg?v=2', '/brand_android.svg?v=2'];
+  private brandAssets = ['/brand_apple.svg?v=3', '/brand_windows.svg?v=3', '/brand_android.svg?v=3'];
   
   // Camera delay after explosion
   private cameraDelayTimer: number = 0;
