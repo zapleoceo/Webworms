@@ -2,10 +2,11 @@ import { GameState } from '../models/GameState';
 import { Projectile } from '../models/Projectile';
 import { Explosion } from '../models/Explosion';
 import { MathUtils } from '../utils/MathUtils';
+import { AudioManager } from '../utils/AudioManager';
 
 export class PhysicsEngine {
-  public gravity: number = 300; // pixels per second squared
-  public safeFallSpeed: number = 280; // Safe landing speed
+  public gravity: number = 150; // pixels per second squared (Slowed down for realism)
+  public safeFallSpeed: number = 200; // Safe landing speed
   public fallDamageMultiplier: number = 0.15; // Damage per extra speed unit
   public onExplode?: (x: number, y: number) => void;
   public onJump?: () => void;
@@ -130,89 +131,53 @@ export class PhysicsEngine {
 
   private updateProps(state: GameState, dt: number): void {
     for (const prop of state.props) {
-      if (prop.isSettled) {
-        // Quick check to see if ground under it disappeared
-        const bottomY = Math.floor(prop.y + prop.radius + 1);
-        if (!state.landscape.isSolid(Math.floor(prop.x), bottomY)) {
-          prop.isSettled = false;
-        } else {
-          continue;
-        }
-      }
-
-      const oldX = prop.x;
-      const oldY = prop.y;
+      if (prop.health <= 0) continue;
 
       prop.vy += this.gravity * dt;
       
-      // Apply wind if not settled (in the air)
-      if (!prop.isSettled && state.wind) {
-        prop.vx += state.wind * dt * (0.8 / prop.mass);
-      }
-
       prop.x += prop.vx * dt;
       prop.y += prop.vy * dt;
-      prop.angle += prop.angularVelocity * dt;
 
+      // Ground collision
       const cx = Math.floor(prop.x);
       const bottomY = Math.floor(prop.y + prop.radius);
 
-      // Map bounds
-      if (prop.x < prop.radius + 30) { prop.x = prop.radius + 30; prop.vx *= -prop.bounce; }
-      if (prop.x > state.width - prop.radius - 30) { prop.x = state.width - prop.radius - 30; prop.vx *= -prop.bounce; }
-      if (prop.y > state.height - 30) { prop.isSettled = true; continue; }
-
-      // Terrain collision
       if (state.landscape.isSolid(cx, bottomY)) {
-        // Push out
-        let y = bottomY;
-        while (state.landscape.isSolid(cx, y) && y > 0) {
-          y--;
-        }
-        
-        const newY = y - prop.radius;
-        
-        // SLOPE CHECK: If the prop is forced UP by the ground (y < oldY), it hit a slope/wall
-        const dy = oldY - newY;
-        if (dy > 1 && Math.abs(prop.vx) > 5) {
-          // Hitting a slope drains horizontal velocity significantly based on slope steepness
-          prop.vx *= 0.5; // Heavy friction for rolling uphill
-          
-          if (dy > 3) {
-            // Too steep! Bounce back or stop instead of climbing
-            prop.vx *= -0.2; // Bounce off the wall slightly
-            prop.x = oldX; // Revert horizontal movement
-          }
-        }
-        
-        prop.y = newY;
-
-        // Heavy impact check for props
-        if (prop.vy > 300) {
-          if (this.onHeavyImpact) this.onHeavyImpact();
-          // Prop takes fall damage if hitting ground hard
-          prop.takeDamage((Math.abs(prop.vy) - 200) * 0.1);
-        }
-
-        // Stop spinning when hitting ground
-        prop.angularVelocity *= 0.5;
-        if (Math.abs(prop.angularVelocity) < 0.1) prop.angularVelocity = 0;
-
-        // Bounce
-        if (prop.vy > 20) {
-          prop.vy = -prop.vy * prop.bounce;
-          prop.vx *= prop.friction;
-          prop.angularVelocity *= prop.friction;
+        // Hit the ground
+        prop.y = bottomY - prop.radius;
+        // Bounce or stop
+        if (prop.vy > 200) {
+          prop.vy = -prop.vy * 0.3; // bounce
+          prop.vx *= 0.8; // friction
+          AudioManager.playLand(); // Impact sound
         } else {
-          // Settle if slow
-          if (Math.abs(prop.vy) < 15 && Math.abs(prop.vx) < 5) {
-            prop.vy = 0;
-            prop.vx = 0;
-            prop.angularVelocity = 0;
-            prop.isSettled = true;
-          }
+          prop.vy = 0;
+          prop.vx *= 0.5; // heavy friction
         }
+
+        // Calculate slope to rotate
+        const leftSolid = state.landscape.isSolid(cx - 5, bottomY);
+        const rightSolid = state.landscape.isSolid(cx + 5, bottomY);
+        
+        if (leftSolid && !rightSolid) {
+          prop.rotation += 0.05;
+          prop.vx += 10; // roll right
+        } else if (!leftSolid && rightSolid) {
+          prop.rotation -= 0.05;
+          prop.vx -= 10; // roll left
+        } else {
+          // Flatten out slightly if on flat ground
+          prop.rotation *= 0.9;
+        }
+      } else {
+        // Free falling rotation
+        prop.rotation += prop.vx * dt * 0.01;
       }
+
+      // Bounds
+      if (prop.x < 30) { prop.x = 30; prop.vx *= -0.5; }
+      if (prop.x > state.width - 30) { prop.x = state.width - 30; prop.vx *= -0.5; }
+      if (prop.y > state.height) { prop.health = 0; }
     }
   }
 
@@ -398,6 +363,7 @@ export class PhysicsEngine {
           const fallDamage = (worm.vy - 200) * 0.2;
           worm.takeDamage(fallDamage);
           if (this.onHurt) this.onHurt();
+          AudioManager.playDamage(); // Sound
         }
 
       // Fall Damage Calculation (check speed BEFORE resetting it)
@@ -551,6 +517,7 @@ export class PhysicsEngine {
 
     // Add visual explosion effect
     state.explosions.push(new Explosion(proj.x, proj.y, finalRadius));
+    AudioManager.playExplosion();
 
     // Trigger sound
     if (this.onExplode) {
@@ -584,18 +551,15 @@ export class PhysicsEngine {
 
     for (const prop of state.props) {
       const dist = MathUtils.distance(proj.x, proj.y, prop.x, prop.y);
-      if (dist <= proj.explosionRadius + prop.radius) {
-        const damageRatio = 1 - (dist / (proj.explosionRadius + prop.radius));
-        prop.takeDamage(proj.damage * damageRatio); // Prop takes explosive damage
-
-        const dx = prop.x - proj.x;
-        const dy = prop.y - proj.y;
-        const norm = Math.sqrt(dx*dx + dy*dy) || 1;
-        
-        // Props are heavier, they get knocked back less (e.g., 50 instead of 150/300)
-        prop.vx += (dx / norm) * (50 / prop.mass) * damageRatio;
-        prop.vy -= (50 / prop.mass) * damageRatio;
-        prop.angularVelocity += (Math.random() - 0.5) * 10 * damageRatio;
+      if (dist < finalRadius * 1.5) { // Prop damage radius is slightly larger
+        const damage = Math.max(10, 100 * (1 - dist / (finalRadius * 1.5)));
+        prop.health -= damage;
+        // Knockback prop
+        const angle = Math.atan2(prop.y - proj.y, prop.x - proj.x);
+        const knockback = (proj as any).knockback || proj.damage || 50;
+        prop.vx += Math.cos(angle) * knockback * 2;
+        prop.vy += Math.sin(angle) * knockback * 2;
+        prop.rotation += (Math.random() - 0.5) * 5;
         prop.isSettled = false;
       }
     }

@@ -4,6 +4,7 @@ import { Worm } from '../models/Worm';
 import { Projectile } from '../models/Projectile';
 import { SoundManager } from '../utils/SoundManager';
 import { PhysicsProp } from '../models/PhysicsProp';
+import { AudioManager } from '../utils/AudioManager';
 
 export class GamePresenter {
   public state: GameState;
@@ -122,6 +123,7 @@ export class GamePresenter {
       const s = this.state.landscape.getSafeSpawn(spawnPoints, 100);
       spawnPoints.push(s);
       const prop = new PhysicsProp(s.x, s.y - 50, i % 2 === 0 ? 'rock' : 'crate');
+      prop.radius = 30; // 2x larger
       this.state.props.push(prop);
     }
   }
@@ -198,6 +200,7 @@ export class GamePresenter {
     // Drop a brand from the sky at a random X coordinate
     const x = 50 + Math.random() * (this.state.width - 100);
     const brandProp = new PhysicsProp(x, 0, 'brand', this.currentAirdropBrand);
+    brandProp.radius = 30; // Spawn logo/crate 2x larger
     this.state.props.push(brandProp);
   }
 
@@ -279,10 +282,10 @@ export class GamePresenter {
 
     const aimSpeed = 90; // degrees per second
     const chargeSpeed = 100; // max power per second
-    // Halved speeds as per user request
-    const moveForce = 400 * player.speedMultiplier; // pixels per second squared (acceleration)
-    const maxSpeed = 50 * player.speedMultiplier; // pixels per second
-    const airControl = 0.5; // 50% control while in the air
+    // Halved speeds as per user request + floaty worms physics
+    const moveForce = 200 * player.speedMultiplier; // pixels per second squared (acceleration)
+    const maxSpeed = 35 * player.speedMultiplier; // pixels per second
+    const airControl = 0.3; // 30% control while in the air
 
     if (this.activeInputs.has('up')) {
       player.updateAim(aimSpeed * dt); // Rotate counter-clockwise (up)
@@ -298,6 +301,8 @@ export class GamePresenter {
         if (player.aimPower >= 100) {
           this.fireWeapon(player);
         }
+        // Only play charge sound occasionally so it's not a crazy mess of AudioContext calls
+        if (Math.random() < 0.1) AudioManager.playCharge(player.aimPower);
       } else {
         // Prevent charging while reloading
         player.aimPower = 0;
@@ -383,10 +388,19 @@ export class GamePresenter {
     switch (action) {
       case 'jump':
         if (isActive && !player.isJumping) {
-          player.vy = player.jumpForce;
           player.isJumping = true;
+          // Normal jump or Backflip (Slower, floatier)
+          if (this.activeInputs.has('left') || this.activeInputs.has('right')) {
+            player.vy = -180; // High jump
+          } else {
+            // Backflip
+            player.vy = -220;
+            player.vx = player.facingRight ? -80 : 80;
+            player.facingRight = !player.facingRight; // Flip mid-air
+          }
           // Play jump sound
           if (this.physics.onJump) this.physics.onJump();
+          AudioManager.playJump();
         }
         break;
       case 'fire':
@@ -481,6 +495,8 @@ export class GamePresenter {
       return;
     }
     
+    AudioManager.playShoot();
+
     // Apply cooldown (Dynamic: based on shot power, min 20% of base cooldown)
     const powerRatio = Math.max(0.2, power / 100);
     const actualCooldown = weapon.cooldown * powerRatio;
@@ -489,9 +505,10 @@ export class GamePresenter {
 
     // Calculate vector based on angle and power
     const baseRad = player.aimAngle * (Math.PI / 180);
-    let speed = power * 6; // Adjust scalar for better arcs
-    if (weapon.id === 'laser') {
-      speed = 1500; // Laser goes super fast and straight
+    let speed = power * 3; // Adjust scalar for slower, realistic floaty arcs
+    
+    if (weapon.id === 'blaster') {
+      speed = 750; // Laser goes fast but not infinite
     }
     
     // Spawn completely outside the worm's collision radius
