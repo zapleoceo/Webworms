@@ -182,9 +182,13 @@ export class AdminPanel {
 
   private renderUsersTable(users: any[]) {
     const tbody = document.getElementById('users-list-body')!;
-    tbody.innerHTML = users.map((u: any) => `
+    tbody.innerHTML = users.map((u: any) => {
+      // Supabase uses 'id' usually, but might be '_id' or something else depending on the backend implementation.
+      // Let's fallback gracefully if id is missing or named differently.
+      const userId = u.id || u._id || 'unknown';
+      return `
       <tr>
-        <td class="id-col" title="${u.id}">${u.id.substring(0, 8)}...</td>
+        <td class="id-col" title="${userId}">${String(userId).substring(0, 8)}...</td>
         <td>${u.email}</td>
         <td>${u.username}</td>
         <td>
@@ -192,20 +196,21 @@ export class AdminPanel {
             ${u.is_active ? 'Verified' : 'Pending'}
           </span>
         </td>
-        <td>${Math.floor(u.play_time_balance / 60)}m</td>
+        <td>${Math.floor((u.play_time_balance || 0) / 60)}m</td>
         <td>
           <label class="cb-container">
-            <input type="checkbox" class="access-cb" data-id="${u.id}" ${u.access_allowed ? 'checked' : ''}> Allow
+            <input type="checkbox" class="access-cb" data-id="${userId}" ${u.access_allowed ? 'checked' : ''}> Allow
           </label>
           <label class="cb-container">
-            <input type="checkbox" class="admin-cb" data-id="${u.id}" ${u.is_admin ? 'checked' : ''}> Admin
+            <input type="checkbox" class="admin-cb" data-id="${userId}" ${u.is_admin ? 'checked' : ''}> Admin
           </label>
         </td>
         <td>
-          <button class="save-user-btn secondary-btn small-btn" data-id="${u.id}">Save</button>
+          <button class="save-user-btn secondary-btn small-btn" data-id="${userId}">Save</button>
+          <button class="delete-user-btn danger-btn small-btn" data-id="${userId}" style="margin-left: 5px;">Delete</button>
         </td>
       </tr>
-    `).join('');
+    `}).join('');
 
     // Bind save buttons
     document.querySelectorAll('.save-user-btn').forEach(btn => {
