@@ -221,7 +221,7 @@ async function sendResendEmail(env: Env, to: string, token: string, host: string
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: 'WebWorms <noreply@send.zapleo.com>', // Verified domain
+        from: 'WebWorms <noreply@zapleo.com>', // Verified domain
         to: [to],
         subject: 'Verify your WebWorms account',
         html: htmlContent
