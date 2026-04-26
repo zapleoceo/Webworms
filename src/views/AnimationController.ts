@@ -69,8 +69,14 @@ export class AnimationController {
   ) {
     const canvas = this.sprites.get(animKey);
     const conf = this.configs.get(animKey);
-    
-    if (!canvas || !conf) return;
+
+    if (!canvas || !conf) {
+      // If sprite is not fully loaded yet or invalid, try to fall back to 'idle'
+      if (animKey !== 'idle') {
+        this.drawFrame(ctx, 'idle', 0, x, y, scale, flipX, offsetY);
+      }
+      return;
+    }
 
     // Clamp frame
     const safeFrame = Math.max(0, Math.min(frameIndex, conf.frameCount - 1));

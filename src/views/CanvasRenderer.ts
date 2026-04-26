@@ -39,7 +39,7 @@ export class CanvasRenderer {
       // Weapons
       'bazooka': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'minigun': { src: '/sprites/Worms/wminlnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // using minigun
-      'triple': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // shotgun
+      'shotgun': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // shotgun
       'rocket': { src: '/sprites/Worms/wmollnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // mole or something
     });
 
@@ -303,7 +303,7 @@ export class CanvasRenderer {
         const weaponMap: any = {
           'bazooka': 'bazooka',
           'minigun': 'minigun',
-          'triple': 'triple',
+          'triple': 'shotgun',
           'rocket': 'rocket'
         };
         animKey = weaponMap[weapon.id] || 'bazooka';
