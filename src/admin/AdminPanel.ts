@@ -6,6 +6,18 @@ export class AdminPanel {
   constructor() {
     this.renderInitialUI();
     this.bindEvents();
+    this.checkSavedSession();
+  }
+
+  private checkSavedSession() {
+    const savedEmail = localStorage.getItem('adminEmail');
+    const savedPass = localStorage.getItem('adminPassword');
+    
+    if (savedEmail && savedPass) {
+      (document.getElementById('admin-email') as HTMLInputElement).value = savedEmail;
+      (document.getElementById('admin-password') as HTMLInputElement).value = savedPass;
+      this.handleLogin();
+    }
   }
 
   private renderInitialUI() {
@@ -112,14 +124,21 @@ export class AdminPanel {
     // Attempt to load stats/users to verify credentials
     this.loadUsersData().then(success => {
       if (success) {
+        localStorage.setItem('adminEmail', email);
+        localStorage.setItem('adminPassword', pass);
         document.getElementById('admin-auth')!.style.display = 'none';
         document.getElementById('admin-dashboard')!.style.display = 'flex';
+      } else {
+        localStorage.removeItem('adminEmail');
+        localStorage.removeItem('adminPassword');
       }
     });
   }
 
   private handleLogout() {
     this.adminHeaders = new Headers();
+    localStorage.removeItem('adminEmail');
+    localStorage.removeItem('adminPassword');
     document.getElementById('admin-dashboard')!.style.display = 'none';
     document.getElementById('admin-auth')!.style.display = 'block';
     (document.getElementById('admin-password') as HTMLInputElement).value = '';

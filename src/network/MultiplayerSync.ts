@@ -7,7 +7,7 @@ import { APIClient } from './APIClient';
 export class MultiplayerSync {
   private roomId: string | null = null;
   private isHost: boolean = false;
-  private peerConnection: RTCPeerConnection | null = null;
+  public peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
   
   // Polling intervals

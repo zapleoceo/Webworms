@@ -154,15 +154,26 @@ const winnerText = document.getElementById('winner-text')!;
 const mobileControls = document.getElementById('mobile-controls')!;
 const timeBalanceEl = document.getElementById('time-balance')!;
 
-let userBalanceSeconds = 3600;
-let userSessionId: string | null = null;
-let userSessionName: string | null = null;
+let userSessionId: string | null = localStorage.getItem('userSessionId');
+let userSessionName: string | null = localStorage.getItem('userSessionName');
+let userBalanceSeconds = parseInt(localStorage.getItem('userBalanceSeconds') || '3600');
 let deductInterval: number | null = null;
 let syncModule: MultiplayerSync | null = null;
 
 const profileScreen = document.getElementById('profile-screen')!;
 const btnOpenAuth = document.getElementById('btn-open-auth')!;
 const btnUserProfile = document.getElementById('btn-user-profile') as HTMLButtonElement;
+
+// Auto-login check
+if (userSessionId && userSessionName) {
+  btnOpenAuth.style.display = 'none';
+  btnUserProfile.style.display = 'block';
+  btnUserProfile.innerText = userSessionName;
+  
+  const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
+  const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
+  timeBalanceEl.innerText = `Time Left: ${hrs}h ${mins}m`;
+}
 
 btnOpenAuth.addEventListener('click', () => {
   menuScreen.classList.remove('active');
@@ -189,6 +200,9 @@ document.getElementById('btn-logout')!.addEventListener('click', () => {
   userSessionId = null;
   userSessionName = null;
   userBalanceSeconds = 0;
+  localStorage.removeItem('userSessionId');
+  localStorage.removeItem('userSessionName');
+  localStorage.removeItem('userBalanceSeconds');
   btnUserProfile.style.display = 'none';
   btnOpenAuth.style.display = 'block';
   profileScreen.style.display = 'none';
@@ -200,12 +214,13 @@ document.getElementById('btn-save-profile')!.addEventListener('click', async () 
   if (!newName) return;
   
   if (userSessionId) {
-    const res = await APIClient.updateProfile(userSessionId, newName);
-    if (res.success) {
-      userSessionName = res.username;
-      btnUserProfile.innerText = userSessionName || 'USER';
-      profileScreen.style.display = 'none';
-    } else {
+      const res = await APIClient.updateProfile(userSessionId, newName);
+      if (res.success) {
+        userSessionName = res.username;
+        localStorage.setItem('userSessionName', userSessionName || '');
+        btnUserProfile.innerText = userSessionName || 'USER';
+        profileScreen.style.display = 'none';
+      } else {
       alert(res.error || 'Failed to update username');
     }
   }
@@ -262,8 +277,13 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
         // Login success
         userSessionId = res.user.id;
         userSessionName = res.user.username;
-        console.log('Session ID:', userSessionId);
-        userBalanceSeconds = res.user.play_time_balance || 3600; 
+        userBalanceSeconds = res.user.play_time_balance || 3600;
+        
+        localStorage.setItem('userSessionId', userSessionId || '');
+        localStorage.setItem('userSessionName', userSessionName || '');
+        localStorage.setItem('userBalanceSeconds', userBalanceSeconds.toString());
+        
+        console.log('Session ID:', userSessionId); 
         
         authScreen.classList.remove('active');
         menuScreen.classList.add('active');
@@ -496,6 +516,7 @@ canvas.addEventListener('touchmove', (e) => {
   if (currentMode !== 'training') {
     deductInterval = window.setInterval(() => {
       userBalanceSeconds -= 60;
+      localStorage.setItem('userBalanceSeconds', userBalanceSeconds.toString());
       if (userBalanceSeconds <= 0) {
         console.warn('Time limit reached! Grace period active.');
       }
@@ -511,11 +532,16 @@ document.getElementById('btn-mode-random')!.addEventListener('click', () => star
 
 document.getElementById('btn-return-menu')!.addEventListener('click', () => {
     if (deductInterval) clearInterval(deductInterval);
-  
+
   gameOverScreen.classList.remove('active');
   menuScreen.classList.add('active');
   mobileControls.style.display = 'none'; // Ensure mobile controls are hidden on the menu
-  
+
+  if (syncModule) {
+    syncModule.peerConnection?.close();
+    syncModule = null;
+  }
+
   // Update time UI
   const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
   const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
@@ -523,6 +549,11 @@ document.getElementById('btn-return-menu')!.addEventListener('click', () => {
   if (userBalanceSeconds <= 0) {
     timeBalanceEl.innerText += ' (Grace Period)';
     timeBalanceEl.style.color = '#FF4500';
+  }
+  
+  // Clean URL if we joined via link
+  if (window.location.search) {
+    window.history.replaceState({}, document.title, window.location.pathname);
   }
 });
 
