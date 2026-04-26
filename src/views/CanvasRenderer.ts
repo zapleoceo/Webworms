@@ -1,10 +1,12 @@
 import { GameState } from '../models/GameState';
+import { AnimationController } from './AnimationController';
 
 export class CanvasRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private terrainCanvas: HTMLCanvasElement;
   private terrainCtx: CanvasRenderingContext2D;
+  private animCtrl: AnimationController;
   
   private wormImages: { [key: string]: HTMLImageElement } = {};
 
@@ -27,16 +29,18 @@ export class CanvasRenderer {
     if (!terrainContext) throw new Error('Offscreen canvas not supported');
     this.terrainCtx = terrainContext;
 
-    // Load sprite images from local assets (cache busted)
-    this.wormImages['soldier'] = this.loadImg('/worm_soldier.png?v=4');
-    this.wormImages['heavy'] = this.loadImg('/worm_heavy.png?v=4');
-    this.wormImages['scout'] = this.loadImg('/worm_scout.png?v=4');
-    
-    // Load weapon assets
-    this.wormImages['weapon_bazooka'] = this.loadImg('/weapon_bazooka.png?v=1');
-    this.wormImages['weapon_minigun'] = this.loadImg('/weapon_minigun.png?v=1');
-    this.wormImages['weapon_triple'] = this.loadImg('/weapon_triple.png?v=1');
-    this.wormImages['weapon_rocket'] = this.loadImg('/weapon_rocket.png?v=1');
+    // Init Animations
+    this.animCtrl = new AnimationController({
+      'walk': { src: '/sprites/Worms/wwalk.png', frameWidth: 60, frameHeight: 60, frameCount: 15 },
+      'jump': { src: '/sprites/Worms/wjump.png', frameWidth: 60, frameHeight: 60, frameCount: 10 },
+      'backflip': { src: '/sprites/Worms/wkamjmp.png', frameWidth: 60, frameHeight: 60, frameCount: 10 }, // approximation
+      'idle': { src: '/sprites/Worms/wbrth.png', frameWidth: 60, frameHeight: 60, frameCount: 15 }, // breathing
+      // Weapons
+      'bazooka': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'minigun': { src: '/sprites/Worms/wminlnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // using minigun
+      'triple': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // shotgun
+      'rocket': { src: '/sprites/Worms/wmollnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // mole or something
+    });
 
     // Load brand assets for airdrops
     this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg?v=3');
@@ -284,134 +288,51 @@ export class CanvasRenderer {
 
       // Advanced Canvas Animation for Worms
       const isMoving = Math.abs(player.vx) > 5 && player.health > 0 && !player.isJumping;
+      const isActive = player === state.getCurrentPlayer();
+      const weapon = player.getCurrentWeapon();
 
-      // 1. Walk cycle squish (breathing/walking)
-      let squishY = 0;
-      let squishX = 0;
-      let rotation = 0;
+      // Determine animation state
+      let animKey = 'idle';
+      let frameIndex = 0;
+      
+      if (player.isJumping) {
+        animKey = 'jump';
+        frameIndex = Math.floor((Date.now() / 100) % this.animCtrl.getAnimLength(animKey));
+      } else if (isMoving) {
+        animKey = 'walk';
+        frameIndex = Math.floor((Date.now() / 50) % this.animCtrl.getAnimLength(animKey));
+      } else if (isActive && weapon) {
+        // Aiming state
+        const weaponMap: any = {
+          'bazooka': 'bazooka',
+          'minigun': 'minigun',
+          'triple': 'triple',
+          'rocket': 'rocket'
+        };
+        animKey = weaponMap[weapon.id] || 'bazooka';
 
-      if (isMoving) {
-        // Walking wobble
-        squishY = Math.sin(player.walkCycle) * 3; // Vertical bounce
-        rotation = Math.sin(player.walkCycle) * 0.2; // Slight rocking
+        // Calculate aim frame (0 to 31)
+        // aimAngle is -90 (up) to 90 (down)
+        // Let's assume frame 0 is Straight UP (-90), and frame 31 is Straight DOWN (+90).
+        // Total range is 180 degrees.
+        const normalizedAngle = player.aimAngle + 90; // 0 to 180
+        frameIndex = Math.floor((normalizedAngle / 180) * 31);
+        frameIndex = Math.max(0, Math.min(31, frameIndex));
       } else {
         // Idle breathing
-        squishY = Math.sin(Date.now() / 300) * 1.5;
-      }
-      
-      squishX = -squishY * 0.5; // Conservation of volume
-
-      // Jump stretch
-      if (player.isJumping) {
-        squishY = 5;
-        squishX = -3;
+        animKey = 'idle';
+        frameIndex = Math.floor((Date.now() / 100) % this.animCtrl.getAnimLength(animKey));
       }
 
-      const yOffset = -squishY / 2; // keep bottom grounded
-
-      const img = this.wormImages[player.unitClass];
-      const hasImage = img && img.complete && img.naturalWidth !== 0;
-
-      if (hasImage) {
-        // Draw the original PNG Image with advanced transformations
-        this.ctx.save();
-
-        // Base flip for direction
-        if (!player.facingRight) {
-          this.ctx.scale(-1, 1);
-        }
-
-        // Apply walking rotation wobble
-        this.ctx.rotate(rotation);
-
-        // Scale down the large PNGs to fit the worm hit-box (typically 20x20 or so)
-        // Original PNGs might be 500x500. We scale them down to roughly 30-40px.
-        const imgScale = (player.width * 2.5) / img.width;
-        
-        // Apply squish scale
-        this.ctx.scale(1 + (squishX / player.width), 1 + (squishY / player.height));
-
-        const w = img.width * imgScale;
-        const h = img.height * imgScale;
-        
-        // Draw centered and grounded
-        this.ctx.drawImage(img, -w/2, -h + player.height/2, w, h);
-
-        // Draw weapon sprite if not jumping
-        if (!player.isJumping) {
-          const weapon = player.getCurrentWeapon();
-          if (weapon) {
-            const weaponImg = this.wormImages[`weapon_${weapon.id}`];
-            if (weaponImg && weaponImg.complete && weaponImg.naturalWidth !== 0) {
-              this.ctx.save();
-              
-              // Shift weapon slightly down and forward
-              this.ctx.translate(10, player.height/2 - 15);
-
-              // Rotate weapon based on aim angle. If not facing right, mirror the angle
-              let drawAngle = player.aimAngle;
-              if (!player.facingRight) {
-                // When canvas is scaled(-1, 1), rotations are also flipped!
-                // To point "up" when facing left, we need a negative rotation,
-                // but since the context is already flipped, we can just use the same aimAngle.
-                // It naturally points "up" relative to the flipped coordinate system.
-              }
-              this.ctx.rotate(drawAngle * Math.PI / 180);
-              
-              // Scale down weapon
-              const wScale = 15 / weaponImg.width;
-              const ww = weaponImg.width * wScale;
-              const wh = weaponImg.height * wScale;
-              
-              // Draw weapon centered on the pivot point
-              this.ctx.drawImage(weaponImg, -ww/2, -wh/2, ww, wh);
-              
-              this.ctx.restore();
-            }
-          }
-        }
-        
-        this.ctx.restore();
-      } else {
-        const renderWidth = player.width + squishX;
-        const renderHeight = player.height + squishY;
-        // Fallback: Draw Worm Body (Ellipse for squishing)
-        this.ctx.fillStyle = player.teamColor || '#FF69B4'; // Use team color
-        this.ctx.beginPath();
-        this.ctx.ellipse(0, yOffset, renderWidth / 2, renderHeight / 2, 0, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        // Equipment Layer (e.g. Helmet based on class)
-        if (player.unitClass === 'heavy') {
-          this.ctx.fillStyle = '#444'; // Heavy Iron Helmet
-          this.ctx.fillRect(-renderWidth/2 - 1, yOffset - renderHeight/2, renderWidth + 2, 4);
-        } else if (player.unitClass === 'scout') {
-          this.ctx.fillStyle = '#8B0000'; // Red Headband
-          this.ctx.fillRect(-renderWidth/2, yOffset - renderHeight/2 + 2, renderWidth, 2);
-          // Headband tails
-          if (player.facingRight) {
-            this.ctx.fillRect(-renderWidth/2 - 4, yOffset - renderHeight/2 + 2, 4, 2);
-          } else {
-            this.ctx.fillRect(renderWidth/2, yOffset - renderHeight/2 + 2, 4, 2);
-          }
-        } else {
-          this.ctx.fillStyle = '#A0522D'; // Brown helmet (Soldier)
-          this.ctx.beginPath();
-          this.ctx.arc(0, yOffset - 2, renderWidth / 2 + 1, Math.PI, Math.PI * 2);
-          this.ctx.fill();
-        }
-
-        // Eyes
-        this.ctx.fillStyle = 'white';
-        const eyeOffset = player.facingRight ? 2 : -2;
-        this.ctx.beginPath();
-        this.ctx.arc(eyeOffset, yOffset - 2, 1.5, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.fillStyle = 'black';
-        this.ctx.beginPath();
-        this.ctx.arc(eyeOffset + (player.facingRight ? 0.5 : -0.5), yOffset - 2, 0.5, 0, Math.PI * 2);
-        this.ctx.fill();
-      }
+      this.animCtrl.drawFrame(
+        this.ctx,
+        animKey,
+        frameIndex,
+        0,
+        player.height / 2, // Ground point
+        1.0, // Scale
+        !player.facingRight // FlipX
+      );
 
       // Draw name and health
     this.ctx.fillStyle = player.teamColor || '#00ffff';
@@ -429,9 +350,24 @@ export class CanvasRenderer {
     this.ctx.strokeText(Math.ceil(player.health).toString(), 0, -player.height - 30);
     this.ctx.fillText(Math.ceil(player.health).toString(), 0, -player.height - 30);
 
+      // Draw active player indicator
+      if (isActive) {
+        this.ctx.fillStyle = 'yellow';
+        this.ctx.beginPath();
+        this.ctx.moveTo(-5, -player.height - 40);
+        this.ctx.lineTo(5, -player.height - 40);
+        this.ctx.lineTo(0, -player.height - 35);
+        this.ctx.fill();
+      }
+
       // Aiming Reticle (only for current player)
       if (player === state.getCurrentPlayer() && !player.isJumping) {
-        const rad = player.aimAngle * (Math.PI / 180);
+        let globalAimAngle = player.aimAngle;
+        if (!player.facingRight) {
+          globalAimAngle = 180 - player.aimAngle;
+        }
+
+        const rad = globalAimAngle * (Math.PI / 180);
         const targetX = Math.cos(rad) * 30;
         const targetY = -Math.sin(rad) * 30;
 
@@ -439,8 +375,8 @@ export class CanvasRenderer {
         this.ctx.strokeStyle = '#555';
         this.ctx.lineWidth = 3;
         this.ctx.beginPath();
-        this.ctx.moveTo(0, yOffset);
-        this.ctx.lineTo(Math.cos(rad) * 12, yOffset - Math.sin(rad) * 12);
+        this.ctx.moveTo(0, 0);
+        this.ctx.lineTo(Math.cos(rad) * 12, -Math.sin(rad) * 12);
         this.ctx.stroke();
 
         // Draw aim line
@@ -448,7 +384,7 @@ export class CanvasRenderer {
         this.ctx.lineWidth = 1;
         this.ctx.setLineDash([2, 2]);
         this.ctx.beginPath();
-        this.ctx.moveTo(0, yOffset);
+        this.ctx.moveTo(0, 0);
         this.ctx.lineTo(targetX, targetY);
         this.ctx.stroke();
         this.ctx.setLineDash([]);
