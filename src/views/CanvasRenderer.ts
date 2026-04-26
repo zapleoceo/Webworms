@@ -322,7 +322,8 @@ export class CanvasRenderer {
         0,
         player.height / 2, // Ground point
         1.0, // Scale
-        !player.facingRight // FlipX
+        player.facingRight, // FlipX (if sprite default faces LEFT, we flip when facing RIGHT)
+        10 // offsetY: move the sprite down slightly so the worm's feet touch the ground
       );
 
       // Draw name and health

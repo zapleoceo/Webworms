@@ -108,6 +108,9 @@ export class GamePresenter {
     this.nextAirdropTime = 60;
     this.currentAirdropBrand = this.brandAssets[Math.floor(Math.random() * this.brandAssets.length)];
     this.init(selectedWeapons, unitClass);
+
+    const cp = this.state.getCurrentPlayer();
+    if (cp) this.updateMobileWeaponIcon(cp);
   }
 
   public init(selectedWeapons: string[] = ['bazooka', 'blaster'], unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier'): void {
@@ -544,26 +547,29 @@ export class GamePresenter {
     player.maxWeaponCooldowns[weapon.id] = actualCooldown;
 
     // Calculate vector based on angle and power
-    // Convert aimAngle (-90 to 90) into global angle for projectile math
-    // 0 is right, 180 is left. 
-    // If facing right: -90 is up (270 or -PI/2)
-    // If facing left: angle needs to be mirrored.
+    // Determine global Aim Angle
+    // In W:A, 0 is directly right. The sprite natively points right? Or left?
+    // If the sprite natively faces LEFT, then when facingRight is TRUE, we flipped it.
+    // The aimAngle is -90 (up) to +90 (down).
     let globalAimAngle = player.aimAngle;
     if (!player.facingRight) {
-      // Mirror horizontally
+      // If facing left, mirror the angle
       globalAimAngle = 180 - player.aimAngle;
     }
 
     const baseRad = globalAimAngle * (Math.PI / 180);
     let speed = power * 3; // Adjust scalar for slower, realistic floaty arcs
-    
+
     if (weapon.id === 'blaster') {
       speed = 750; // Laser goes fast but not infinite
     }
-    
-    // Spawn completely outside the worm's collision radius
-    const startX = player.x + Math.cos(baseRad) * (player.width / 2 + 5);
-    const startY = player.y - Math.sin(baseRad) * (player.height / 2 + 5);
+
+    // Spawn completely outside the worm's collision radius, near the gun barrel
+    const startX = player.x + Math.cos(baseRad) * (player.width / 2 + 10);
+    // Correcting Y logic: in canvas, negative is UP. 
+    // If we aim UP (-90 deg), sin(-90) = -1. We want startY to be smaller (higher).
+    // player.y is the center. Let's spawn slightly higher than center (e.g. -4).
+    const startY = player.y - 4 + Math.sin(baseRad) * (player.width / 2 + 10);
 
     // Fire multiple projectiles if weapon supports it (e.g. shotgun)
     for (let i = 0; i < weapon.projectilesPerShot; i++) {
