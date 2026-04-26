@@ -611,7 +611,16 @@ canvas {
   height: 90px;
 }
 
-/* Removed .btn-switch */
+.btn-switch {
+  background: var(--color-bg);
+  border-radius: 50%;
+  padding: 5px;
+  box-shadow: 0 4px 0 #333;
+}
+.btn-switch:active {
+  box-shadow: 0 0px 0 #333;
+  transform: translateY(4px);
+}
 
 /* Weapon Selection UI in Main Menu */
 .weapon-selection {

@@ -94,7 +94,16 @@ export default {
         response = await deleteAdminUser(request, env);
       }
       
-      // 5. Logos Endpoints
+      // 6. Match Endpoints
+      else if (url.pathname === '/api/match/start' && request.method === 'POST') {
+        response = await startMatch(request, env);
+      }
+      else if (url.pathname === '/api/match/end' && request.method === 'POST') {
+        response = await reportMatchEnd(request, env);
+      }
+      else if (url.pathname === '/api/admin/users/time' && request.method === 'POST') {
+        response = await addAdminUserTime(request, env);
+      }
       else if (url.pathname === '/api/logos' && request.method === 'GET') {
         response = await getLogos(env);
       }
@@ -147,6 +156,20 @@ export default {
 // --------------------------------------------------------------------
 // Handlers
 // --------------------------------------------------------------------
+
+// --- REUSABLE HELPERS ---
+
+async function addPlayTime(env: Env, userId: string, deltaSeconds: number): Promise<boolean> {
+  try {
+    const res = await env.DB.prepare(
+      `UPDATE Users SET play_time_balance = play_time_balance + ? WHERE id = ?`
+    ).bind(deltaSeconds, userId).run();
+    return res.success;
+  } catch (e) {
+    console.error("Failed to add playtime:", e);
+    return false;
+  }
+}
 
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -512,7 +535,95 @@ async function getAdminUsers(request: Request, env: Env): Promise<Response> {
   }
 }
 
-async function updateAdminUser(request: Request, env: Env): Promise<Response> {
+async function startMatch(request: Request, env: Env): Promise<Response> {
+  try {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+
+    const sessionId = authHeader.replace('Bearer ', '');
+    const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE session_id = ?`).bind(sessionId).first<any>();
+    if (!sessionData) return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
+
+    const matchToken = crypto.randomUUID();
+    const timestamp = Date.now();
+    
+    // Store in KV with a 1 hour TTL (max match time)
+    await env.ROOMS.put(`match_${matchToken}`, JSON.stringify({
+      userId: sessionData.id,
+      startedAt: timestamp,
+      status: 'active'
+    }), { expirationTtl: 3600 });
+
+    return new Response(JSON.stringify({ success: true, matchToken }), { status: 200 });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+async function reportMatchEnd(request: Request, env: Env): Promise<Response> {
+  try {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+
+    const sessionId = authHeader.replace('Bearer ', '');
+    const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE session_id = ?`).bind(sessionId).first<any>();
+    if (!sessionData) return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
+
+    const { winnerId, matchToken } = await request.json() as { winnerId: string, matchToken: string };
+    if (!winnerId || !matchToken) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400 });
+
+    // Prevent cheating: retrieve match token
+    const matchDataStr = await env.ROOMS.get(`match_${matchToken}`);
+    if (!matchDataStr) return new Response(JSON.stringify({ error: 'Invalid or expired match token' }), { status: 400 });
+    
+    const matchData = JSON.parse(matchDataStr);
+    if (matchData.status !== 'active') {
+      return new Response(JSON.stringify({ error: 'Match already reported' }), { status: 400 });
+    }
+    
+    const timeElapsed = Date.now() - matchData.startedAt;
+    // Minimum match duration to prevent farming: 30 seconds
+    if (timeElapsed < 30000) {
+      return new Response(JSON.stringify({ error: 'Match ended too quickly. No rewards.' }), { status: 400 });
+    }
+
+    // Mark as finished to prevent double claiming
+    matchData.status = 'finished';
+    await env.ROOMS.put(`match_${matchToken}`, JSON.stringify(matchData), { expirationTtl: 3600 });
+
+    // Reward the winner with 10 minutes (600 seconds) of play time
+    const success = await addPlayTime(env, winnerId, 600);
+    if (!success) {
+      return new Response(JSON.stringify({ error: 'Failed to award time' }), { status: 500 });
+    }
+
+    return new Response(JSON.stringify({ success: true, message: 'Time awarded to winner' }), { status: 200 });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+async function addAdminUserTime(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  try {
+    const { id, delta_seconds } = await request.json() as any;
+    if (!id || delta_seconds === undefined) {
+      return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    const success = await addPlayTime(env, id, delta_seconds);
+    if (!success) {
+      return new Response(JSON.stringify({ error: 'Failed to update time' }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
   if (!(await checkAdminAuth(request, env))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }

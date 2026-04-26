@@ -350,6 +350,8 @@ touchActions.forEach(({ id, action }) => {
 
 
 
+let currentMatchToken: string | null = null;
+
   // Start Game Helpers
   async function startGame(mode: 'training' | 'friend' | 'random') {
   currentMode = mode;
@@ -359,6 +361,17 @@ touchActions.forEach(({ id, action }) => {
 
   menuScreen.classList.remove('active');
   loaderScreen.classList.add('active');
+
+  // Request match token from backend if not training
+  if (mode !== 'training') {
+    const sessionId = localStorage.getItem('sessionId');
+    if (sessionId) {
+      const res = await APIClient.startMatch(sessionId);
+      if (res && res.success) {
+        currentMatchToken = res.matchToken;
+      }
+    }
+  }
   
   // Allow UI to paint the loader
   await new Promise(resolve => setTimeout(resolve, 50));
@@ -378,7 +391,8 @@ touchActions.forEach(({ id, action }) => {
     { id: 'btn-up', action: 'up' },
     { id: 'btn-down', action: 'down' },
     { id: 'btn-jump', action: 'jump' },
-    { id: 'btn-fire', action: 'fire' }
+    { id: 'btn-fire', action: 'fire' },
+    { id: 'btn-switch', action: 'switch' }
   ]);
 
   // Re-bind events for the new presenter
@@ -669,7 +683,20 @@ function bindPresenterEvents() {
 
       if (isLocalWinner && currentMode !== 'training') {
         const reward = currentMode === 'friend' ? 5 : 10;
-        rewardText.innerText = `You earned ${reward} WebCoins!`;
+        rewardText.innerText = `You earned ${reward} WebCoins and 10 minutes of play time!`;
+        
+        // Report match end to server to get playtime reward
+        const sessionId = localStorage.getItem('sessionId');
+        const userId = localStorage.getItem('userId');
+        if (sessionId && userId && currentMatchToken) {
+          APIClient.reportMatchEnd(sessionId, userId, currentMatchToken).then(res => {
+            if (res.success) {
+              console.log('Reward granted successfully!');
+            } else {
+              console.log('Reward error:', res.error);
+            }
+          });
+        }
       } else {
         rewardText.innerText = '';
       }

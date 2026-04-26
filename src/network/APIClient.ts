@@ -67,6 +67,36 @@ export class APIClient {
     }
   }
 
+  public static async startMatch(sessionId: string): Promise<any> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/match/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionId}`
+        }
+      });
+      return await res.json();
+    } catch {
+      return { success: false, error: 'Network error' };
+    }
+  }
+
+  public static async reportMatchEnd(sessionId: string, winnerId: string, matchToken: string): Promise<any> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/match/end`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionId}`
+        },
+        body: JSON.stringify({ winnerId, matchToken })
+      });
+      return await res.json();
+    } catch {
+      return { success: false, error: 'Network error' };
+    }
+  }
   public static async updatePassword(sessionId: string, password: string): Promise<any> {
     const res = await fetch(`${this.BASE_URL}/auth/password`, {
       method: 'PUT',

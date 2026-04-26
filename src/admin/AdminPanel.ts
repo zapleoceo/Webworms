@@ -233,7 +233,10 @@ export class AdminPanel {
             ${u.is_active ? 'Verified' : 'Pending'}
           </span>
         </td>
-        <td>${Math.floor((u.play_time_balance || 0) / 60)}m</td>
+        <td>
+          <input type="number" class="retro-input balance-input" data-id="${userId}" value="${u.play_time_balance}" style="width: 80px;">
+          <button class="secondary-btn small-btn add-time-btn" data-id="${userId}">+ Time</button>
+        </td>
         <td>
           <label class="cb-container">
             <input type="checkbox" class="access-cb" data-id="${userId}" ${u.access_allowed ? 'checked' : ''}> Allow
@@ -263,10 +266,50 @@ export class AdminPanel {
       btn.addEventListener('click', (e) => this.deleteUser(e));
     });
 
+    // Bind add time buttons
+    document.querySelectorAll('.add-time-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.addTime(e));
+    });
+
     // Bind logo delete buttons
     document.querySelectorAll('.delete-logo-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.deleteLogo(e));
     });
+  }
+
+  private async addTime(e: Event) {
+    const id = (e.target as HTMLButtonElement).dataset.id;
+    if (!id) return;
+
+    const minutesStr = prompt('Enter minutes to add (can be negative):', '60');
+    if (!minutesStr) return;
+
+    const minutes = parseInt(minutesStr);
+    if (isNaN(minutes)) {
+      alert('Invalid number');
+      return;
+    }
+
+    try {
+      const res = await fetch(APIClient.BASE_URL + '/admin/users/time', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        },
+        body: JSON.stringify({ id, delta_seconds: minutes * 60 })
+      });
+      
+      if (res.ok) {
+        this.loadUsersData();
+      } else {
+        const err = await res.json();
+        alert('Failed to add time: ' + (err.error || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('Network error');
+    }
   }
 
   private async deleteUser(e: Event) {

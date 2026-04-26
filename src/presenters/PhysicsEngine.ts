@@ -444,6 +444,11 @@ export class PhysicsEngine {
   }
 
   private updateProjectile(proj: Projectile, state: GameState, dt: number): void {
+    if ((proj as any).framesAlive === undefined) {
+      (proj as any).framesAlive = 0;
+    }
+    (proj as any).framesAlive++;
+
     proj.vy += this.gravity * dt;
     if (state.wind) {
       proj.vx += state.wind * dt * proj.windMultiplier; // Apply wind based on weapon stats
@@ -509,21 +514,18 @@ export class PhysicsEngine {
       return;
     }
 
-    // Collision with other projectiles
-    for (const otherProj of state.projectiles) {
-      if (otherProj !== proj && otherProj.active) {
-        if (MathUtils.distance(proj.x, proj.y, otherProj.x, otherProj.y) < proj.radius + otherProj.radius) {
-          otherProj.active = false;
-          this.explode(otherProj, state, 1.0); // Secondary explosion
-          this.explode(proj, state, 1.0);
-          return;
-        }
-      }
-    }
+    // (Projectile-projectile collision removed to prevent multi-shot instant explosions)
 
     // Collision with players
     for (const player of state.players) {
+      if (player.health <= 0) continue; // don't hit dead worms
       const playerRadius = player.width / 2;
+      
+      // Prevent immediate self-collision when shooting
+      if (player === (proj as any).owner && (proj as any).framesAlive !== undefined && (proj as any).framesAlive < 5) {
+        continue; 
+      }
+
       if (MathUtils.distance(proj.x, proj.y, player.x, player.y) < playerRadius + proj.radius) {
         this.explode(proj, state, 1.0);
         return;
