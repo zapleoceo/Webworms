@@ -375,8 +375,8 @@ touchActions.forEach(({ id, action }) => {
   
   const unitClass = (document.querySelector('input[name="unitClass"]:checked') as HTMLInputElement)?.value as 'soldier' | 'heavy' | 'scout' || 'soldier';
 
-  const mapSizeSelect = document.getElementById('map-size-select') as HTMLSelectElement;
-  const mapSize = (mapSizeSelect ? mapSizeSelect.value : 'medium') as 'small' | 'medium' | 'large';
+  const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
+  const mapType = (mapTypeSelect?.value || 'islands') as 'islands' | 'cave' | 'flat';
 
   menuScreen.classList.remove('active');
   loaderScreen.classList.add('active');
@@ -384,16 +384,42 @@ touchActions.forEach(({ id, action }) => {
   // Allow UI to paint the loader
   await new Promise(resolve => setTimeout(resolve, 50));
 
-  window.presenter.reset(selectedWeapons, unitClass, mapSize);
+  // Re-instantiate the GamePresenter to completely wipe old state
+  if (window.presenter) {
+    window.presenter.stop();
+  }
+  const canvasEl = document.getElementById('gameCanvas') as HTMLCanvasElement;
+  window.presenter = new GamePresenter(GAME_WIDTH, GAME_HEIGHT);
+  window.renderer = new CanvasRenderer(canvasEl);
+  
+  // Re-bind input handler to new presenter
+  window.inputHandler = new InputHandler(window.presenter, canvasEl, [
+    { id: 'btn-left', action: 'left' },
+    { id: 'btn-right', action: 'right' },
+    { id: 'btn-up', action: 'up' },
+    { id: 'btn-down', action: 'down' },
+    { id: 'btn-jump', action: 'jump' },
+    { id: 'btn-fire', action: 'fire' },
+    { id: 'btn-switch', action: 'switch' }
+  ]);
+
+  // Re-bind events for the new presenter
+  bindPresenterEvents();
+
+  window.presenter.startGame({
+    width: 1500,
+    height: 800,
+    mapType: mapType,
+    weapons: selectedWeapons,
+    class: unitClass
+  });
   window.presenter.localTeam = mode === 'training' ? null : null; // To be set if multiplayer
-  
-  
-  const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
-  
+  window.presenter.start();
+
   function resizeCanvas() {
     // Canvas internal size remains fixed for proper physics/camera calculations
-    canvas.width = GAME_WIDTH;
-    canvas.height = GAME_HEIGHT;
+    canvasEl.width = GAME_WIDTH;
+    canvasEl.height = GAME_HEIGHT;
     if (window.presenter) {
       window.presenter.updateScreenSize(GAME_WIDTH, GAME_HEIGHT);
       if (window.presenter.state && window.presenter.state.landscape) {
@@ -558,70 +584,86 @@ document.getElementById('btn-return-menu')!.addEventListener('click', () => {
 // Update HUD elements
 const hpLocalEl = document.getElementById('hp-local')!;
 const hpEnemyEl = document.getElementById('hp-enemy')!;
-const windIndicator = document.getElementById('wind-indicator')!;
-const turnTimer = document.getElementById('turn-timer')!;
-const turnNotification = document.getElementById('turn-notification')!;
+function bindPresenterEvents() {
+  const turnTimer = document.getElementById('turn-timer')!;
+  const turnNotification = document.getElementById('turn-notification')!;
+  const rewardText = document.getElementById('game-over-reward') || document.getElementById('game-over-stats')!;
+  const statsText = document.getElementById('game-over-stats')!;
 
-window.presenter.onStateUpdate = (state: any) => {
-  // Update local HP (team1)
-  const localWorms = state.players.length > 0 ? [state.players[0]] : [];
-  const localHp = localWorms.reduce((sum: number, w: any) => sum + w.health, 0);
-  hpLocalEl.style.width = `${Math.min(100, Math.max(0, (localHp / 100) * 100))}%`;
+  window.presenter.onStateUpdate = (state: any) => {
+    // Update local HP (team1)
+    const localWorms = state.players.length > 0 ? [state.players[0]] : [];
+    const localHp = localWorms.reduce((sum: number, w: any) => sum + w.health, 0);
+    hpLocalEl.style.width = `${Math.min(100, Math.max(0, (localHp / 100) * 100))}%`;
 
-  // Update enemy HP (team2)
-  const enemyWorms = state.players.length > 1 ? [state.players[1]] : [];
-  const enemyHp = enemyWorms.reduce((sum: number, w: any) => sum + w.health, 0);
-  hpEnemyEl.style.width = `${Math.min(100, Math.max(0, (enemyHp / 100) * 100))}%`;
+    // Update enemy HP (team2)
+    const enemyWorms = state.players.length > 1 ? [state.players[1]] : [];
+    const enemyHp = enemyWorms.reduce((sum: number, w: any) => sum + w.health, 0);
+    hpEnemyEl.style.width = `${Math.min(100, Math.max(0, (enemyHp / 100) * 100))}%`;
 
-  // Update Turn Timer & Wind
-  turnTimer.innerText = state.turnTimeLeft >= 0 ? Math.ceil(state.turnTimeLeft).toString() : '0';
-  windIndicator.innerText = `Wind: ${state.wind > 0 ? '→' : state.wind < 0 ? '←' : '0'}`;
+    const windIndicatorEl = document.getElementById('wind-indicator');
 
-  // Turn Change Notification
-  const activeTeam = state.currentPlayerIndex === 0 ? 'team1' : 'team2';
-  const isMyTurn = window.presenter.localTeam ? activeTeam === window.presenter.localTeam : activeTeam === 'team1';
-  
-  if (state.turnTimeLeft === 30) {
-    turnNotification.style.display = 'block';
-    turnNotification.innerText = isMyTurn ? 'YOUR TURN!' : 'ENEMY TURN!';
-    turnNotification.style.color = isMyTurn ? 'var(--color-primary)' : 'var(--color-danger)';
-    
-    // Auto-hide after 2s
-    setTimeout(() => {
-      turnNotification.style.display = 'none';
-    }, 2000);
-  }
-};
+    // Update Turn Timer & Wind
+    if (turnTimer) {
+      turnTimer.innerText = state.turnTimeLeft >= 0 ? Math.ceil(state.turnTimeLeft).toString() : '0';
+    }
+    if (windIndicatorEl) {
+      windIndicatorEl.innerText = `Wind: ${state.wind > 0 ? '→' : state.wind < 0 ? '←' : '0'}`;
+    }
 
-window.presenter.onGameOver = (winner: any, stats: any) => {
-  gameScreen.classList.remove('active');
-  gameScreen.style.display = 'none'; // Fallback
+    // Turn Change Notification
+    const activeTeam = state.currentPlayerIndex === 0 ? 'team1' : 'team2';
+    const isMyTurn = window.presenter.localTeam ? activeTeam === window.presenter.localTeam : activeTeam === 'team1';
 
-  mobileControls.style.display = 'none';
-  
-  gameOverScreen.style.display = '';
-  gameOverScreen.classList.add('active');
+    if (state.turnTimeLeft === 30) {
+      turnNotification.style.display = 'block';
+      turnNotification.innerText = isMyTurn ? 'YOUR TURN!' : 'ENEMY TURN!';
+      turnNotification.style.color = isMyTurn ? 'var(--color-primary)' : 'var(--color-danger)';
 
-  if (deductInterval) clearInterval(deductInterval);
+      // Auto-hide after 2s
+      setTimeout(() => {
+        turnNotification.style.display = 'none';
+      }, 2000);
+    }
+  };
 
-  if (winner === 'draw') {
-    winnerText.innerText = 'DRAW!';
-    winnerText.style.color = 'var(--color-secondary)';
-  } else {
-    const isLocalWinner = (winner === 'team1');
-    winnerText.innerText = isLocalWinner ? 'VICTORY!' : 'DEFEAT!';
-    winnerText.style.color = isLocalWinner ? 'var(--color-primary)' : 'var(--color-danger)';
-  }
+  window.presenter.onGameOver = (winner: any, stats: any) => {
+    gameScreen.classList.remove('active');
+    gameScreen.style.display = 'none'; // Fallback
 
-  const isLocalWinner = (winner === 'team1');
-  const statsEl = document.getElementById('game-over-stats')!;
-  
-  if (isLocalWinner && currentMode !== 'training') {
-    statsEl.innerText = `You earned +10 mins\nDamage Dealt: ${stats.p1Dmg}`;
-  } else {
-    statsEl.innerText = `Damage Dealt: ${stats.p1Dmg}`;
-  }
-};
+    mobileControls.style.display = 'none';
+
+    gameOverScreen.style.display = '';
+    gameOverScreen.classList.add('active');
+
+    if (deductInterval) clearInterval(deductInterval);
+
+    if (winner === 'draw') {
+      winnerText.innerText = 'DRAW!';
+      winnerText.style.color = 'var(--color-secondary)';
+    } else {
+      const isLocalWinner = (winner === 'team1');
+      winnerText.innerText = isLocalWinner ? 'VICTORY!' : 'DEFEAT!';
+      winnerText.style.color = isLocalWinner ? 'var(--color-primary)' : 'var(--color-danger)';
+
+      if (isLocalWinner && currentMode !== 'training') {
+        const reward = currentMode === 'friend' ? 5 : 10;
+        rewardText.innerText = `You earned ${reward} WebCoins!`;
+      } else {
+        rewardText.innerText = '';
+      }
+    }
+
+    if (stats) {
+      statsText.innerHTML = `
+        <p>Damage Dealt: ${Math.round(stats.damageDealt || stats.p1Dmg || 0)}</p>
+        <p>Match Time: ${Math.round(stats.matchTime || 0)}s</p>
+      `;
+    }
+  };
+}
+
+bindPresenterEvents();
 
 } // End of else block for game init
 

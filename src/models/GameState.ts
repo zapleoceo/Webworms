@@ -27,8 +27,6 @@ export class GameState {
 
   public snowflakes: {x: number, y: number, vx: number, vy: number}[] = [];
 
-  public nextAirdrop: { timeRemaining: number, brandImage: string } | null = null;
-
   public cameraX: number = 0;
   public cameraY: number = 0;
   public zoom: number = 1;

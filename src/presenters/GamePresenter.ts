@@ -3,7 +3,6 @@ import { PhysicsEngine } from './PhysicsEngine';
 import { Worm } from '../models/Worm';
 import { Projectile } from '../models/Projectile';
 import { SoundManager } from '../utils/SoundManager';
-import { PhysicsProp } from '../models/PhysicsProp';
 import { AudioManager } from '../utils/AudioManager';
 
 export class GamePresenter {
@@ -27,9 +26,7 @@ export class GamePresenter {
   private cameraFreeMode: boolean = false;
 
   private matchTime: number = 0;
-  private nextAirdropTime: number = 60;
-  private currentAirdropBrand: string = '';
-  private brandAssets = ['/brand_apple.svg?v=3', '/brand_windows.svg?v=3', '/brand_android.svg?v=3'];
+  public brandAssets: string[] = ['apple', 'android', 'windows'];
   
   // Camera delay after explosion
   private cameraDelayTimer: number = 0;
@@ -84,60 +81,41 @@ export class GamePresenter {
 
   public localTeam: string | null = null;
 
-  public reset(
-    selectedWeapons: string[] = ['bazooka', 'blaster'], 
-    unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier',
-    mapSize: 'small' | 'medium' | 'large' = 'medium'
-  ): void {
+  public startGame(settings: any) {
     let worldWidth = this.initialWidth * 1.5;
     let worldHeight = this.initialHeight * 1.2;
-
-    if (mapSize === 'small') {
-      worldWidth = this.initialWidth * 1.0; // Fit screen
-      worldHeight = this.initialHeight * 1.0;
-    } else if (mapSize === 'large') {
-      worldWidth = this.initialWidth * 2.5;
-      worldHeight = this.initialHeight * 1.5;
-    }
-
     this.state = new GameState(worldWidth, worldHeight);
     this.state.cameraX = Math.max(0, (worldWidth - this.initialWidth) / 2);
     this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
     this.matchTime = 0;
-    this.nextAirdropTime = 60;
-    this.currentAirdropBrand = this.brandAssets[Math.floor(Math.random() * this.brandAssets.length)];
-    this.init(selectedWeapons, unitClass);
 
-    const cp = this.state.getCurrentPlayer();
-    if (cp) this.updateMobileWeaponIcon(cp);
-  }
-
-  public init(selectedWeapons: string[] = ['bazooka', 'blaster'], unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier'): void {
     this.state.landscape.generateTerrain();
-    
+
     // Add two worms for Phase 1 with Safe Spawn
     const spawnPoints: {x: number, y: number}[] = [];
-    
+
     const s1 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
     spawnPoints.push(s1);
-    const p1 = new Worm(s1.x, s1.y, false, 'Player 1', unitClass, selectedWeapons);
-    
+    const p1 = new Worm(s1.x, s1.y, false, 'Player 1', settings.class, settings.weapons);
+
     const s2 = this.state.landscape.getSafeSpawn(spawnPoints, 300);
     spawnPoints.push(s2);
-    const p2 = new Worm(s2.x, s2.y, true, 'Player 2', 'heavy', selectedWeapons); // Dummy
-    
+    const p2 = new Worm(s2.x, s2.y, true, 'Player 2', 'heavy', settings.weapons); // Dummy
+
     this.state.addPlayer(p1);
     this.state.addPlayer(p2);
 
-    // Add some random dynamic props (Asteroids/Crates)
-    for (let i = 0; i < 5; i++) {
-      const s = this.state.landscape.getSafeSpawn(spawnPoints, 100);
-      spawnPoints.push(s);
-      const prop = new PhysicsProp(s.x, s.y - 50, i % 2 === 0 ? 'rock' : 'crate');
-      prop.radius = 30; // 2x larger
-      this.state.props.push(prop);
+    // Set initial wind
+    this.state.wind = (Math.random() - 0.5) * 40;
+
+    // Update UI right away
+    if (this.onStateUpdate) {
+      this.onStateUpdate(this.state);
     }
+    
+    const cp = this.state.getCurrentPlayer();
+    if (cp) this.updateMobileWeaponIcon(cp);
   }
 
   public start(): void {
@@ -172,25 +150,13 @@ export class GamePresenter {
 
     if (this.isRunning) {
       this.matchTime += dt;
-      const timeLeft = this.nextAirdropTime - this.matchTime;
-      
-      this.state.nextAirdrop = {
-        timeRemaining: Math.max(0, timeLeft),
-        brandImage: this.currentAirdropBrand
-      };
-
-      if (this.matchTime >= this.nextAirdropTime) {
-        this.spawnAirdrop();
-        this.nextAirdropTime += 60;
-        this.currentAirdropBrand = this.brandAssets[Math.floor(Math.random() * this.brandAssets.length)];
-      }
     }
 
     this.processActiveInputs(dt);
     this.physics.update(this.state, dt);
     this.updateCamera(dt);
 
-    // Check if game over
+    // Check game over
     const winner = this.checkGameOver();
     if (winner !== undefined) {
       this.isRunning = false;
@@ -208,16 +174,8 @@ export class GamePresenter {
     }
   }
 
-  private spawnAirdrop(): void {
-    // Drop a brand from the sky at a random X coordinate
-    const x = 50 + Math.random() * (this.state.width - 100);
-    const brandProp = new PhysicsProp(x, 0, 'brand', this.currentAirdropBrand);
-    brandProp.radius = 30; // Spawn logo/crate 2x larger
-    this.state.props.push(brandProp);
-  }
-
   private updateCamera(dt: number): void {
-    // Determine the target to follow
+    // Determine camera target to follow
     let targetX = this.state.cameraX;
     let targetY = this.state.cameraY;
     let hasTarget = false;
@@ -564,12 +522,10 @@ export class GamePresenter {
       speed = 750; // Laser goes fast but not infinite
     }
 
-    // Spawn completely outside the worm's collision radius, near the gun barrel
-    const startX = player.x + Math.cos(baseRad) * (player.width / 2 + 10);
-    // Correcting Y logic: in canvas, negative is UP. 
-    // If we aim UP (-90 deg), sin(-90) = -1. We want startY to be smaller (higher).
-    // player.y is the center. Let's spawn slightly higher than center (e.g. -4).
-    const startY = player.y - 4 + Math.sin(baseRad) * (player.width / 2 + 10);
+    // Spawn perfectly at the end of the visual gun barrel
+    // Since we fixed the visual aiming angle and offset, we just use simple trig
+    const startX = player.x + Math.cos(baseRad) * 20;
+    const startY = player.y + Math.sin(baseRad) * 20;
 
     // Fire multiple projectiles if weapon supports it (e.g. shotgun)
     for (let i = 0; i < weapon.projectilesPerShot; i++) {

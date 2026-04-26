@@ -1,6 +1,8 @@
 export interface Env {
   DB: D1Database;
   ROOMS: KVNamespace;
+  RESEND_API_KEY?: string;
+  waitUntil(promise: Promise<any>): void;
 }
 
 const corsHeaders = {
@@ -108,6 +110,46 @@ async function hashPassword(password: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+async function sendResendEmail(env: Env, to: string, token: string, host: string) {
+  if (!env.RESEND_API_KEY) {
+    console.warn("RESEND_API_KEY is not set. Skipping email sending.");
+    return;
+  }
+  
+  const verifyLink = `${host}/api/auth/verify?token=${token}`;
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+      <h2 style="color: #FF4500;">Welcome to WebWorms!</h2>
+      <p>Thanks for signing up! Please confirm your email address to activate your account.</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${verifyLink}" style="background-color: #FF4500; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">Verify Email</a>
+      </div>
+      <p>If the button doesn't work, copy and paste this link into your browser:</p>
+      <p style="word-break: break-all; color: #555;"><a href="${verifyLink}">${verifyLink}</a></p>
+      <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+      <p style="font-size: 12px; color: #888;">If you didn't request this, please ignore this email.</p>
+    </div>
+  `;
+
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'WebWorms <noreply@resend.dev>', // Change to your verified domain later if you have one
+        to: [to],
+        subject: 'Verify your WebWorms account',
+        html: htmlContent
+      })
+    });
+  } catch (err) {
+    console.error("Failed to send email via Resend:", err);
+  }
+}
+
 async function handleRegister(request: Request, env: Env): Promise<Response> {
   try {
     const { email, username, password, referred_by } = await request.json() as { email: string, username: string, password?: string, referred_by?: string };
@@ -139,6 +181,10 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
       ).bind(id, email, username, hashedPassword, 0, isAdmin, token, initialBalance).run();
       
       const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
+      
+      // Async fire and forget the email sending
+      env.waitUntil(sendResendEmail(env, email, token, new URL(request.url).origin));
+
       return new Response(JSON.stringify({ 
         success: true, 
         message: 'Registration successful. Please check your email to activate your account.',
@@ -177,6 +223,9 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
     await env.DB.batch(stmts);
 
     const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
+    
+    env.waitUntil(sendResendEmail(env, email, token, new URL(request.url).origin));
+
     return new Response(JSON.stringify({ 
       success: true, 
       message: 'Registration successful. Please check your email to activate your account.',

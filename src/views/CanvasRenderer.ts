@@ -323,7 +323,7 @@ export class CanvasRenderer {
         player.height / 2, // Ground point
         1.0, // Scale
         player.facingRight, // FlipX (if sprite default faces LEFT, we flip when facing RIGHT)
-        10 // offsetY: move the sprite down slightly so the worm's feet touch the ground
+        24 // offsetY: move the sprite down more so the worm's feet touch the ground exactly
       );
 
       // Draw name and health
@@ -363,12 +363,12 @@ export class CanvasRenderer {
         const targetX = Math.cos(rad) * 30;
         const targetY = -Math.sin(rad) * 30;
 
-        // Draw weapon barrel rotating around player
+        // Draw weapon barrel rotating around player (matching physics)
         this.ctx.strokeStyle = '#555';
         this.ctx.lineWidth = 3;
         this.ctx.beginPath();
         this.ctx.moveTo(0, 0);
-        this.ctx.lineTo(Math.cos(rad) * 12, -Math.sin(rad) * 12);
+        this.ctx.lineTo(Math.cos(rad) * 15, Math.sin(rad) * 15);
         this.ctx.stroke();
 
         // Draw aim line
@@ -508,6 +508,7 @@ export class CanvasRenderer {
     }
   }
 
+  // Draw UI
   private drawUI(state: GameState): void {
     this.ctx.fillStyle = 'white';
     this.ctx.font = '14px Courier New';
@@ -573,28 +574,6 @@ export class CanvasRenderer {
       this.ctx.fillStyle = 'red';
       this.ctx.fillRect(20, 50, player.aimPower, 10);
       this.ctx.fillText(`POWER: ${Math.floor(player.aimPower)}`, 20, 75);
-    }
-
-    // Render Airdrop Indicator if one is coming
-    if (state.nextAirdrop && state.nextAirdrop.timeRemaining > 0) {
-      const dropStr = `AIRDROP IN: ${Math.ceil(state.nextAirdrop.timeRemaining)}s`;
-      
-      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-      this.ctx.fillRect(this.canvas.width / 2 - 100, 10, 200, 40);
-      
-      this.ctx.fillStyle = '#fff';
-      this.ctx.textAlign = 'center';
-      this.ctx.font = 'bold 16px Courier New';
-      this.ctx.fillText(dropStr, this.canvas.width / 2, 30);
-      
-      // Draw miniature brand logo
-      const imgKey = state.nextAirdrop.brandImage.split('/').pop()?.split('.')[0] || '';
-      const img = this.wormImages[imgKey];
-      if (img && img.complete) {
-        this.ctx.drawImage(img, this.canvas.width / 2 - 12, 35, 24, 24);
-      }
-      
-      this.ctx.textAlign = 'left'; // reset
     }
   }
 }
