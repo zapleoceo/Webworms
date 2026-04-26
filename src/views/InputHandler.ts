@@ -19,6 +19,8 @@ export class InputHandler {
     'Enter': 'fire',
     'f': 'fire',
     'F': 'fire',
+    'q': 'switch',
+    'Q': 'switch',
     'Shift': 'switch',
   };
 

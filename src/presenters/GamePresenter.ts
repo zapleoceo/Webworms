@@ -391,8 +391,10 @@ export class GamePresenter {
     if (!this.isRunning) return;
     
     if (!isRemote && this.localTeam !== null) {
-      const activeTeam = this.state.currentPlayerIndex === 0 ? 'team1' : 'team2';
-      if (activeTeam !== this.localTeam) {
+      const currentPlayer = this.state.getCurrentPlayer();
+      const activeTeam = currentPlayer ? currentPlayer.team : 'team1';
+      // Allow training mode to control both teams
+      if (this.localTeam !== 'training' && activeTeam !== this.localTeam) {
         return; // Ignore local input if it's not our team's turn
       }
     }
@@ -455,19 +457,20 @@ export class GamePresenter {
 
           const team = player.team;
           const teamAliveWorms = this.state.players
-            .map((p, index) => ({ p, index }))
-            .filter(item => item.p.team === team && item.p.health > 0);
+            .filter(p => p.team === team && p.health > 0);
 
           if (teamAliveWorms.length > 1) {
-            // Find next index
-            const currentIndexInTeam = teamAliveWorms.findIndex(item => item.index === this.state.currentPlayerIndex);
+            // Find next index in the filtered team array
+            const currentIndexInTeam = teamAliveWorms.indexOf(player);
             const nextIndexInTeam = (currentIndexInTeam + 1) % teamAliveWorms.length;
-            this.state.currentPlayerIndex = teamAliveWorms[nextIndexInTeam].index;
             
-            const newPlayer = this.state.getCurrentPlayer();
-            if (newPlayer) {
-              this.updateMobileWeaponIcon(newPlayer);
-            }
+            // Get the actual player object
+            const nextPlayer = teamAliveWorms[nextIndexInTeam];
+            
+            // Find its global index in state.players
+            this.state.currentPlayerIndex = this.state.players.indexOf(nextPlayer);
+            
+            this.updateMobileWeaponIcon(nextPlayer);
           }
         }
         break;

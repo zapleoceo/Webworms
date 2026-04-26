@@ -394,7 +394,7 @@ touchActions.forEach(({ id, action }) => {
     mode: mode,
     turnTime: turnTime
   });
-  window.presenter.localTeam = mode === 'training' ? null : null; // To be set if multiplayer
+  window.presenter.localTeam = mode === 'training' ? 'training' : 'team1';
   window.presenter.start();
 
   function resizeCanvas() {
@@ -549,7 +549,7 @@ function updateWormSelectionUI(state: any) {
   const currentTeam = currentPlayer ? currentPlayer.team : 'team1';
   
   // Show only if it's local team's turn (or player 1 in local multiplayer)
-  const isMyTurn = window.presenter.localTeam ? currentTeam === window.presenter.localTeam : currentTeam === 'team1';
+  const isMyTurn = window.presenter.localTeam === 'training' || window.presenter.localTeam === currentTeam;
   
   if (!isMyTurn) {
     panel.style.display = 'none';
@@ -577,9 +577,13 @@ function updateWormSelectionUI(state: any) {
     
     btn.addEventListener('click', () => {
       if (item.p.health > 0 && !window.presenter.hasFiredThisTurn) {
-        window.presenter.state.currentPlayerIndex = item.index;
-        window.presenter.updateMobileWeaponIcon(item.p);
-        updateWormSelectionUI(window.presenter.state); // Force re-render immediately
+        // Find actual index in global players array, not just team index
+        const globalIndex = window.presenter.state.players.indexOf(item.p);
+        if (globalIndex !== -1) {
+          window.presenter.state.currentPlayerIndex = globalIndex;
+          window.presenter.updateMobileWeaponIcon(item.p);
+          updateWormSelectionUI(window.presenter.state); // Force re-render immediately
+        }
       }
     });
     
@@ -626,7 +630,7 @@ function bindPresenterEvents() {
     const activeTeam = state.currentPlayerIndex !== undefined && state.players[state.currentPlayerIndex] 
       ? state.players[state.currentPlayerIndex].team 
       : 'team1';
-    const isMyTurn = window.presenter.localTeam ? activeTeam === window.presenter.localTeam : activeTeam === 'team1';
+    const isMyTurn = window.presenter.localTeam === 'training' || activeTeam === window.presenter.localTeam;
 
     // Update Worm Selection UI
     updateWormSelectionUI(state);
