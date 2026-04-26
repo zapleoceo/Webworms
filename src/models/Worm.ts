@@ -108,6 +108,12 @@ export class Worm {
     }
   }
 
+  public setWeaponIndex(index: number): void {
+    if (this.weapons.length > 0 && index >= 0 && index < this.weapons.length) {
+      this.currentWeaponIndex = index;
+    }
+  }
+
   public updateAim(delta: number): void {
     this.aimAngle += delta;
     

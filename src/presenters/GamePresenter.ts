@@ -27,7 +27,7 @@ export class GamePresenter {
   private lastExplosionY: number = 0;
 
   public onGameOver?: (winner: string | null, stats: {p1Dmg: number, p2Dmg: number}) => void;
-  public onLocalAction?: (action: string, isActive: boolean) => void;
+  public onLocalAction?: (action: string, isActive: boolean, payload?: any) => void;
   public onStateUpdate: ((state: any) => void) | null = null;
 
 
@@ -71,6 +71,8 @@ export class GamePresenter {
     this.initialWidth = width;
     this.initialHeight = height;
   }
+
+  public localTeam: string | null = null;
 
   public reset(
     selectedWeapons: string[] = ['bazooka', 'blaster'], 
@@ -335,9 +337,18 @@ export class GamePresenter {
     }
   }
 
-  public handleInput(action: string, isActive: boolean, isRemote: boolean = false): void {
+  public handleInput(action: string, isActive: boolean, isRemote: boolean = false, payload?: any): void {
+    if (!this.isRunning) return;
+    
+    if (!isRemote && this.localTeam !== null) {
+      const activeTeam = this.state.currentPlayerIndex === 0 ? 'team1' : 'team2';
+      if (activeTeam !== this.localTeam) {
+        return; // Ignore local input if it's not our team's turn
+      }
+    }
+
     if (!isRemote && this.onLocalAction) {
-      this.onLocalAction(action, isActive);
+      this.onLocalAction(action, isActive, payload);
     }
 
     // Cancel camera delay immediately if any action is pressed (move, fire, switch)
@@ -381,7 +392,11 @@ export class GamePresenter {
         break;
       case 'switch':
         if (isActive) {
-          player.switchWeapon();
+          if (payload !== undefined && typeof payload === 'number') {
+            player.setWeaponIndex(payload);
+          } else {
+            player.switchWeapon();
+          }
         }
         break;
     }

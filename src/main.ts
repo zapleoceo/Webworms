@@ -14,135 +14,9 @@ declare global {
   }
 }
 
-// We initialize everything globally
-// Admin Route
 if (window.location.pathname === '/admin') {
-    new AdminPanel();
-  } else {
-  // Setup Game logic here...
-
-  document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div id="game-wrapper">
-    <div id="auth-screen" class="screen">
-      <div class="logo-container">
-        <img src="/logo.png?v=3" alt="Worms Logo" class="game-logo-img" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 style=\\'color:white\\'>Worms Logo</h1>')">
-      </div>
-      <h2 class="retro-text blink" id="auth-title" style="margin-bottom: 30px;">LOGIN</h2>
-      <input type="email" id="auth-email" class="retro-input" placeholder="Email">
-      <input type="text" id="auth-username" class="retro-input" placeholder="Username" style="display: none;">
-      <input type="password" id="auth-password" class="retro-input" placeholder="Password">
-      <button class="retro-btn" id="btn-submit-auth" style="margin-top: 20px;">ENTER THE ARENA</button>
-      <p id="auth-toggle-text" style="color: #fff; font-family: Courier New; margin-top: 15px; cursor: pointer; text-decoration: underline;">
-        Need an account? Register here.
-      </p>
-      <button class="retro-btn" id="btn-close-auth" style="margin-top: 20px; font-size: 0.8rem; background-color: #555;">BACK TO MENU</button>
-    </div>
-
-      <div id="profile-screen" class="screen" style="display: none; background: rgba(0,0,0,0.85); z-index: 100;">
-        <div style="background: #2a2a36; padding: 30px; border-radius: 8px; border: 2px solid #32CD32; text-align: center; max-width: 350px; width: 90%;">
-          <h2 style="color: #32CD32; font-family: 'Courier New'; margin-top: 0;">USER PROFILE</h2>
-          <p id="profile-stats-balance" style="color: #fff; font-family: 'Courier New'; margin-bottom: 20px;">Play Time: 0s</p>
-          
-          <input type="text" id="profile-username" class="retro-input" placeholder="New Username" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
-          <button id="btn-save-profile" class="retro-btn" style="width: 100%; margin-bottom: 10px; font-size: 1.2rem; padding: 10px;">SAVE NAME</button>
-          <button id="btn-logout" class="retro-btn" style="width: 100%; margin-bottom: 10px; font-size: 1.2rem; padding: 10px; background-color: #8B0000; border-color: #ff0000; color: #fff;">LOGOUT</button>
-          <button id="btn-close-profile" class="retro-btn" style="width: 100%; font-size: 1.2rem; padding: 10px; background-color: #555; border-color: #888;">CLOSE</button>
-        </div>
-      </div>
-
-      <div id="main-menu" class="screen active">
-      <div style="position: absolute; top: 20px; right: 20px;">
-        <button class="retro-btn" id="btn-open-auth" style="font-size: 0.8rem; padding: 5px 10px;">LOGIN / REGISTER</button>
-        <button class="retro-btn" id="btn-user-profile" style="display: none; font-size: 0.8rem; padding: 5px 10px; background-color: #555; color: #fff; border-color: #fff;"></button>
-      </div>
-      <div class="logo-container">
-        <img src="/logo.png?v=3" alt="Worms Logo" class="game-logo-img" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 style=\\'color:white\\'>Worms Logo</h1>')">
-      </div>
-      <div id="time-balance" class="retro-text" style="color: #32CD32; margin-bottom: 20px; font-size: 1.2rem;">Time Left: 1h 0m</div>
-      <div class="weapon-selection">
-        <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 5px;">Select Class:</h3>
-        <select id="class-select" style="margin-bottom: 15px; padding: 5px; font-size: 1rem; font-family: Courier New; width: 100%; box-sizing: border-box;">
-          <option value="soldier">Soldier (Balanced)</option>
-          <option value="heavy">Heavy (Tank)</option>
-          <option value="scout">Scout (Fast)</option>
-        </select>
-
-        <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 5px;">Map Size:</h3>
-        <select id="map-size-select" style="margin-bottom: 15px; padding: 5px; font-size: 1rem; font-family: Courier New; width: 100%; box-sizing: border-box;">
-          <option value="small">Small</option>
-          <option value="medium" selected>Medium</option>
-          <option value="large">Large</option>
-        </select>
-
-        <h3 class="retro-text" style="font-size: 1rem; margin-bottom: 10px;">Select Weapons:</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-          <label><input type="checkbox" class="weapon-cb" value="bazooka" checked> Bazooka</label>
-          <label><input type="checkbox" class="weapon-cb" value="blaster" checked> Plasma</label>
-          <label><input type="checkbox" class="weapon-cb" value="shotgun"> Shotgun</label>
-          <label><input type="checkbox" class="weapon-cb" value="sniper"> Railgun</label>
-          <label><input type="checkbox" class="weapon-cb" value="minigun"> Minigun</label>
-          <label><input type="checkbox" class="weapon-cb" value="laser"> Laser</label>
-        </div>
-      </div>
-
-      <div class="game-modes-panel">
-        <button class="mode-btn" id="btn-mode-training">Training (Free)</button>
-        <button class="mode-btn" id="btn-mode-friend">Play with Friend</button>
-        <button class="mode-btn" id="btn-mode-random" disabled>Random Match (Soon)</button>
-      </div>
-    </div>
-
-    <div id="loader-screen" class="screen">
-      <h2 class="retro-text blink" id="loader-text">GENERATING WORLD...</h2>
-      <div id="invite-panel" style="display: none; flex-direction: column; align-items: center;">
-        <p style="color: #fff; font-family: Courier New; margin-bottom: 10px;">Send this link to your friend:</p>
-        <input type="text" id="invite-link" class="retro-input" readonly style="font-size: 0.9rem; width: 350px;">
-        <button class="retro-btn" id="btn-copy-invite" style="padding: 10px 20px; font-size: 1rem;">COPY LINK</button>
-      </div>
-    </div>
-
-    <!-- The actual game area, fully responsive -->
-    <div id="game-screen" class="screen">
-      <div class="game-layout">
-        <div id="game-container">
-          <canvas id="gameCanvas" width="800" height="600"></canvas>
-        </div>
-
-        <div id="mobile-controls">
-          <div class="d-pad">
-            <button class="control-btn" id="btn-up">⟲</button>
-            <div class="horizontal">
-              <button class="control-btn" id="btn-left">←</button>
-              <button class="control-btn" id="btn-down">⟳</button>
-              <button class="control-btn" id="btn-right">→</button>
-            </div>
-          </div>
-          <div class="action-pad">
-            <div class="action-pad-row">
-              <button class="control-btn action-btn switch-btn" id="btn-switch"><span id="weapon-name-display" style="pointer-events: none;">Switch</span></button>
-              <button class="control-btn action-btn" id="btn-jump">Jump</button>
-            </div>
-            <button class="control-btn action-btn fire-btn" id="btn-fire">Fire</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <div id="game-over-screen" class="screen">
-      <div class="logo-container">
-        <h1 class="game-title" style="font-size: 2.5rem; margin-top: 10px;">WebWorms</h1>
-      </div>
-      <h2 class="retro-text" id="winner-text" style="margin-bottom: 20px; font-size: clamp(2rem, 5vw, 3rem);">PLAYER WINS!</h2>
-      <div id="stats-panel" class="stats-panel">
-        <h3 style="color: #00ffff; text-align: center; margin-bottom: 15px;">MATCH STATS</h3>
-        <p id="stat-p1-dmg">P1 Damage: 0</p>
-        <p id="stat-p2-dmg">P2 Damage: 0</p>
-        <div id="stat-reward" class="reward-text">+10 MINUTES REWARD!</div>
-      </div>
-      <button class="retro-btn" id="btn-return-menu">RETURN TO MENU</button>
-    </div>
-  </div>
-`;
+  new AdminPanel();
+} else {
 
 // DOM Elements
 const authScreen = document.getElementById('auth-screen')!;
@@ -160,12 +34,12 @@ const timeBalanceEl = document.getElementById('profile-stats-balance')!;
 // Weapon Carousel Logic
 const weaponSlots = document.querySelectorAll('.weapon-slot');
 
-weaponSlots.forEach((slot) => {
+weaponSlots.forEach((slot, index) => {
   slot.addEventListener('click', () => {
     weaponSlots.forEach(s => s.classList.remove('active'));
     slot.classList.add('active');
     if (window.presenter) {
-      window.presenter.handleInput('switch', true);
+      window.presenter.handleInput('switch', true, false, index);
     }
   });
 });
@@ -476,6 +350,9 @@ canvas.addEventListener('touchend', () => {
 
 function handleAim(touch: Touch) {
   if (window.presenter && window.presenter.state && window.presenter.state.players.length > 0) {
+    const activeTeam = window.presenter.state.currentPlayerIndex === 0 ? 'team1' : 'team2';
+    if (window.presenter.localTeam && activeTeam !== window.presenter.localTeam) return;
+
     // We would calculate angle from worm position to touch point, 
     // but for now we simulate Up/Down based on Y drag relative to screen center
     const dy = touch.clientY - (window.innerHeight / 2);
@@ -495,11 +372,12 @@ function handleAim(touch: Touch) {
   // Start Game Helpers
   async function startGame(mode: 'training' | 'friend' | 'random') {
   currentMode = mode;
-  
-  const checked = document.querySelectorAll('.weapon-cb:checked') as NodeListOf<HTMLInputElement>;
-  const selectedWeapons = Array.from(checked).map(cb => cb.value);
-  if (selectedWeapons.length === 0) selectedWeapons.push('bazooka'); // Fallback
 
+  let selectedWeapons = ['bazooka', 'grenade', 'shotgun'];
+  const checked = document.querySelectorAll('.weapon-cb:checked') as NodeListOf<HTMLInputElement>;
+  if (checked.length > 0) {
+    selectedWeapons = Array.from(checked).map(cb => cb.value);
+  }
 
   const classSelect = document.getElementById('unit-class-select') as HTMLSelectElement;
   const unitClass = (classSelect ? classSelect.value : 'soldier') as 'soldier' | 'heavy' | 'scout';
@@ -512,8 +390,9 @@ function handleAim(touch: Touch) {
   
   // Allow UI to paint the loader
   await new Promise(resolve => setTimeout(resolve, 50));
-  
+
   window.presenter.reset(selectedWeapons, unitClass, mapSize);
+  window.presenter.localTeam = mode === 'training' ? null : null; // To be set if multiplayer
   
   
   const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
@@ -564,12 +443,12 @@ function handleAim(touch: Touch) {
       window.presenter.start();
     };
 
-    syncModule.onPlayerAction = (action, active) => {
-      window.presenter.handleInput(action, active, true); // true = from network
+    syncModule.onPlayerAction = (action, active, payload) => {
+      window.presenter.handleInput(action, active, true, payload); // true = from network
     };
 
-    window.presenter.onLocalAction = (action: string, active: boolean) => {
-      syncModule?.sendAction(action, active);
+    window.presenter.onLocalAction = (action: string, active: boolean, payload?: any) => {
+      syncModule?.sendAction(action, active, payload);
     };
 
     try {
@@ -577,17 +456,29 @@ function handleAim(touch: Touch) {
       
       if (!joinRoomId) {
         // We are the host, waiting for someone
+        window.presenter.localTeam = 'team1';
         loaderText.innerText = 'WAITING FOR OPPONENT...';
         invitePanel.style.display = 'flex';
-        
+
         const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
         inviteInput.value = inviteUrl;
-        
+
         document.getElementById('btn-copy-invite')!.onclick = () => {
           navigator.clipboard.writeText(inviteUrl);
           document.getElementById('btn-copy-invite')!.innerText = 'COPIED!';
         };
+
+        document.getElementById('btn-cancel-invite')!.onclick = () => {
+          if (syncModule) {
+            syncModule.peerConnection?.close();
+            syncModule = null;
+          }
+          invitePanel.style.display = 'none';
+          loaderScreen.classList.remove('active');
+          menuScreen.classList.add('active');
+        };
       } else {
+        window.presenter.localTeam = 'team2';
         loaderText.innerText = 'JOINING ROOM...';
       }
     } catch (e) {
@@ -622,6 +513,20 @@ function handleAim(touch: Touch) {
 
 document.getElementById('btn-play-training')!.addEventListener('click', () => startGame('training'));
 document.getElementById('btn-play-friends')!.addEventListener('click', () => startGame('friend'));
+
+document.getElementById('btn-share-clip')!.addEventListener('click', () => {
+  const btn = document.getElementById('btn-share-clip')!;
+  btn.innerText = '🎬 GENERATING...';
+  setTimeout(() => {
+    btn.innerText = '🎬 LINK COPIED!';
+    // Simulate share
+    const dummyLink = window.location.origin + '?replay=' + Math.random().toString(36).substring(7);
+    navigator.clipboard.writeText(dummyLink).catch(err => {
+      console.warn('Could not copy text: ', err);
+    });
+    setTimeout(() => btn.innerText = '🎬 SHARE CLIP', 2000);
+  }, 1000);
+});
 
 document.getElementById('btn-return-menu')!.addEventListener('click', () => {
     if (deductInterval) clearInterval(deductInterval);
@@ -659,12 +564,12 @@ const turnNotification = document.getElementById('turn-notification')!;
 
 window.presenter.onStateUpdate = (state: any) => {
   // Update local HP (team1)
-  const localWorms = state.players.filter((w: any) => w.team === 'team1');
+  const localWorms = state.players.length > 0 ? [state.players[0]] : [];
   const localHp = localWorms.reduce((sum: number, w: any) => sum + w.health, 0);
   hpLocalEl.style.width = `${Math.min(100, Math.max(0, (localHp / 100) * 100))}%`;
 
   // Update enemy HP (team2)
-  const enemyWorms = state.players.filter((w: any) => w.team === 'team2');
+  const enemyWorms = state.players.length > 1 ? [state.players[1]] : [];
   const enemyHp = enemyWorms.reduce((sum: number, w: any) => sum + w.health, 0);
   hpEnemyEl.style.width = `${Math.min(100, Math.max(0, (enemyHp / 100) * 100))}%`;
 
@@ -673,7 +578,9 @@ window.presenter.onStateUpdate = (state: any) => {
   windIndicator.innerText = `Wind: ${state.wind > 0 ? '→' : state.wind < 0 ? '←' : '0'}`;
 
   // Turn Change Notification
-  const isMyTurn = state.players[state.activePlayerIndex]?.team === 'team1';
+  const activeTeam = state.currentPlayerIndex === 0 ? 'team1' : 'team2';
+  const isMyTurn = window.presenter.localTeam ? activeTeam === window.presenter.localTeam : activeTeam === 'team1';
+  
   if (state.turnTimeLeft === 30) {
     turnNotification.style.display = 'block';
     turnNotification.innerText = isMyTurn ? 'YOUR TURN!' : 'ENEMY TURN!';

@@ -104,10 +104,13 @@ button:hover {
 
 .secondary-btn {
   background-color: var(--color-secondary);
+  color: #000;
 }
 
 .danger-btn {
   background-color: var(--color-danger);
+  color: #fff;
+  text-shadow: 2px 2px 0 #000;
 }
 
 .icon-btn {

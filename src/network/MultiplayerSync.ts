@@ -14,7 +14,7 @@ export class MultiplayerSync {
   private pollInterval: number | null = null;
 
   public onStateReceived?: (stateData: any) => void;
-  public onPlayerAction?: (action: string, active: boolean) => void;
+  public onPlayerAction?: (action: string, active: boolean, payload?: any) => void;
   public onPeerDisconnected?: () => void;
   public onReady?: () => void;
 
@@ -123,7 +123,7 @@ export class MultiplayerSync {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'action' && this.onPlayerAction) {
-          this.onPlayerAction(msg.action, msg.active);
+          this.onPlayerAction(msg.action, msg.active, msg.payload);
         } else if (msg.type === 'sync' && this.onStateReceived) {
           this.onStateReceived(msg.state);
         }
@@ -131,10 +131,9 @@ export class MultiplayerSync {
     };
   }
 
-  public sendAction(action: string, active: boolean): void {
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      this.dataChannel.send(JSON.stringify({ type: 'action', action, active }));
-    }
+  public sendAction(action: string, active: boolean, payload?: any): void {
+    if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
+    this.dataChannel.send(JSON.stringify({ type: 'action', action, active, payload }));
   }
 
   public sendStateSync(state: any): void {
