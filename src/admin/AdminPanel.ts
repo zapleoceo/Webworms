@@ -216,6 +216,35 @@ export class AdminPanel {
     document.querySelectorAll('.save-user-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.saveUser(e));
     });
+
+    // Bind delete buttons
+    document.querySelectorAll('.delete-user-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.deleteUser(e));
+    });
+  }
+
+  private async deleteUser(e: Event) {
+    const id = (e.target as HTMLButtonElement).dataset.id;
+    if (!id) return;
+
+    if (!confirm('Are you sure you want to completely delete this user?')) return;
+
+    try {
+      const res = await fetch(APIClient.BASE_URL + `/admin/users?id=${id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        }
+      });
+      if (res.ok) {
+        this.loadUsersData();
+      } else {
+        alert('Failed to delete user');
+      }
+    } catch (e) {
+      alert('Network error');
+    }
   }
 
   private async saveUser(e: Event) {

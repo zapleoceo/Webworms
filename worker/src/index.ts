@@ -80,6 +80,9 @@ export default {
       else if (url.pathname === '/api/admin/users' && request.method === 'POST') {
         response = await updateAdminUser(request, env);
       }
+      else if (url.pathname === '/api/admin/users' && request.method === 'DELETE') {
+        response = await deleteAdminUser(request, env);
+      }
       else if (url.pathname === '/api/rooms' && request.method === 'POST') {
         response = await createRoom(request, env);
       }
@@ -439,15 +442,40 @@ async function getAdminUsers(request: Request, env: Env): Promise<Response> {
 
 async function updateAdminUser(request: Request, env: Env): Promise<Response> {
   if (!(await checkAdminAuth(request, env))) {
-    return new Response(JSON.stringify({ error: 'Unauthorized. Admin access required.' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
-  const body = await request.json() as { id: string, access_allowed: boolean, is_admin: boolean };
   try {
-    await env.DB.prepare('UPDATE Users SET access_allowed = ?, is_admin = ? WHERE id = ?')
-      .bind(body.access_allowed ? 1 : 0, body.is_admin ? 1 : 0, body.id)
-      .run();
-    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    const { id, is_active, is_admin, access_allowed, play_time_balance } = await request.json() as any;
+
+    if (!id) return new Response(JSON.stringify({ error: 'Missing ID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    await env.DB.prepare(`
+      UPDATE Users 
+      SET is_active = ?, is_admin = ?, access_allowed = ?, play_time_balance = ?
+      WHERE id = ?
+    `).bind(is_active, is_admin, access_allowed, play_time_balance, id).run();
+
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+async function deleteAdminUser(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+
+    if (!id) return new Response(JSON.stringify({ error: 'Missing ID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    await env.DB.prepare('DELETE FROM Users WHERE id = ?').bind(id).run();
+
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
