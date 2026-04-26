@@ -101,21 +101,51 @@ document.getElementById('btn-logout')!.addEventListener('click', () => {
   profileScreen.style.display = 'none';
 });
 
-document.getElementById('btn-save-profile')!.addEventListener('click', async () => {
-  const input = document.getElementById('profile-username') as HTMLInputElement;
-  const newName = input.value.trim();
-  if (!newName) return;
-  
-  if (userSessionId) {
-      const res = await APIClient.updateProfile(userSessionId, newName);
-      if (res.success) {
-        userSessionName = res.username;
-        localStorage.setItem('userSessionName', userSessionName || '');
-        btnUserProfile.innerText = userSessionName || 'USER';
-        profileScreen.style.display = 'none';
-      } else {
-      alert(res.error || 'Failed to update username');
+// Toggle Password Visibility
+const togglePasswordVisBtn = document.getElementById('toggle-password-vis');
+const profilePasswordInput = document.getElementById('profile-password') as HTMLInputElement;
+if (togglePasswordVisBtn && profilePasswordInput) {
+  togglePasswordVisBtn.addEventListener('click', () => {
+    if (profilePasswordInput.type === 'password') {
+      profilePasswordInput.type = 'text';
+      togglePasswordVisBtn.innerText = '🙈';
+    } else {
+      profilePasswordInput.type = 'password';
+      togglePasswordVisBtn.innerText = '👁️';
     }
+  });
+}
+
+document.getElementById('btn-save-profile')!.addEventListener('click', async () => {
+  const newName = (document.getElementById('profile-username') as HTMLInputElement).value.trim();
+  const newPassword = profilePasswordInput ? profilePasswordInput.value.trim() : '';
+
+  if (!newName && !newPassword) {
+    profileScreen.classList.remove('active');
+    return;
+  }
+
+  if (userSessionId) {
+      if (newName) {
+        const res = await APIClient.updateProfile(userSessionId, newName);
+        if (res.success) {
+          userSessionName = res.username;
+          localStorage.setItem('userSessionName', userSessionName || '');
+          btnUserProfile.innerText = userSessionName || 'USER';
+        } else {
+          alert(res.error || 'Failed to update username');
+        }
+      }
+      
+      if (newPassword) {
+        // Ideally we would send the new password to the API here
+        // const res = await APIClient.updatePassword(userSessionId, newPassword);
+        // For now, we alert that the API endpoint is needed
+        alert('Password update requested. (API Endpoint needed)');
+        profilePasswordInput.value = '';
+      }
+      
+      profileScreen.classList.remove('active');
   }
 });
 
@@ -335,14 +365,15 @@ touchActions.forEach(({ id, action }) => {
   async function startGame(mode: 'training' | 'friend' | 'random') {
   currentMode = mode;
 
-  let selectedWeapons = ['bazooka', 'grenade', 'shotgun'];
-  const checked = document.querySelectorAll('.weapon-cb:checked') as NodeListOf<HTMLInputElement>;
-  if (checked.length > 0) {
-    selectedWeapons = Array.from(checked).map(cb => cb.value);
+  const selectedWeapons = Array.from(document.querySelectorAll('#weapon-selection input[type="checkbox"]:checked'))
+    .map(cb => (cb as HTMLInputElement).value);
+    
+  if (selectedWeapons.length !== 2) {
+    alert('Please select exactly 2 weapons!');
+    return;
   }
-
-  const classSelect = document.getElementById('unit-class-select') as HTMLSelectElement;
-  const unitClass = (classSelect ? classSelect.value : 'soldier') as 'soldier' | 'heavy' | 'scout';
+  
+  const unitClass = (document.querySelector('input[name="unitClass"]:checked') as HTMLInputElement)?.value as 'soldier' | 'heavy' | 'scout' || 'soldier';
 
   const mapSizeSelect = document.getElementById('map-size-select') as HTMLSelectElement;
   const mapSize = (mapSizeSelect ? mapSizeSelect.value : 'medium') as 'small' | 'medium' | 'large';

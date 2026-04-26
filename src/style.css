@@ -280,6 +280,58 @@ button:hover {
   text-decoration: underline;
 }
 
+/* Weapon and Class Selection Cards */
+.class-selection, .weapon-selection {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.class-card, .weapon-card {
+  cursor: pointer;
+  position: relative;
+}
+
+.class-card input, .weapon-card input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.class-card .card-content, .weapon-card .card-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid var(--color-text);
+  border-radius: 8px;
+  padding: 10px;
+  transition: all 0.2s ease;
+  width: 90px;
+}
+
+.class-card input:checked ~ .card-content, .weapon-card input:checked ~ .card-content {
+  background: var(--color-primary);
+  border-color: #fff;
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(255, 69, 0, 0.4);
+}
+
+.class-card img, .weapon-card img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  margin-bottom: 8px;
+  image-rendering: pixelated;
+}
+
+.class-card span, .weapon-card span {
+  font-family: 'Bangers', cursive;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
 /* === GAME HUD === */
 #game-container {
   position: relative;

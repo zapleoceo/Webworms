@@ -594,7 +594,16 @@ export class GamePresenter {
     if (iconEl && player) {
       const weapon = player.getCurrentWeapon();
       if (weapon) {
-        iconEl.src = `/weapon_${weapon.id}.png`;
+        // Map weapon id to actual original sprite filename
+        const weaponSpriteMap: Record<string, string> = {
+          'bazooka': 'bazooka.1.png',
+          'minigun': 'minigun.1.png',
+          'triple': 'shotgun.1.png',
+          'rocket': 'hmissile.1.png',
+          'blaster': 'laser.1.png'
+        };
+        const spriteName = weaponSpriteMap[weapon.id] || 'bazooka.1.png';
+        iconEl.src = `/sprites/Weapon Icons/${spriteName}`;
       }
     }
   }
