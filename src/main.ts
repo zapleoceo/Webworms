@@ -61,27 +61,31 @@ if (userSessionId && userSessionName) {
   timeBalanceEl.innerText = `Time Left: ${hrs}h ${mins}m`;
 }
 
+// Close modals manually if needed (already handled by ID-based listeners, but let's be safe)
+const btnCloseAuth = document.getElementById('btn-close-auth')!;
+btnCloseAuth.addEventListener('click', () => {
+  authScreen.classList.remove('active');
+  authScreen.style.display = 'none'; // Fallback
+});
+
+const btnCloseProfile = document.getElementById('btn-close-profile')!;
+btnCloseProfile.addEventListener('click', () => {
+  profileScreen.classList.remove('active');
+  profileScreen.style.display = 'none'; // Fallback
+});
+
 btnOpenAuth.addEventListener('click', () => {
-  menuScreen.classList.remove('active');
+  authScreen.style.display = ''; // Reset display inline
   authScreen.classList.add('active');
 });
 
-document.getElementById('btn-close-auth')!.addEventListener('click', () => {
-  authScreen.classList.remove('active');
-  menuScreen.classList.add('active');
-});
-
-// Profile logic
 btnUserProfile.addEventListener('click', () => {
-  profileScreen.style.display = 'flex';
+  profileScreen.style.display = ''; 
+  profileScreen.classList.add('active');
   (document.getElementById('profile-username') as HTMLInputElement).value = userSessionName || '';
   const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
   const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
   timeBalanceEl.innerText = `Play Time Balance: ${hrs}h ${mins}m`;
-});
-
-document.getElementById('btn-close-profile')!.addEventListener('click', () => {
-  profileScreen.style.display = 'none';
 });
 
 document.getElementById('btn-logout')!.addEventListener('click', () => {
@@ -529,11 +533,12 @@ document.getElementById('btn-share-clip')!.addEventListener('click', () => {
 });
 
 document.getElementById('btn-return-menu')!.addEventListener('click', () => {
-    if (deductInterval) clearInterval(deductInterval);
-
+  if (deductInterval) clearInterval(deductInterval);
   gameOverScreen.classList.remove('active');
+  gameOverScreen.style.display = 'none'; // Fallback
   menuScreen.classList.add('active');
   mobileControls.style.display = 'none'; // Ensure mobile controls are hidden on the menu
+  window.presenter.stop();
 
   if (syncModule) {
     syncModule.peerConnection?.close();
@@ -595,7 +600,11 @@ window.presenter.onStateUpdate = (state: any) => {
 
 window.presenter.onGameOver = (winner: any, stats: any) => {
   gameScreen.classList.remove('active');
+  gameScreen.style.display = 'none'; // Fallback
+
   mobileControls.style.display = 'none';
+  
+  gameOverScreen.style.display = '';
   gameOverScreen.classList.add('active');
 
   if (deductInterval) clearInterval(deductInterval);
