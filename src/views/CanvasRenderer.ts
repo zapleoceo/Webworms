@@ -27,15 +27,15 @@ export class CanvasRenderer {
     if (!terrainContext) throw new Error('Offscreen canvas not supported');
     this.terrainCtx = terrainContext;
 
-    // Load sprite images from local assets
-    this.wormImages['soldier'] = this.loadImg('/worm_soldier.svg');
-    this.wormImages['heavy'] = this.loadImg('/worm_heavy.svg');
-    this.wormImages['scout'] = this.loadImg('/worm_scout.svg');
+    // Load sprite images from local assets (cache busted)
+    this.wormImages['soldier'] = this.loadImg('/worm_soldier.svg?v=2');
+    this.wormImages['heavy'] = this.loadImg('/worm_heavy.svg?v=2');
+    this.wormImages['scout'] = this.loadImg('/worm_scout.svg?v=2');
     
     // Load brand assets for airdrops
-    this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg');
-    this.wormImages['brand_windows'] = this.loadImg('/brand_windows.svg');
-    this.wormImages['brand_android'] = this.loadImg('/brand_android.svg');
+    this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg?v=2');
+    this.wormImages['brand_windows'] = this.loadImg('/brand_windows.svg?v=2');
+    this.wormImages['brand_android'] = this.loadImg('/brand_android.svg?v=2');
   }
 
   public render(state: GameState): void {
