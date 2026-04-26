@@ -612,14 +612,18 @@ canvas {
 }
 
 .btn-switch {
-  background: var(--color-bg);
-  border-radius: 50%;
-  padding: 5px;
-  box-shadow: 0 4px 0 #333;
+  width: 60px;
+  height: 60px;
+  background: rgba(255, 215, 0, 0.6);
+  padding: 10px;
 }
 .btn-switch:active {
-  box-shadow: 0 0px 0 #333;
-  transform: translateY(4px);
+  background: rgba(255, 215, 0, 0.9);
+}
+.btn-switch img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* Weapon Selection UI in Main Menu */
