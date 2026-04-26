@@ -378,21 +378,22 @@ touchActions.forEach(({ id, action }) => {
     { id: 'btn-up', action: 'up' },
     { id: 'btn-down', action: 'down' },
     { id: 'btn-jump', action: 'jump' },
-    { id: 'btn-fire', action: 'fire' },
-    { id: 'btn-switch', action: 'switch' }
+    { id: 'btn-fire', action: 'fire' }
   ]);
 
   // Re-bind events for the new presenter
   bindPresenterEvents();
 
   const turnTime = await APIClient.getTurnTime();
+  const logos = await APIClient.getLogos();
 
   window.presenter.startGame({
     width: 1500,
     height: 800,
     mapType: mapType,
     mode: mode,
-    turnTime: turnTime
+    turnTime: turnTime,
+    logos: logos
   });
   window.presenter.localTeam = mode === 'training' ? 'training' : 'team1';
   window.presenter.start();
@@ -570,7 +571,7 @@ function updateWormSelectionUI(state: any) {
     btn.className = `worm-btn ${item.index === state.currentPlayerIndex ? 'active' : ''} ${item.p.health <= 0 ? 'dead' : ''}`;
     btn.dataset.index = item.index.toString();
     
-    const spriteUrl = item.p.health > 0 ? '/sprites/Worms/wbrth.png' : '/sprites/Misc/grave1.png';
+    const spriteUrl = item.p.health > 0 ? '/sprites/Worms/wbrth1.png' : '/sprites/Misc/grave1.png';
     const hpStr = Math.ceil(Math.max(0, item.p.health)).toString();
     
     btn.innerHTML = `<img src="${spriteUrl}" alt="W${i+1}"><span class="hp">${hpStr}</span>`;

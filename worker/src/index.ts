@@ -28,6 +28,16 @@ export default {
         )
       `).run();
       
+      await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS Logos (
+          id TEXT PRIMARY KEY,
+          image_data TEXT,
+          width INTEGER,
+          height INTEGER,
+          hardness INTEGER
+        )
+      `).run();
+      
       // Insert default turn time if not exists
       await env.DB.prepare(`
         INSERT OR IGNORE INTO Settings (key, value) VALUES ('turn_time', '30')
@@ -44,7 +54,7 @@ export default {
 
       // 2. Auth Routes
       else if (url.pathname === '/api/auth/register' && request.method === 'POST') {
-        response = await handleRegister(request, env);
+        response = await handleRegister(request, env, ctx);
       }
       
       else if (url.pathname === '/api/auth/login' && request.method === 'POST') {
@@ -83,6 +93,18 @@ export default {
       else if (url.pathname === '/api/admin/users' && request.method === 'DELETE') {
         response = await deleteAdminUser(request, env);
       }
+      
+      // 5. Logos Endpoints
+      else if (url.pathname === '/api/logos' && request.method === 'GET') {
+        response = await getLogos(env);
+      }
+      else if (url.pathname === '/api/admin/logos' && request.method === 'POST') {
+        response = await createLogo(request, env);
+      }
+      else if (url.pathname === '/api/admin/logos' && request.method === 'DELETE') {
+        response = await deleteLogo(request, env);
+      }
+      
       else if (url.pathname === '/api/rooms' && request.method === 'POST') {
         response = await createRoom(request, env);
       }
@@ -174,7 +196,7 @@ async function sendResendEmail(env: Env, to: string, token: string, host: string
   }
 }
 
-async function handleRegister(request: Request, env: Env): Promise<Response> {
+async function handleRegister(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   try {
     const { email, username, password, referred_by } = await request.json() as { email: string, username: string, password?: string, referred_by?: string };
     
@@ -207,7 +229,7 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
       const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
       
       // Async fire and forget the email sending
-      env.waitUntil(sendResendEmail(env, email, token, new URL(request.url).origin));
+      ctx.waitUntil(sendResendEmail(env, email, token, new URL(request.url).origin));
 
       return new Response(JSON.stringify({ 
         success: true, 
@@ -248,7 +270,7 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
 
     const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
     
-    env.waitUntil(sendResendEmail(env, email, token, new URL(request.url).origin));
+    ctx.waitUntil(sendResendEmail(env, email, token, new URL(request.url).origin));
 
     return new Response(JSON.stringify({ 
       success: true, 
@@ -412,6 +434,56 @@ async function updateTurnTime(request: Request, env: Env): Promise<Response> {
     return new Response(JSON.stringify({ success: true, turn_time }), { status: 200 });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
+}
+
+async function getLogos(env: Env): Promise<Response> {
+  try {
+    const res = await env.DB.prepare('SELECT * FROM Logos').all();
+    return new Response(JSON.stringify(res.results), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+async function createLogo(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  try {
+    const { image_data, width, height, hardness } = await request.json() as any;
+    
+    if (!image_data || !width || !height || !hardness) {
+      return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare('INSERT INTO Logos (id, image_data, width, height, hardness) VALUES (?, ?, ?, ?, ?)')
+      .bind(id, image_data, width, height, hardness).run();
+
+    return new Response(JSON.stringify({ success: true, id }), { status: 201, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+async function deleteLogo(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+
+    if (!id) return new Response(JSON.stringify({ error: 'Missing ID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    await env.DB.prepare('DELETE FROM Logos WHERE id = ?').bind(id).run();
+
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
 

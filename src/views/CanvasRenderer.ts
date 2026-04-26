@@ -34,7 +34,7 @@ export class CanvasRenderer {
       'walk': { src: '/sprites/Worms/wwalk.png', frameWidth: 60, frameHeight: 60, frameCount: 15 },
       'jump': { src: '/sprites/Worms/wjump.png', frameWidth: 60, frameHeight: 60, frameCount: 10 },
       'backflip': { src: '/sprites/Worms/wkamjmp.png', frameWidth: 60, frameHeight: 60, frameCount: 10 }, // approximation
-      'idle': { src: '/sprites/Worms/wbrth.png', frameWidth: 60, frameHeight: 60, frameCount: 15 }, // breathing
+      'idle': { src: '/sprites/Worms/wbrth1.png', frameWidth: 60, frameHeight: 60, frameCount: 15 }, // breathing
       'grave': { src: '/sprites/Misc/grave1.png', frameWidth: 24, frameHeight: 32, frameCount: 1 }, // Grave
       // Weapons
       'bazooka': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
@@ -85,20 +85,41 @@ export class CanvasRenderer {
       this.ctx.translate(prop.x, prop.y);
       this.ctx.rotate(prop.rotation);
 
-      const imgKey = prop.brandImage?.split('/').pop()?.split('.')[0] || 'brand_apple';
-      let img = this.wormImages[imgKey];
-      if (!img) img = this.wormImages[`brand_${imgKey}`]; // fallback for brands
-
-      if (img && img.complete && img.naturalWidth !== 0) {
-        this.ctx.drawImage(img, -prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
+      if ((prop as any).imageData) {
+        // It's a custom logo from DB
+        const imgKey = `custom_logo_${(prop as any).imageData.substring(0, 20)}`; // short hash for caching
+        let img = this.wormImages[imgKey];
+        if (!img) {
+          // Lazy load image from base64
+          img = new Image();
+          img.src = (prop as any).imageData;
+          this.wormImages[imgKey] = img;
+        }
+        if (img.complete && img.naturalWidth !== 0) {
+          this.ctx.drawImage(img, -prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
+        } else {
+          // Fallback while loading
+          this.ctx.fillStyle = 'purple';
+          this.ctx.beginPath();
+          this.ctx.arc(0, 0, prop.radius, 0, Math.PI * 2);
+          this.ctx.fill();
+        }
       } else {
-        // Fallback
-        this.ctx.fillStyle = '#ff8800';
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, prop.radius, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.fillStyle = '#000';
-        this.ctx.stroke();
+        const imgKey = prop.brandImage?.split('/').pop()?.split('.')[0] || 'brand_apple';
+        let img = this.wormImages[imgKey];
+        if (!img) img = this.wormImages[`brand_${imgKey}`]; // fallback for brands
+
+        if (img && img.complete && img.naturalWidth !== 0) {
+          this.ctx.drawImage(img, -prop.radius, -prop.radius, prop.radius * 2, prop.radius * 2);
+        } else {
+          // Fallback
+          this.ctx.fillStyle = '#ff8800';
+          this.ctx.beginPath();
+          this.ctx.arc(0, 0, prop.radius, 0, Math.PI * 2);
+          this.ctx.fill();
+          this.ctx.fillStyle = '#000';
+          this.ctx.stroke();
+        }
       }
 
       this.ctx.restore();

@@ -33,6 +33,9 @@ export class GameState {
   
   public wind: number = 0; // Wind affecting projectiles
   public windTarget: number = 0; // Target for smooth random transition
+  public turnTimeLeft: number = 30;
+  public availableLogos: any[] = [];
+  public airdropTimer: number = 60;
 
   constructor(width: number, height: number) {
     this.width = width;

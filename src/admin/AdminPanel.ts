@@ -37,6 +37,7 @@ export class AdminPanel {
             <nav>
               <button id="nav-dashboard" class="admin-nav-btn active">Dashboard</button>
               <button id="nav-users" class="admin-nav-btn">Users Management</button>
+              <button id="nav-logos" class="admin-nav-btn">Airdrop Logos</button>
               <button id="admin-logout-btn" class="admin-nav-btn danger">Logout</button>
             </nav>
           </aside>
@@ -83,6 +84,36 @@ export class AdminPanel {
                 </table>
               </div>
             </section>
+            <section id="section-logos" class="admin-section">
+              <div class="section-header">
+                <h2>Airdrop Logos</h2>
+                <button id="load-logos" class="secondary-btn small-btn">Refresh</button>
+              </div>
+              <div class="upload-logo-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
+                <h3>Upload New Logo</h3>
+                <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                  <input type="file" id="logo-file" accept="image/*" style="color: white;">
+                  <input type="number" id="logo-width" placeholder="Width (px)" value="60" class="retro-input" style="width: 100px; padding: 5px;">
+                  <input type="number" id="logo-height" placeholder="Height (px)" value="60" class="retro-input" style="width: 100px; padding: 5px;">
+                  <input type="number" id="logo-hardness" placeholder="Hardness" value="10" class="retro-input" style="width: 100px; padding: 5px;">
+                  <button id="upload-logo-btn" class="primary-btn small-btn">Upload</button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Image</th>
+                      <th>Size</th>
+                      <th>Hardness</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="logos-list-body">
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </main>
         </div>
       </div>
@@ -100,6 +131,12 @@ export class AdminPanel {
       this.switchTab('users', e.target as HTMLElement);
       this.loadUsersData();
     });
+    document.getElementById('nav-logos')?.addEventListener('click', (e) => {
+      this.switchTab('logos', e.target as HTMLElement);
+      this.loadLogosData();
+    });
+    document.getElementById('load-logos')?.addEventListener('click', () => this.loadLogosData());
+    document.getElementById('upload-logo-btn')?.addEventListener('click', () => this.handleLogoUpload());
   }
 
   private switchTab(tabId: string, btnElement: HTMLElement) {
@@ -212,14 +249,23 @@ export class AdminPanel {
       </tr>
     `}).join('');
 
+    this.bindDynamicEvents();
+  }
+
+  private bindDynamicEvents() {
     // Bind save buttons
     document.querySelectorAll('.save-user-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.saveUser(e));
     });
 
-    // Bind delete buttons
+    // Bind user delete buttons
     document.querySelectorAll('.delete-user-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.deleteUser(e));
+    });
+
+    // Bind logo delete buttons
+    document.querySelectorAll('.delete-logo-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.deleteLogo(e));
     });
   }
 
@@ -242,7 +288,116 @@ export class AdminPanel {
       } else {
         alert('Failed to delete user');
       }
+    } catch (err) {
+      alert('Network error');
+    }
+  }
+
+  // --- LOGOS MANAGEMENT ---
+
+  private async loadLogosData() {
+    try {
+      const res = await fetch(APIClient.BASE_URL + '/logos');
+      if (!res.ok) throw new Error('Failed to fetch logos');
+      
+      const logos = await res.json();
+      this.renderLogosTable(logos);
     } catch (e) {
+      console.error(e);
+      alert('Error loading logos');
+    }
+  }
+
+  private renderLogosTable(logos: any[]) {
+    const tbody = document.getElementById('logos-list-body');
+    if (!tbody) return;
+
+    if (logos.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No logos uploaded yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = logos.map(logo => `
+      <tr>
+        <td><img src="${logo.image_data}" alt="Logo" style="max-width: 60px; max-height: 60px; object-fit: contain; background: rgba(255,255,255,0.1); border-radius: 4px; padding: 2px;"></td>
+        <td>${logo.width}x${logo.height} px</td>
+        <td>${logo.hardness}</td>
+        <td>
+          <button class="danger-btn small-btn delete-logo-btn" data-id="${logo.id}">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+
+    this.bindDynamicEvents();
+  }
+
+  private async handleLogoUpload() {
+    const fileInput = document.getElementById('logo-file') as HTMLInputElement;
+    const widthInput = document.getElementById('logo-width') as HTMLInputElement;
+    const heightInput = document.getElementById('logo-height') as HTMLInputElement;
+    const hardnessInput = document.getElementById('logo-hardness') as HTMLInputElement;
+
+    const file = fileInput.files?.[0];
+    if (!file) {
+      alert('Please select an image file');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64Data = e.target?.result as string;
+      
+      try {
+        const res = await fetch(APIClient.BASE_URL + '/admin/logos', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+            'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+          },
+          body: JSON.stringify({
+            image_data: base64Data,
+            width: parseInt(widthInput.value) || 60,
+            height: parseInt(heightInput.value) || 60,
+            hardness: parseInt(hardnessInput.value) || 10
+          })
+        });
+
+        if (res.ok) {
+          alert('Logo uploaded successfully');
+          fileInput.value = ''; // clear
+          this.loadLogosData();
+        } else {
+          const err = await res.json();
+          alert('Failed to upload logo: ' + (err.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Network error during upload');
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  private async deleteLogo(e: Event) {
+    const id = (e.target as HTMLButtonElement).dataset.id;
+    if (!id) return;
+
+    if (!confirm('Are you sure you want to delete this logo?')) return;
+
+    try {
+      const res = await fetch(APIClient.BASE_URL + `/admin/logos?id=${id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        }
+      });
+      if (res.ok) {
+        this.loadLogosData();
+      } else {
+        alert('Failed to delete logo');
+      }
+    } catch (err) {
       alert('Network error');
     }
   }
@@ -259,7 +414,7 @@ export class AdminPanel {
         'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
         'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
       },
-      body: JSON.stringify({ id, access_allowed: cb.checked, is_admin: adminCb.checked })
+      body: JSON.stringify({ id, access_allowed: cb.checked ? 1 : 0, is_admin: adminCb.checked ? 1 : 0 })
     });
     
     if (!saveRes.ok) {

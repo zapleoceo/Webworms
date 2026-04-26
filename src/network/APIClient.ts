@@ -47,6 +47,16 @@ export class APIClient {
     return res.json();
   }
 
+  public static async getLogos(): Promise<any[]> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/logos`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  }
+
   public static async getTurnTime(): Promise<number> {
     try {
       const res = await fetch(`${this.BASE_URL}/settings/turn_time`);

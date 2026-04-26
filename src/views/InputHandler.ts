@@ -54,7 +54,6 @@ export class InputHandler {
     window.addEventListener('touchmove', this.handlePointerMove.bind(this), { passive: false });
     window.addEventListener('touchend', this.handlePointerUp.bind(this));
 
-    // Mobile controls (using pointer events to support multi-touch and prevent defaults)
     this.mobileBtns.forEach(btn => {
       const el = document.getElementById(btn.id);
       if (el) {

@@ -11,6 +11,8 @@ export class PhysicsProp {
   
   public type: 'rock' | 'crate' | 'brand';
   public brandImage?: string; // Optional image for brand drops
+  public width: number;
+  public height: number;
   public bounce: number = 0.4;
   public friction: number = 0.8;
   public isSettled: boolean = false;
@@ -19,12 +21,20 @@ export class PhysicsProp {
   public maxHealth: number;
   public defense: number; // damage reduction
   public mass: number; // resistance to push
+  public hardness: number = 10; // New parameter: hardness for terrain damage
+  public imageData?: string; // Base64 or URL for custom sprites
 
-  constructor(x: number, y: number, type: 'rock' | 'crate' | 'brand' = 'rock', brandImage?: string) {
+  constructor(x: number, y: number, type: 'rock' | 'crate' | 'brand' = 'rock', brandImage?: string, hardness: number = 10, imageData?: string) {
     this.x = x;
     this.y = y;
     this.type = type;
     this.brandImage = brandImage;
+    this.hardness = hardness;
+    this.imageData = imageData;
+    
+    // Default width and height
+    this.width = 60;
+    this.height = 60;
 
     if (type === 'crate') {
       this.radius = 15;

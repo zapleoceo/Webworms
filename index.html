@@ -131,30 +131,25 @@
 
             <!-- Active Worm Selection Panel (Desktop / Bottom) -->
             <div id="worm-selection-panel" class="worm-selection-panel">
-              <button class="worm-btn" data-index="0"><img src="/sprites/Worms/wbrth.png" alt="W1"><span class="hp">100</span></button>
-              <button class="worm-btn" data-index="1"><img src="/sprites/Worms/wbrth.png" alt="W2"><span class="hp">100</span></button>
-              <button class="worm-btn" data-index="2"><img src="/sprites/Worms/wbrth.png" alt="W3"><span class="hp">100</span></button>
+              <button class="worm-btn" data-index="0"><img src="/sprites/Worms/wbrth1.png" alt="W1"><span class="hp">100</span></button>
+              <button class="worm-btn" data-index="1"><img src="/sprites/Worms/wbrth1.png" alt="W2"><span class="hp">100</span></button>
+              <button class="worm-btn" data-index="2"><img src="/sprites/Worms/wbrth1.png" alt="W3"><span class="hp">100</span></button>
             </div>
 
             <!-- Bottom Weapons Bar (Removed) -->
 
             <!-- Mobile Controls Overlay -->
-            <div id="mobile-controls" class="mobile-hud">
-              <div class="mobile-joystick-container">
-                <div id="joystick-move" class="joystick-zone">
-                  <div class="joystick-base"></div>
-                  <div class="joystick-stick"></div>
+            <div id="mobile-controls" class="mobile-controls" style="display:none;">
+              <div class="mobile-left">
+                <div class="joystick-zone" id="mobile-joystick">
+                  <div class="joystick-knob" id="mobile-joystick-knob"></div>
                 </div>
               </div>
-
-              <div class="mobile-actions">
-                <div class="weapon-switch-container">
-                  <button id="btn-switch" class="action-btn btn-switch">
-                    <img id="current-weapon-icon" src="/weapon_bazooka.png" alt="W" />
-                  </button>
+              <div class="mobile-right">
+                <div class="action-buttons">
+                  <button id="btn-jump" class="action-btn btn-jump">UP</button>
+                  <button id="btn-fire" class="action-btn btn-fire">FIRE</button>
                 </div>
-                <button id="btn-jump" class="action-btn btn-jump">UP</button>
-                <button id="btn-fire" class="action-btn btn-fire">FIRE</button>
               </div>
             </div>
             

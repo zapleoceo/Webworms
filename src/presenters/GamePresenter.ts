@@ -2,6 +2,7 @@ import { GameState } from '../models/GameState';
 import { PhysicsEngine } from './PhysicsEngine';
 import { Worm } from '../models/Worm';
 import { Projectile } from '../models/Projectile';
+import { PhysicsProp } from '../models/PhysicsProp';
 import { SoundManager } from '../utils/SoundManager';
 import { AudioManager } from '../utils/AudioManager';
 
@@ -91,6 +92,8 @@ export class GamePresenter {
     let worldWidth = this.initialWidth * 1.5;
     let worldHeight = this.initialHeight * 1.2;
     this.state = new GameState(worldWidth, worldHeight);
+    this.state.availableLogos = settings.logos || [];
+    this.state.airdropTimer = 60; // First airdrop in 60s
     this.state.cameraX = Math.max(0, (worldWidth - this.initialWidth) / 2);
     this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
@@ -190,6 +193,13 @@ export class GamePresenter {
             this.nextTurn();
           }
         }
+      }
+
+      // Airdrop Logic
+      this.state.airdropTimer -= dt;
+      if (this.state.airdropTimer <= 0) {
+        this.spawnAirdrop();
+        this.state.airdropTimer = 60; // Reset for next minute
       }
     }
 
@@ -594,6 +604,27 @@ export class GamePresenter {
       (proj as any).owner = player; // Attach owner for stats tracking
       this.state.projectiles.push(proj);
     }
+  }
+
+  private spawnAirdrop() {
+    if (!this.state.availableLogos || this.state.availableLogos.length === 0) return;
+
+    // Pick random logo
+    const logo = this.state.availableLogos[Math.floor(Math.random() * this.state.availableLogos.length)];
+    
+    // Spawn at top, random X
+    const spawnX = Math.random() * (this.state.landscape.width - 200) + 100;
+    const spawnY = -200; // Above screen
+
+    const prop = new PhysicsProp(spawnX, spawnY, 'brand', undefined, logo.hardness, logo.image_data);
+    // Override width/height from DB settings
+    prop.width = logo.width || 60;
+    prop.height = logo.height || 60;
+    prop.radius = Math.max(prop.width, prop.height) / 2;
+    prop.mass = logo.hardness * 2; // Harder logos are heavier
+    prop.defense = logo.hardness;
+
+    this.state.props.push(prop);
   }
 
   public updateMobileWeaponIcon(player: any) {
