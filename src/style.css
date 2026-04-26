@@ -777,6 +777,26 @@ canvas {
   .action-btn { width: 60px; height: 60px; font-size: 0.9rem; }
   .btn-fire { width: 70px; height: 70px; font-size: 1.1rem; }
   .joystick-zone { width: 100px; height: 100px; }
+  
+  .worm-selection-panel {
+    bottom: 120px; /* Above the mobile controls */
+    gap: 5px;
+    padding: 5px;
+  }
+  
+  .worm-btn {
+    width: 40px;
+    height: 60px;
+  }
+  
+  .worm-btn img {
+    width: 30px;
+    height: 30px;
+  }
+  
+  .worm-btn .hp {
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 400px) {
