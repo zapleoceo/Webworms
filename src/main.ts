@@ -5,6 +5,7 @@ import { CanvasRenderer } from './views/CanvasRenderer';
 import { InputHandler } from './views/InputHandler';
 import { APIClient } from './network/APIClient';
 import { MultiplayerSync } from './network/MultiplayerSync';
+import { AudioManager } from './utils/AudioManager';
 
 declare global {
   interface Window {
@@ -472,8 +473,14 @@ touchActions.forEach(({ id, action }) => {
 
   // End Game Helpers
 
-document.getElementById('btn-play-training')!.addEventListener('click', () => startGame('training'));
-document.getElementById('btn-play-friends')!.addEventListener('click', () => startGame('friend'));
+document.getElementById('btn-play-training')!.addEventListener('click', () => {
+  AudioManager.isGameStarted = true; // Enable sounds
+  startGame('training');
+});
+document.getElementById('btn-play-friends')!.addEventListener('click', () => {
+  AudioManager.isGameStarted = true; // Enable sounds
+  startGame('friend');
+});
 
 document.getElementById('btn-share-clip')!.addEventListener('click', () => {
   const btn = document.getElementById('btn-share-clip')!;

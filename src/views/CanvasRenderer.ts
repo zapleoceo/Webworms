@@ -58,8 +58,9 @@ export class CanvasRenderer {
     this.drawProjectiles(state);
     // this.drawSnowflakes(state);
     this.drawPlayers(state);
+    this.drawFloatingTexts(state);
     this.drawExplosions(state);
-    
+
     this.ctx.restore(); // Restore camera so UI is drawn fixed to screen
 
     this.drawOffscreenPointers(state);
@@ -412,16 +413,21 @@ export class CanvasRenderer {
         this.ctx.fill();
       }
 
-      // Name and Health bar
-      this.ctx.fillStyle = 'white';
-      this.ctx.font = '10px Arial';
-      this.ctx.textAlign = 'center';
-      this.ctx.fillText(player.name, 0, -20);
+      // Draw name and health
+    this.ctx.fillStyle = player.teamColor || '#00ffff';
+    this.ctx.font = '14px "Bangers", cursive';
+    this.ctx.textAlign = 'center';
+    
+    // Draw outline for readability
+    this.ctx.strokeStyle = '#000';
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeText(player.name, 0, -player.height - 15);
+    this.ctx.fillText(player.name, 0, -player.height - 15);
 
-      this.ctx.fillStyle = 'red';
-      this.ctx.fillRect(-10, -15, 20, 3);
-      this.ctx.fillStyle = '#32CD32'; // Lime green
-      this.ctx.fillRect(-10, -15, 20 * (player.health / player.maxHealth), 3);
+    // Draw Health Value
+    this.ctx.fillStyle = player.teamColor || '#00ff00';
+    this.ctx.strokeText(Math.ceil(player.health).toString(), 0, -player.height - 30);
+    this.ctx.fillText(Math.ceil(player.health).toString(), 0, -player.height - 30);
 
       // Aiming Reticle (only for current player)
       if (player === state.getCurrentPlayer() && !player.isJumping) {
@@ -465,6 +471,22 @@ export class CanvasRenderer {
       this.ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
       this.ctx.fill();
     }
+  }
+
+  private drawFloatingTexts(state: GameState): void {
+    if (!state.floatingTexts) return;
+    this.ctx.save();
+    for (const text of state.floatingTexts) {
+      this.ctx.globalAlpha = text.life / text.maxLife;
+      this.ctx.fillStyle = text.color;
+      this.ctx.font = 'bold 20px "Bangers", cursive';
+      this.ctx.textAlign = 'center';
+      this.ctx.strokeStyle = '#000';
+      this.ctx.lineWidth = 3;
+      this.ctx.strokeText(text.text, Math.floor(text.x), Math.floor(text.y));
+      this.ctx.fillText(text.text, Math.floor(text.x), Math.floor(text.y));
+    }
+    this.ctx.restore();
   }
 
   private drawExplosions(state: GameState): void {

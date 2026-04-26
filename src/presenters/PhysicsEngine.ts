@@ -71,6 +71,15 @@ export class PhysicsEngine {
     // Cleanup dead props
     state.props = state.props.filter(p => p.health > 0);
 
+    // Update floating texts
+    if (state.floatingTexts) {
+      for (const text of state.floatingTexts) {
+        text.y -= 30 * dt; // Float upwards
+        text.life -= dt;
+      }
+      state.floatingTexts = state.floatingTexts.filter(t => t.life > 0);
+    }
+
     this.updateSnowflakes(state, dt);
   }
 
@@ -133,8 +142,9 @@ export class PhysicsEngine {
     for (const prop of state.props) {
       if (prop.health <= 0) continue;
 
+      const oldVy = prop.vy;
       prop.vy += this.gravity * dt;
-      
+
       prop.x += prop.vx * dt;
       prop.y += prop.vy * dt;
 
@@ -143,31 +153,63 @@ export class PhysicsEngine {
       const bottomY = Math.floor(prop.y + prop.radius);
 
       if (state.landscape.isSolid(cx, bottomY)) {
-        // Hit the ground
-        prop.y = bottomY - prop.radius;
-        // Bounce or stop
-        if (prop.vy > 200) {
-          prop.vy = -prop.vy * 0.3; // bounce
-          prop.vx *= 0.8; // friction
-          AudioManager.playLand(); // Impact sound
+        // Find exact surface
+        let searchY = bottomY;
+        let embedded = 0;
+        while (state.landscape.isSolid(cx, searchY) && searchY > 0 && embedded < 20) {
+          searchY--;
+          embedded++;
+        }
+        
+        prop.y = searchY - prop.radius;
+        
+        // High speed impact (dig into terrain)
+        if (oldVy > 250) {
+          AudioManager.playLand();
+          // Prop damages terrain based on its hardness
+          const digRadius = prop.radius * 0.8;
+          for (let dy = -digRadius; dy <= digRadius; dy++) {
+            for (let dx = -digRadius; dx <= digRadius; dx++) {
+              if (dx * dx + dy * dy <= digRadius * digRadius) {
+                const tx = Math.floor(cx + dx);
+                const ty = Math.floor(searchY + dy);
+                if (tx >= 0 && tx < state.width && ty >= 0 && ty < state.height) {
+                  // If terrain is softer than the prop, destroy it
+                  const mat = state.landscape.getMaterial(tx, ty);
+                  if (mat === 1 || mat === 5) { // Dirt or snow
+                    state.landscape.setMaterial(tx, ty, 0); // Destroy
+                  }
+                }
+              }
+            }
+          }
+          state.landscape.needsUpdate = true;
+          // Kill momentum, it's stuck in the dirt
+          prop.vy = 0;
+          prop.vx = 0;
         } else {
+          // Low speed - no bounce, just slide/roll
           prop.vy = 0;
           prop.vx *= 0.5; // heavy friction
-        }
+          
+          if (oldVy > 50) {
+            AudioManager.playLand();
+          }
 
-        // Calculate slope to rotate
-        const leftSolid = state.landscape.isSolid(cx - 5, bottomY);
-        const rightSolid = state.landscape.isSolid(cx + 5, bottomY);
-        
-        if (leftSolid && !rightSolid) {
-          prop.rotation += 0.05;
-          prop.vx += 10; // roll right
-        } else if (!leftSolid && rightSolid) {
-          prop.rotation -= 0.05;
-          prop.vx -= 10; // roll left
-        } else {
-          // Flatten out slightly if on flat ground
-          prop.rotation *= 0.9;
+          // Calculate slope to rotate
+          const leftSolid = state.landscape.isSolid(cx - 5, bottomY);
+          const rightSolid = state.landscape.isSolid(cx + 5, bottomY);
+
+          if (leftSolid && !rightSolid) {
+            prop.rotation += 0.05;
+            prop.vx += 10; // roll right
+          } else if (!leftSolid && rightSolid) {
+            prop.rotation -= 0.05;
+            prop.vx -= 10; // roll left
+          } else {
+            // Flatten out slightly if on flat ground
+            prop.rotation *= 0.9;
+          }
         }
       } else {
         // Free falling rotation
@@ -260,6 +302,11 @@ export class PhysicsEngine {
     }
   }
 
+  private addFloatingText(state: GameState, x: number, y: number, text: string, color: string) {
+    if (!state.floatingTexts) state.floatingTexts = [];
+    state.floatingTexts.push({ x, y, text, color, life: 2.0, maxLife: 2.0 });
+  }
+
   private updateWorm(worm: any, state: GameState, dt: number): void {
     if (worm.health <= 0) return;
 
@@ -343,38 +390,34 @@ export class PhysicsEngine {
   
         // Push up to exactly the surface level (no infinite loops)
         let searchY = currentBottomY;
-        while (state.landscape.isSolid(cx, searchY) && searchY > 0) {
+        let pushedUp = 0;
+        while (state.landscape.isSolid(cx, searchY) && searchY > 0 && pushedUp < 20) { // Limit push up to prevent infinite loops if buried
           searchY--;
+          pushedUp++;
         }
         
         const newY = searchY - worm.height / 2;
         worm.y = newY;
+        
+        const oldVy = worm.vy;
+        const wasJumping = worm.isJumping;
         worm.vy = 0;
         worm.isJumping = false;
   
         // Always play a landing "thud" (boov) if we just landed from a jump/fall
-        if (worm.isJumping || worm.vy > 50) {
+        if (wasJumping || oldVy > 50) {
           if (this.onLand) this.onLand();
         }
-  
-        // Heavy impact check and fall damage
-        if (worm.vy > 300) {
+
+        // Heavy impact damage
+        if (oldVy > this.safeFallSpeed) {
           if (this.onHeavyImpact) this.onHeavyImpact();
-          const fallDamage = (worm.vy - 200) * 0.2;
+          const fallDamage = (oldVy - this.safeFallSpeed) * this.fallDamageMultiplier;
           worm.takeDamage(fallDamage);
+          this.addFloatingText(state, worm.x, worm.y - 20, `-${Math.round(fallDamage)}`, '#FF0000');
           if (this.onHurt) this.onHurt();
-          AudioManager.playDamage(); // Sound
+          AudioManager.playDamage();
         }
-
-      // Fall Damage Calculation (check speed BEFORE resetting it)
-      if (worm.vy > this.safeFallSpeed) {
-        const damage = (worm.vy - this.safeFallSpeed) * this.fallDamageMultiplier;
-        worm.takeDamage(damage);
-        if (this.onHurt) this.onHurt();
-      }
-
-      worm.vy = 0;
-      worm.isJumping = false;
     } 
     // Ceiling collision (jumping up into something)
     else if (worm.vy < 0 && state.landscape.isSolid(cx, Math.floor(worm.y - worm.height / 2))) {
@@ -533,6 +576,9 @@ export class PhysicsEngine {
         const damageRatio = 1 - (dist / (proj.explosionRadius + playerRadius));
         const actualDamage = proj.damage * damageRatio;
         player.takeDamage(actualDamage);
+        this.addFloatingText(state, player.x, player.y - 20, `-${Math.round(actualDamage)}`, '#FF0000');
+        if (this.onHurt) this.onHurt();
+        AudioManager.playDamage();
         
         // Track damage dealt
         if (owner && owner !== player) {

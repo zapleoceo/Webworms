@@ -4,12 +4,22 @@ import { Projectile } from './Projectile';
 import { Explosion } from './Explosion';
 import { PhysicsProp } from './PhysicsProp';
 
+export interface FloatingText {
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  life: number; // 0 to 1
+  maxLife: number;
+}
+
 export class GameState {
   public landscape: Landscape;
   public players: Worm[] = [];
   public projectiles: Projectile[] = [];
   public explosions: Explosion[] = [];
   public props: PhysicsProp[] = [];
+  public floatingTexts: FloatingText[] = [];
   public currentPlayerIndex: number = 0;
   
   public width: number;
