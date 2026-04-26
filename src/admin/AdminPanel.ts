@@ -1,4 +1,5 @@
 import { APIClient } from '../network/APIClient';
+import '../styles/admin.css';
 
 export class AdminPanel {
   private adminHeaders = new Headers();

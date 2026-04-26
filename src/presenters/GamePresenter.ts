@@ -127,9 +127,11 @@ export class GamePresenter {
   }
 
   public start(): void {
+    if (this.isRunning) return;
+    
     this.isRunning = true;
     this.lastTime = performance.now();
-    requestAnimationFrame(this.loop.bind(this));
+    requestAnimationFrame((t) => this.loop(t));
   }
 
   public stop(): void {
@@ -252,6 +254,9 @@ export class GamePresenter {
 
   private checkGameOver() {
     if (!this.isRunning || this.state.players.length === 0) return undefined;
+    
+    // Wait until we have at least 2 players in the state to check game over
+    if (this.state.players.length < 2) return undefined;
     
     const alivePlayers = this.state.players.filter(p => p.health > 0);
     
