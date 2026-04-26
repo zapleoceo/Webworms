@@ -27,7 +27,7 @@ export class AdminPanel {
           <h1>Worms Admin</h1>
           <input type="email" id="admin-email" class="retro-input" placeholder="Admin Email">
           <input type="password" id="admin-password" class="retro-input" placeholder="Admin Password">
-          <button id="admin-login-btn" class="retro-btn">Login</button>
+          <button id="admin-login-btn" class="primary-btn">Login</button>
         </div>
 
         <div id="admin-dashboard" class="admin-dashboard-layout" style="display: none;">
@@ -62,7 +62,7 @@ export class AdminPanel {
             <section id="section-users" class="admin-section">
               <div class="section-header">
                 <h2>Users Management</h2>
-                <button id="load-users" class="retro-btn small">Refresh</button>
+                <button id="load-users" class="secondary-btn small-btn">Refresh</button>
               </div>
               <div class="table-responsive">
                 <table class="admin-table">
@@ -201,7 +201,7 @@ export class AdminPanel {
           </label>
         </td>
         <td>
-          <button class="save-user-btn retro-btn small" data-id="${u.id}">Save</button>
+          <button class="save-user-btn secondary-btn small-btn" data-id="${u.id}">Save</button>
         </td>
       </tr>
     `).join('');

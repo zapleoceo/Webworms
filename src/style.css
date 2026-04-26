@@ -117,6 +117,12 @@ button:hover {
   padding: 10px 20px;
   font-size: 1.2rem;
   background: var(--color-bg-light);
+  color: var(--color-text);
+}
+
+.small-btn {
+  padding: 8px 16px;
+  font-size: 1rem;
 }
 
 .w-full { width: 100%; }
@@ -242,6 +248,8 @@ button:hover {
   justify-content: center;
   align-items: center;
   font-size: 1.5rem;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
 }
 
 .retro-input {
