@@ -46,10 +46,12 @@ export class Worm {
     this.unitClass = unitClass;
     this.team = isDummy ? 'team2' : 'team1';
     
-    // Apply Class Stats
+    // Everyone starts with 100 HP
+    this.health = 100;
+    this.maxHealth = 100;
+    
+    // Apply only visual/physics modifiers, disable HP modifier
     if (unitClass === 'heavy') {
-      this.health = 150;
-      this.maxHealth = 150;
       this.defense = 0.2;
       this.mass = 1.5;
       this.jumpForce = -100;
@@ -58,8 +60,6 @@ export class Worm {
       this.width = 12;
       this.height = 12;
     } else if (unitClass === 'scout') {
-      this.health = 70;
-      this.maxHealth = 70;
       this.defense = 0.0;
       this.mass = 0.7;
       this.jumpForce = -200;
@@ -69,8 +69,6 @@ export class Worm {
       this.height = 8;
     } else {
       // Soldier
-      this.health = 100;
-      this.maxHealth = 100;
       this.defense = 0.0;
       this.mass = 1.0;
       this.jumpForce = -150;

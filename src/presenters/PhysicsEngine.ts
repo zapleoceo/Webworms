@@ -7,7 +7,7 @@ import { AudioManager } from '../utils/AudioManager';
 export class PhysicsEngine {
   public gravity: number = 150; // pixels per second squared (Slowed down for realism)
   public safeFallSpeed: number = 200; // Safe landing speed
-  public fallDamageMultiplier: number = 0.15; // Damage per extra speed unit
+  public fallDamageMultiplier: number = 0.075; // Half fall damage
   public onExplode?: (x: number, y: number) => void;
   public onJump?: () => void;
   public onHurt?: () => void;

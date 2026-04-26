@@ -13,18 +13,20 @@ export class Projectile {
   public knockback: number;
   public windMultiplier: number;
   public color: string;
+  public weaponId: string;
 
   constructor(x: number, y: number, vx: number, vy: number, weapon: Weapon) {
     this.x = x;
     this.y = y;
     this.vx = vx;
     this.vy = vy;
-    
+
     this.damage = weapon.damage;
     this.explosionRadius = weapon.explosionRadius;
     this.knockback = weapon.knockback;
     this.windMultiplier = weapon.windMultiplier;
     this.color = weapon.color;
+    this.weaponId = weapon.id;
   }
 
   public updatePosition(dt: number): void {

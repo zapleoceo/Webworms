@@ -304,7 +304,7 @@ export class GamePresenter {
       const targetAngle = this.analogY * 90; 
       
       // Smoothly rotate towards target angle based on stick deflection, but slower
-      player.aimAngle += (targetAngle - player.aimAngle) * dt * 2;
+      player.aimAngle += (targetAngle - player.aimAngle) * dt * 1; // Halved
       
       // Clamp angle
       if (player.aimAngle < -90) player.aimAngle = -90;
@@ -573,9 +573,10 @@ export class GamePresenter {
     }
 
     // Spawn perfectly at the end of the visual gun barrel
-    // Since we fixed the visual aiming angle and offset, we just use simple trig
-    const startX = player.x + Math.cos(baseRad) * 20;
-    const startY = player.y + Math.sin(baseRad) * 20;
+    // Worm is drawn from bottom center (player.height / 2), so we offset Y
+    const gunLength = 25;
+    const startX = player.x + Math.cos(baseRad) * gunLength;
+    const startY = (player.y - player.height / 2) + Math.sin(baseRad) * gunLength;
 
     // Fire multiple projectiles if weapon supports it (e.g. shotgun)
     for (let i = 0; i < weapon.projectilesPerShot; i++) {

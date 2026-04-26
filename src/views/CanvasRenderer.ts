@@ -38,9 +38,14 @@ export class CanvasRenderer {
       'grave': { src: '/sprites/Misc/grave1.png', frameWidth: 24, frameHeight: 32, frameCount: 1 }, // Grave
       // Weapons
       'bazooka': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'minigun': { src: '/sprites/Worms/wminlnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // using minigun
-      'shotgun': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // shotgun
-      'rocket': { src: '/sprites/Worms/wmollnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 }, // mole or something
+      'minigun': { src: '/sprites/Worms/wminlnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'shotgun': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'rocket': { src: '/sprites/Worms/wmollnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      // Projectiles
+      'proj_bazooka': { src: '/sprites/Misc/missile.png', frameWidth: 32, frameHeight: 32, frameCount: 1 },
+      'proj_minigun': { src: '/sprites/Misc/bullet.png', frameWidth: 16, frameHeight: 16, frameCount: 1 },
+      'proj_shotgun': { src: '/sprites/Misc/bullet.png', frameWidth: 16, frameHeight: 16, frameCount: 1 },
+      'proj_rocket': { src: '/sprites/Misc/missile.png', frameWidth: 32, frameHeight: 32, frameCount: 1 },
     });
 
     // Load brand assets for airdrops
@@ -367,33 +372,26 @@ export class CanvasRenderer {
           globalAimAngle = 180 - player.aimAngle;
         }
 
-        const rad = globalAimAngle * (Math.PI / 180);
-        const targetX = Math.cos(rad) * 30;
-        const targetY = -Math.sin(rad) * 30;
-
-        // Draw weapon barrel rotating around player (matching physics)
-        this.ctx.strokeStyle = '#555';
-        this.ctx.lineWidth = 3;
+        // Draw Crosshair (Reticle)
+        const reticleDist = 60; // distance from worm
+        const rx = Math.cos(globalAimAngle * Math.PI / 180) * reticleDist;
+        const ry = Math.sin(globalAimAngle * Math.PI / 180) * reticleDist;
+        
+        this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+        this.ctx.lineWidth = 2;
+        
+        // Draw crosshair circle
         this.ctx.beginPath();
-        this.ctx.moveTo(0, 0);
-        this.ctx.lineTo(Math.cos(rad) * 15, Math.sin(rad) * 15);
+        this.ctx.arc(rx, ry, 5, 0, Math.PI * 2);
         this.ctx.stroke();
-
-        // Draw aim line
-        this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-        this.ctx.lineWidth = 1;
-        this.ctx.setLineDash([2, 2]);
+        
+        // Draw crosshair lines
         this.ctx.beginPath();
-        this.ctx.moveTo(0, 0);
-        this.ctx.lineTo(targetX, targetY);
+        this.ctx.moveTo(rx - 8, ry);
+        this.ctx.lineTo(rx + 8, ry);
+        this.ctx.moveTo(rx, ry - 8);
+        this.ctx.lineTo(rx, ry + 8);
         this.ctx.stroke();
-        this.ctx.setLineDash([]);
-
-        // Crosshair
-        this.ctx.fillStyle = 'red';
-        this.ctx.beginPath();
-        this.ctx.arc(targetX, targetY, 2, 0, Math.PI * 2);
-        this.ctx.fill();
       }
 
       this.ctx.restore();
@@ -402,10 +400,36 @@ export class CanvasRenderer {
 
   private drawProjectiles(state: GameState): void {
     for (const proj of state.projectiles) {
-      this.ctx.fillStyle = proj.color || 'yellow';
-      this.ctx.beginPath();
-      this.ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
-      this.ctx.fill();
+      this.ctx.save();
+      this.ctx.translate(proj.x, proj.y);
+      
+      const angle = Math.atan2(proj.vy, proj.vx);
+      this.ctx.rotate(angle);
+
+      const animKey = `proj_${proj.weaponId}`;
+      const hasSprite = this.animCtrl.getAnimLength(animKey) > 0;
+
+      if (hasSprite) {
+        // Offset Y if needed based on the sprite size. Usually missiles are centered.
+        this.animCtrl.drawFrame(
+          this.ctx,
+          animKey,
+          0,
+          0,
+          0,
+          1.0,
+          false,
+          0
+        );
+      } else {
+        // Fallback to circle
+        this.ctx.fillStyle = proj.color || 'yellow';
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, proj.radius, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+
+      this.ctx.restore();
     }
   }
 
