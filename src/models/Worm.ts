@@ -17,7 +17,7 @@ export class Worm {
   public jumpForce: number = -150;
   public speedMultiplier: number = 1.0;
   
-  public aimAngle: number = 0; // 0 to 360 degrees
+  public aimAngle: number = 0; // -90 (straight up) to 90 (straight down). 0 is horizontal.
   public aimPower: number = 0; // 0 to 100
   public facingRight: boolean = true;
   public isFallingSoundPlaying: boolean = false;
@@ -116,17 +116,10 @@ export class Worm {
 
   public updateAim(delta: number): void {
     this.aimAngle += delta;
-    
-    // Normalize to 0-360
-    while (this.aimAngle >= 360) this.aimAngle -= 360;
-    while (this.aimAngle < 0) this.aimAngle += 360;
 
-    // Automatically face the direction of the aim
-    if (this.aimAngle > 90 && this.aimAngle < 270) {
-      this.facingRight = false;
-    } else {
-      this.facingRight = true;
-    }
+    // Clamp between -90 (up) and 90 (down)
+    if (this.aimAngle > 90) this.aimAngle = 90;
+    if (this.aimAngle < -90) this.aimAngle = -90;
   }
 
   public changePower(delta: number): void {

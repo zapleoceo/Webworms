@@ -348,8 +348,15 @@ export class CanvasRenderer {
               // Shift weapon slightly down and forward
               this.ctx.translate(10, player.height/2 - 15);
 
-              // Rotate weapon based on aim angle
-              this.ctx.rotate((player.aimAngle) * Math.PI / 180);
+              // Rotate weapon based on aim angle. If not facing right, mirror the angle
+              let drawAngle = player.aimAngle;
+              if (!player.facingRight) {
+                // When canvas is scaled(-1, 1), rotations are also flipped!
+                // To point "up" when facing left, we need a negative rotation,
+                // but since the context is already flipped, we can just use the same aimAngle.
+                // It naturally points "up" relative to the flipped coordinate system.
+              }
+              this.ctx.rotate(drawAngle * Math.PI / 180);
               
               // Scale down weapon
               const wScale = 15 / weaponImg.width;

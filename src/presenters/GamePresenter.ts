@@ -297,20 +297,28 @@ export class GamePresenter {
     const airControl = 0.3; // 30% control while in the air
 
     // --- Handle Aiming (Keyboard + Analog Joystick) ---
-    // If using analog stick Y axis, calculate target angle based on Y deflection
+    // Slower aim speed
+    const actualAimSpeed = aimSpeed * 0.4;
+
     if (Math.abs(this.analogY) > 0.1) {
+      // Map Y (-1 to 1) to angle (-90 to 90 degrees)
+      // If Y is negative (stick pushed UP), angle should be negative (aiming UP)
+      // If Y is positive (stick pushed DOWN), angle should be positive (aiming DOWN)
       const targetAngle = this.analogY * 90; 
-      player.aimAngle += (targetAngle - player.aimAngle) * dt * 5;
+      
+      // Smoothly rotate towards target angle based on stick deflection, but slower
+      player.aimAngle += (targetAngle - player.aimAngle) * dt * 2;
       
       // Clamp angle
       if (player.aimAngle < -90) player.aimAngle = -90;
       if (player.aimAngle > 90) player.aimAngle = 90;
     } else {
+      // Keyboard fallback
       if (this.activeInputs.has('up')) {
-        player.updateAim(aimSpeed * dt); // Rotate counter-clockwise (up)
+        player.updateAim(-actualAimSpeed * dt); // Rotate UP (negative)
       }
       if (this.activeInputs.has('down')) {
-        player.updateAim(-aimSpeed * dt); // Rotate clockwise (down)
+        player.updateAim(actualAimSpeed * dt); // Rotate DOWN (positive)
       }
     }
 
@@ -536,7 +544,17 @@ export class GamePresenter {
     player.maxWeaponCooldowns[weapon.id] = actualCooldown;
 
     // Calculate vector based on angle and power
-    const baseRad = player.aimAngle * (Math.PI / 180);
+    // Convert aimAngle (-90 to 90) into global angle for projectile math
+    // 0 is right, 180 is left. 
+    // If facing right: -90 is up (270 or -PI/2)
+    // If facing left: angle needs to be mirrored.
+    let globalAimAngle = player.aimAngle;
+    if (!player.facingRight) {
+      // Mirror horizontally
+      globalAimAngle = 180 - player.aimAngle;
+    }
+
+    const baseRad = globalAimAngle * (Math.PI / 180);
     let speed = power * 3; // Adjust scalar for slower, realistic floaty arcs
     
     if (weapon.id === 'blaster') {
@@ -557,7 +575,7 @@ export class GamePresenter {
       }
 
       const vx = Math.cos(rad) * speed;
-      const vy = -Math.sin(rad) * speed; // Negative is up
+      const vy = Math.sin(rad) * speed; // Negative is up, positive is down
 
       const proj = new Projectile(startX, startY, vx, vy, weapon);
       (proj as any).owner = player; // Attach owner for stats tracking
