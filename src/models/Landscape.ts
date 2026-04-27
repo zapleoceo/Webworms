@@ -6,6 +6,7 @@ export class Landscape {
   public width: number;
   public height: number;
   public grid: Uint8Array;
+  public pixelData?: Uint8ClampedArray; // Original image colors
   public needsUpdate: boolean = true; // Flag for full renderer caching (init only)
   public newCraters: {x: number, y: number, r: number}[] = []; // Queue for fast erasure
   public newStamps: {imgKey: string, x: number, y: number, w: number, h: number}[] = []; // Queue for stamping images
@@ -65,6 +66,9 @@ export class Landscape {
         ctx.drawImage(img, 0, 0);
         const imageData = ctx.getImageData(0, 0, this.width, this.height).data;
         
+        // Store a copy of original colors for rendering
+        this.pixelData = new Uint8ClampedArray(imageData);
+
         // Build physics grid
         // Format: [R, G, B, A, R, G, B, A, ...]
         for (let i = 0; i < imageData.length; i += 4) {

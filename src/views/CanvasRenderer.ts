@@ -214,43 +214,51 @@ export class CanvasRenderer {
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const material = state.landscape.getMaterial(x, y);
-          if (material === 1) { // Destructible terrain
-            // Base color (dirt)
-            let color = [100 + (Math.random()*10), 60 + (Math.random()*10), 20];
-            
-            // Add noise texture
-            if (Math.random() > 0.9) color = [80, 50, 15]; // dark spots
-            if (Math.random() > 0.95) color = [130, 90, 40]; // light spots
-            
-            const idx = (y * width + x) * 4;
-            data[idx] = color[0];
-            data[idx + 1] = color[1];
-            data[idx + 2] = color[2];
-            data[idx + 3] = 255;
-          } else if (material === 255) { // Indestructible terrain
-            // Dark gray alloy texture
-            const isLine = (x + y) % 10 === 0 || (x - y) % 10 === 0;
-            const color = isLine ? [40, 40, 50] : [20, 20, 25];
-            const idx = (y * width + x) * 4;
-            data[idx] = color[0];
-            data[idx + 1] = color[1];
-            data[idx + 2] = color[2];
-            data[idx + 3] = 255;
+          const idx = (y * width + x) * 4;
+          
+          if (material === 1 || material === 255) {
+            // If we have original pixel data from a custom map, use it directly!
+            if (state.landscape.pixelData) {
+              data[idx] = state.landscape.pixelData[idx];
+              data[idx + 1] = state.landscape.pixelData[idx + 1];
+              data[idx + 2] = state.landscape.pixelData[idx + 2];
+              data[idx + 3] = 255;
+            } else {
+              // Otherwise, generate procedural textures (for random maps)
+              if (material === 1) { // Destructible terrain
+                let color = [100 + (Math.random()*10), 60 + (Math.random()*10), 20];
+                if (Math.random() > 0.9) color = [80, 50, 15]; // dark spots
+                if (Math.random() > 0.95) color = [130, 90, 40]; // light spots
+                data[idx] = color[0];
+                data[idx + 1] = color[1];
+                data[idx + 2] = color[2];
+                data[idx + 3] = 255;
+              } else if (material === 255) { // Indestructible terrain
+                const isLine = (x + y) % 10 === 0 || (x - y) % 10 === 0;
+                const color = isLine ? [40, 40, 50] : [20, 20, 25];
+                data[idx] = color[0];
+                data[idx + 1] = color[1];
+                data[idx + 2] = color[2];
+                data[idx + 3] = 255;
+              }
+            }
           }
         }
       }
       
       this.terrainCtx.putImageData(imgData, 0, 0);
       
-      // Draw Grass on top of Dirt
-      this.terrainCtx.fillStyle = '#4CAF50'; // Bright Green
-      for (let x = 0; x < width; x++) {
-        for (let y = 0; y < height; y++) {
-          if (state.landscape.getMaterial(x, y) === 1) {
-            this.terrainCtx.fillRect(x, y, 1, 4 + (x % 3)); // varying grass length
-            break;
-          } else if (state.landscape.isSolid(x, y)) {
-            break; // Found something else, no grass
+      // Draw Grass on top of Dirt (Only for procedural maps!)
+      if (!state.landscape.pixelData) {
+        this.terrainCtx.fillStyle = '#4CAF50'; // Bright Green
+        for (let x = 0; x < width; x++) {
+          for (let y = 0; y < height; y++) {
+            if (state.landscape.getMaterial(x, y) === 1) {
+              this.terrainCtx.fillRect(x, y, 1, 4 + (x % 3)); // varying grass length
+              break;
+            } else if (state.landscape.isSolid(x, y)) {
+              break; // Found something else, no grass
+            }
           }
         }
       }
@@ -337,8 +345,15 @@ export class CanvasRenderer {
               const mapY = minY + y;
               if (state.landscape.getMaterial(mapX, mapY) === 255) {
                 const idx = (y * w + x) * 4;
-                data[idx] = 20; data[idx+1] = 20; data[idx+2] = 25; data[idx+3] = 255;
-                if ((mapX+mapY)%10 === 0) { data[idx] = 40; data[idx+1] = 40; data[idx+2] = 50; }
+                if (state.landscape.pixelData) {
+                  data[idx] = state.landscape.pixelData[(mapY * state.landscape.width + mapX) * 4];
+                  data[idx+1] = state.landscape.pixelData[(mapY * state.landscape.width + mapX) * 4 + 1];
+                  data[idx+2] = state.landscape.pixelData[(mapY * state.landscape.width + mapX) * 4 + 2];
+                  data[idx+3] = 255;
+                } else {
+                  data[idx] = 20; data[idx+1] = 20; data[idx+2] = 25; data[idx+3] = 255;
+                  if ((mapX+mapY)%10 === 0) { data[idx] = 40; data[idx+1] = 40; data[idx+2] = 50; }
+                }
               }
             }
           }
