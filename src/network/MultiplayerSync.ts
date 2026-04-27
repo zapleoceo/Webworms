@@ -32,6 +32,13 @@ export class MultiplayerSync {
       }
     };
 
+    this.peerConnection.onconnectionstatechange = () => {
+      console.log('PeerConnection state:', this.peerConnection!.connectionState);
+      if (this.peerConnection!.connectionState === 'disconnected' || this.peerConnection!.connectionState === 'failed') {
+        if (this.onPeerDisconnected) this.onPeerDisconnected();
+      }
+    };
+
     if (roomId && forceHost) {
       this.roomId = roomId;
       this.isHost = true;

@@ -568,6 +568,13 @@ let currentMatchToken: string | null = null;
       }
     };
 
+    syncModule.onPeerDisconnected = () => {
+      if (window.presenter.isRunning) {
+        alert("The enemy has disconnected.");
+        window.presenter.handleInput('surrender', true, true);
+      }
+    };
+
     syncModule.onStateReceived = (stateData) => {
       if (window.presenter.localTeam === 'team2') {
         // We are the client, update our state to match the host
@@ -806,6 +813,19 @@ document.getElementById('btn-return-menu')!.addEventListener('click', () => {
   location.reload();
 });
 
+document.getElementById('btn-leave-game')?.addEventListener('click', () => {
+  document.getElementById('leave-confirm-modal')!.style.display = 'flex';
+});
+
+document.getElementById('btn-cancel-leave')?.addEventListener('click', () => {
+  document.getElementById('leave-confirm-modal')!.style.display = 'none';
+});
+
+document.getElementById('btn-confirm-leave')?.addEventListener('click', () => {
+  document.getElementById('leave-confirm-modal')!.style.display = 'none';
+  window.presenter.handleInput('surrender', true);
+});
+
 // Update HUD elements
 const hpLocalEl = document.getElementById('hp-local')!;
 const hpEnemyEl = document.getElementById('hp-enemy')!;
@@ -945,14 +965,25 @@ function bindPresenterEvents() {
       winnerText.style.color = isLocalWinner ? 'var(--color-primary)' : 'var(--color-danger)';
 
       if (isLocalWinner && currentMode !== 'training') {
-        const reward = currentMode === 'friend' ? 5 : 10;
-        rewardText.innerText = `You earned ${reward} WebCoins and 10 minutes of play time!`;
+        let reward = currentMode === 'friend' ? 5 : 10;
+        let timeRewardStr = '10 minutes';
+        
+        if (stats?.isTechnical) {
+          // Calculate minutes and seconds
+          const totalSecs = Math.max(0, Math.floor(stats.matchDuration || 0));
+          const m = Math.floor(totalSecs / 60);
+          const s = totalSecs % 60;
+          timeRewardStr = `${m}m ${s}s (Technical Win)`;
+          rewardText.innerText = `Enemy surrendered! You earned back ${timeRewardStr} of play time!`;
+        } else {
+          rewardText.innerText = `You earned ${reward} WebCoins and ${timeRewardStr} of play time!`;
+        }
         
         // Report match end to server to get playtime reward
         const sessionId = localStorage.getItem('sessionId');
         const userId = localStorage.getItem('userId');
         if (sessionId && userId && currentMatchToken) {
-          APIClient.reportMatchEnd(sessionId, userId, currentMatchToken).then(res => {
+          APIClient.reportMatchEnd(sessionId, userId, currentMatchToken, stats?.isTechnical).then(res => {
             if (res.success) {
               console.log('Reward granted successfully!');
             } else {
@@ -968,7 +999,7 @@ function bindPresenterEvents() {
     if (stats) {
       statsText.innerHTML = `
         <p>Damage Dealt: ${Math.round(stats.damageDealt || stats.p1Dmg || 0)}</p>
-        <p>Match Time: ${Math.round(stats.matchTime || 0)}s</p>
+        <p>Match Time: ${Math.round(stats.matchDuration || stats.matchTime || 0)}s</p>
       `;
     }
   };

@@ -110,6 +110,7 @@
             
             <!-- Top Bar -->
             <div class="hud-top">
+              <button id="btn-leave-game" class="danger-btn leave-game-btn">LEAVE</button>
               <div class="team-status left-team">
                 <div class="team-name">YOU</div>
                 <div class="hp-bar-container"><div class="hp-bar fill-green" id="hp-local"></div></div>
@@ -171,6 +172,18 @@
           <p id="game-over-stats" class="stats-text">You earned +10 mins</p>
           <div class="game-over-actions">
             <button id="btn-return-menu" class="primary-btn w-full">RETURN TO MENU</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- LEAVE CONFIRMATION MODAL -->
+      <div id="leave-confirm-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-box">
+          <h2 class="comic-text">SURRENDER?</h2>
+          <p class="stats-text" style="margin-bottom: 20px;">If you leave, the enemy wins and gets the points. Are you sure?</p>
+          <div style="display: flex; gap: 10px;">
+            <button id="btn-confirm-leave" class="danger-btn w-full" style="padding: 10px;">YES, LEAVE</button>
+            <button id="btn-cancel-leave" class="secondary-btn w-full" style="padding: 10px;">CANCEL</button>
           </div>
         </div>
       </div>

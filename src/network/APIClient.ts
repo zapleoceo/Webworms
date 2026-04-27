@@ -82,7 +82,7 @@ export class APIClient {
     }
   }
 
-  public static async reportMatchEnd(sessionId: string, winnerId: string, matchToken: string): Promise<any> {
+  public static async reportMatchEnd(sessionId: string, winnerId: string, matchToken: string, isTechnical?: boolean): Promise<any> {
     try {
       const res = await fetch(`${this.BASE_URL}/match/end`, {
         method: 'POST',
@@ -90,7 +90,7 @@ export class APIClient {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionId}`
         },
-        body: JSON.stringify({ winnerId, matchToken })
+        body: JSON.stringify({ winnerId, matchToken, isTechnical })
       });
       return await res.json();
     } catch {

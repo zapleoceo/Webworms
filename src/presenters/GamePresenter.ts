@@ -12,7 +12,7 @@ export class GamePresenter {
   public state: GameState;
   public physics: PhysicsEngine;
   private lastTime: number = 0;
-  private isRunning: boolean = false;
+  public isRunning: boolean = false;
   private activeInputs: Set<string> = new Set(); // Track held keys/buttons
   
   // Track analog joystick inputs (-1.0 to 1.0)
@@ -36,6 +36,7 @@ export class GamePresenter {
 
   public turnTimeLeft: number = 30;
   public maxTurnTime: number = 30;
+  public matchDuration: number = 0;
   public hasFiredThisTurn: boolean = false;
   public isPaused: boolean = false;
   public isHost: boolean = true; // Is this client computing physics?
@@ -148,6 +149,7 @@ export class GamePresenter {
     this.activeInputs.clear();
     
     // Reset timers
+    this.matchDuration = 0;
     this.hasFiredThisTurn = false;
     this.state.hasFiredThisTurn = false;
     this.turnTimeLeft = this.maxTurnTime;
@@ -236,6 +238,10 @@ export class GamePresenter {
   public update(dt: number): void {
     if (this.isPaused) return;
 
+    if (this.isRunning) {
+      this.matchDuration += dt;
+    }
+
     // Only host computes physics and updates timers
     if (this.isRunning && this.isHost) {
       // Find active player before physics step
@@ -280,7 +286,8 @@ export class GamePresenter {
         const t2Dmg = this.state.players.filter(p => p.team === 'team2').reduce((sum, p) => sum + p.damageDealt, 0);
         const stats = {
           p1Dmg: Math.round(t1Dmg),
-          p2Dmg: Math.round(t2Dmg)
+          p2Dmg: Math.round(t2Dmg),
+          matchDuration: this.matchDuration
         };
         if (this.onGameOver) this.onGameOver(winner === null ? 'draw' : winner, stats);
         return;
@@ -473,6 +480,28 @@ export class GamePresenter {
 
   public handleInput(action: string, isActive: boolean, isRemote: boolean = false, payload?: any): void {
     if (!this.isRunning) return;
+
+    if (action === 'surrender' && isActive) {
+      if (!isRemote && this.onLocalAction) {
+        this.onLocalAction(action, true, payload);
+      }
+      
+      // Determine who surrendered. If it's local, the enemy wins. If it's remote, we win.
+      const winningTeam = isRemote ? this.localTeam : (this.localTeam === 'team1' ? 'team2' : 'team1');
+      this.isRunning = false;
+      
+      const t1Dmg = this.state.players.filter(p => p.team === 'team1').reduce((sum, p) => sum + p.damageDealt, 0);
+      const t2Dmg = this.state.players.filter(p => p.team === 'team2').reduce((sum, p) => sum + p.damageDealt, 0);
+      const stats = {
+        p1Dmg: Math.round(t1Dmg),
+        p2Dmg: Math.round(t2Dmg),
+        isTechnical: true,
+        matchDuration: this.matchDuration
+      };
+      
+      if (this.onGameOver) this.onGameOver(winningTeam, stats);
+      return;
+    }
 
     if (action === 'spawnAirdrop' && isActive) {
       if (this.isHost) {

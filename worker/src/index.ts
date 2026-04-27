@@ -862,7 +862,7 @@ async function reportMatchEnd(request: Request, env: Env): Promise<Response> {
     const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE session_id = ?`).bind(sessionId).first<any>();
     if (!sessionData) return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
 
-    const { winnerId, matchToken } = await request.json() as { winnerId: string, matchToken: string };
+    const { winnerId, matchToken, isTechnical } = await request.json() as { winnerId: string, matchToken: string, isTechnical?: boolean };
     if (!winnerId || !matchToken) return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400 });
 
     // Prevent cheating: retrieve match token
@@ -875,8 +875,8 @@ async function reportMatchEnd(request: Request, env: Env): Promise<Response> {
     }
     
     const timeElapsed = Date.now() - matchData.startedAt;
-    // Minimum match duration to prevent farming: 30 seconds
-    if (timeElapsed < 30000) {
+    // Minimum match duration to prevent farming: 30 seconds (except technical victories)
+    if (timeElapsed < 30000 && !isTechnical) {
       return new Response(JSON.stringify({ error: 'Match ended too quickly. No rewards.' }), { status: 400 });
     }
 
@@ -884,8 +884,13 @@ async function reportMatchEnd(request: Request, env: Env): Promise<Response> {
     matchData.status = 'finished';
     await env.ROOMS.put(`match_${matchToken}`, JSON.stringify(matchData), { expirationTtl: 3600 });
 
-    // Reward the winner with 10 minutes (600 seconds) of play time
-    const success = await addPlayTime(env, winnerId, 600);
+    let rewardSeconds = 600; // Default 10 mins
+    if (isTechnical) {
+      rewardSeconds = Math.floor(timeElapsed / 1000); // Reward the exact time spent in the round
+    }
+
+    // Reward the winner
+    const success = await addPlayTime(env, winnerId, rewardSeconds);
     if (!success) {
       return new Response(JSON.stringify({ error: 'Failed to award time' }), { status: 500 });
     }
