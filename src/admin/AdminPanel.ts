@@ -97,9 +97,9 @@ export class AdminPanel {
                 <h3>Upload New Logo</h3>
                 <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
                   <input type="file" id="logo-file" accept="image/png, image/jpeg, image/webp" style="color: white;">
-                  <input type="number" id="logo-width" placeholder="Width (px)" value="100" class="retro-input" style="width: 100px; padding: 5px;">
-                  <input type="number" id="logo-height" placeholder="Height (px)" value="60" class="retro-input" style="width: 100px; padding: 5px;">
-                  <input type="number" id="logo-hardness" placeholder="Hardness" value="10" class="retro-input" style="width: 100px; padding: 5px;">
+                  <label style="display:flex; align-items:center; color:#ccc;">W: <input type="number" id="logo-width" placeholder="Width" value="100" class="retro-input" style="width: 70px; padding: 5px; margin-left: 5px;"></label>
+                  <label style="display:flex; align-items:center; color:#ccc;">H: <input type="number" id="logo-height" placeholder="Height" value="60" class="retro-input" style="width: 70px; padding: 5px; margin-left: 5px;"></label>
+                  <label style="display:flex; align-items:center; color:#ccc;">Hardness: <input type="number" id="logo-hardness" placeholder="Hardness" value="10" class="retro-input" style="width: 60px; padding: 5px; margin-left: 5px;"></label>
                   <button id="upload-logo-btn" class="primary-btn small-btn" disabled>Crop & Upload</button>
                 </div>
                 
@@ -427,6 +427,10 @@ export class AdminPanel {
         this.cropper.destroy();
       }
       
+      // Automatically update Width and Height fields based on the crop box ratio
+      const widthInput = document.getElementById('logo-width') as HTMLInputElement;
+      const heightInput = document.getElementById('logo-height') as HTMLInputElement;
+
       // Destroy previous instance to avoid bugs
       this.cropper = new Cropper(cropperImage, {
         viewMode: 1,
@@ -439,6 +443,23 @@ export class AdminPanel {
         cropBoxMovable: true,
         cropBoxResizable: true,
         toggleDragModeOnDblclick: false,
+        crop: (event) => {
+          // When user drags crop box, calculate ratio and set height dynamically
+          // Let's assume standard width is 100px. We scale height based on the crop box aspect ratio.
+          const ratio = event.detail.height / event.detail.width;
+          const currentWidth = parseInt(widthInput.value) || 100;
+          heightInput.value = Math.round(currentWidth * ratio).toString();
+        }
+      });
+
+      // Also listen to width input changes to keep height in sync with the current crop box
+      widthInput.addEventListener('input', () => {
+        if (this.cropper) {
+          const data = this.cropper.getData();
+          const ratio = data.height / data.width;
+          const currentWidth = parseInt(widthInput.value) || 100;
+          heightInput.value = Math.round(currentWidth * ratio).toString();
+        }
       });
       
       // Scroll to cropper
