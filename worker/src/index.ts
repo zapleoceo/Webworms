@@ -631,6 +631,9 @@ async function getMapImage(request: Request, env: Env): Promise<Response> {
       if (!data) return new Response('Not found', { status: 404, headers: corsHeaders });
   
       const b64 = data.split(',')[1];
+      const mimeMatch = data.match(/^data:(image\/[a-zA-Z]+);base64,/);
+      const contentType = mimeMatch ? mimeMatch[1] : 'image/png';
+
       if (!b64) {
         // Fallback if not a standard data url
         return new Response(data, { headers: { 'Content-Type': 'image/png', ...corsHeaders }});
@@ -645,7 +648,7 @@ async function getMapImage(request: Request, env: Env): Promise<Response> {
     
     return new Response(bytes, {
       headers: {
-        'Content-Type': 'image/png',
+        'Content-Type': contentType,
         'Cache-Control': 'public, max-age=31536000',
         ...corsHeaders
       }

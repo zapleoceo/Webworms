@@ -593,7 +593,7 @@ let currentMatchToken: string | null = null;
     if (mapObj) {
       const fullMap = await APIClient.getMapById(mapObj.id);
       if (fullMap) {
-        mapData = APIClient.BASE_URL.replace('/api', '') + fullMap.image_data;
+        mapData = APIClient.BASE_URL.replace('/api', '') + fullMap.image_data + '?t=' + Date.now();
       }
     }
   }
