@@ -17,7 +17,7 @@ declare global {
 
 if (window.location.pathname === '/admin') {
   new AdminPanel();
-} else {
+}
 
 // DOM Elements
 const authScreen = document.getElementById('auth-screen')!;
@@ -31,6 +31,9 @@ const profileScreen = document.getElementById('profile-screen')!;
 const btnOpenAuth = document.getElementById('btn-open-auth')!;
 const btnUserProfile = document.getElementById('btn-user-profile') as HTMLButtonElement;
 const timeBalanceEl = document.getElementById('profile-stats-balance')!;
+
+// Only run game logic if we are not on the admin page and have game elements
+if (window.location.pathname !== '/admin') {
 
 // Weapon Carousel Logic
 const weaponSlots = document.querySelectorAll('.weapon-slot');
