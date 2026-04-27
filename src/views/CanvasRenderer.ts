@@ -375,7 +375,12 @@ export class CanvasRenderer {
               for (let x = 0; x < stamp.w; x++) {
                 const alpha = imgData.data[(y * stamp.w + x) * 4 + 3];
                 if (alpha > 128) {
-                  state.landscape.setMaterial(startX + x, startY + y, 6); // 6 = Solid Prop Material
+                  const mapX = startX + x;
+                  const mapY = startY + y;
+                  if (mapX < 0 || mapX >= state.landscape.width || mapY < 0 || mapY >= state.landscape.height) continue;
+                  if (mapX < 30 || mapX >= state.landscape.width - 30 || mapY >= state.landscape.height - 30) continue;
+                  if (state.landscape.getMaterial(mapX, mapY) === 255) continue;
+                  state.landscape.grid[mapY * state.landscape.width + mapX] = 6; // Solid stamped material
                 }
               }
             }

@@ -1,6 +1,7 @@
 import { GameState } from '../models/GameState';
 import { Projectile } from '../models/Projectile';
 import { Explosion } from '../models/Explosion';
+import { BrandLogo } from '../models/BrandLogo';
 import { MathUtils } from '../utils/MathUtils';
 import { AudioManager } from '../utils/AudioManager';
 
@@ -104,6 +105,7 @@ export class PhysicsEngine {
   private updateBrandLogos(state: GameState, dt: number): void {
     if (!state.brandLogos) return;
 
+    const stamped: BrandLogo[] = [];
     for (const logo of state.brandLogos) {
       const wasDynamic = logo.isDynamic;
       logo.update(dt, this.gravity, state.landscape, state.brandLogos);
@@ -111,6 +113,8 @@ export class PhysicsEngine {
       // Effect: Landed this frame
       if (wasDynamic && !logo.isDynamic) {
         AudioManager.playLand();
+        state.landscape.stampImage(logo.sprite, logo.x, logo.y, logo.width, logo.height);
+        stamped.push(logo);
         // Shake camera slightly
         if (this.onHeavyImpact) {
           this.onHeavyImpact(); // The presenter should have logic for this
@@ -131,6 +135,10 @@ export class PhysicsEngine {
           });
         }
       }
+    }
+
+    if (stamped.length > 0) {
+      state.brandLogos = state.brandLogos.filter(l => !stamped.includes(l));
     }
   }
 
