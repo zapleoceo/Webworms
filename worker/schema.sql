@@ -53,3 +53,35 @@ CREATE TABLE IF NOT EXISTS Matches (
 
 CREATE INDEX IF NOT EXISTS idx_matches_p1 ON Matches(player1_id);
 CREATE INDEX IF NOT EXISTS idx_matches_p2 ON Matches(player2_id);
+
+CREATE TABLE IF NOT EXISTS SpriteSets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  idle_src TEXT NOT NULL,
+  walk_src TEXT NOT NULL,
+  jump_src TEXT NOT NULL,
+  grave_src TEXT NOT NULL,
+  aim_bazooka_src TEXT,
+  aim_minigun_src TEXT,
+  aim_shotgun_src TEXT,
+  aim_rocket_src TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS Weapons (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  damage INTEGER NOT NULL,
+  explosionRadius INTEGER NOT NULL,
+  knockback INTEGER NOT NULL,
+  windMultiplier REAL NOT NULL,
+  spread REAL NOT NULL,
+  projectilesPerShot INTEGER NOT NULL,
+  cooldown INTEGER NOT NULL,
+  chargeSpeed REAL NOT NULL,
+  speedModifier REAL NOT NULL,
+  icon_src TEXT,
+  projectile_src TEXT,
+  color TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

@@ -1,3 +1,6 @@
+import { getSpriteSets, createSpriteSet, updateSpriteSet, deleteSpriteSet } from './controllers/spritesets';
+import { getWeapons, createWeapon, updateWeapon, deleteWeapon } from './controllers/weapons';
+
 export interface Env {
   DB: D1Database;
   ROOMS: KVNamespace;
@@ -125,6 +128,34 @@ export default {
       }
       else if (url.pathname === '/api/admin/logos' && request.method === 'DELETE') {
         response = await deleteLogo(request, env);
+      }
+
+      // SpriteSets Endpoints
+      else if (url.pathname === '/api/spritesets' && request.method === 'GET') {
+        response = await getSpriteSets(env);
+      }
+      else if (url.pathname === '/api/admin/spritesets' && request.method === 'POST') {
+        response = await createSpriteSet(request, env);
+      }
+      else if (url.pathname.startsWith('/api/admin/spritesets/') && request.method === 'PUT') {
+        response = await updateSpriteSet(request, env);
+      }
+      else if (url.pathname.startsWith('/api/admin/spritesets/') && request.method === 'DELETE') {
+        response = await deleteSpriteSet(request, env);
+      }
+
+      // Weapons Endpoints
+      else if (url.pathname === '/api/weapons' && request.method === 'GET') {
+        response = await getWeapons(env);
+      }
+      else if (url.pathname === '/api/admin/weapons' && request.method === 'POST') {
+        response = await createWeapon(request, env);
+      }
+      else if (url.pathname.startsWith('/api/admin/weapons/') && request.method === 'PUT') {
+        response = await updateWeapon(request, env);
+      }
+      else if (url.pathname.startsWith('/api/admin/weapons/') && request.method === 'DELETE') {
+        response = await deleteWeapon(request, env);
       }
       
       else if (url.pathname === '/api/rooms' && request.method === 'POST') {
@@ -923,14 +954,16 @@ async function handleSignalingGet(request: Request, env: Env): Promise<Response>
   const roomId = parts[3];
   const type = parts[4];
 
-  if (!roomId || !type) return new Response('Bad Request', { status: 400 });
+  if (!roomId || !type) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
 
   const data = await env.ROOMS.get(`${roomId}_${type}`);
   if (data) {
-    // Optionally delete after reading to ensure one-time delivery
-    // await env.ROOMS.delete(`${roomId}_${type}`);
     return new Response(data, { headers: { 'Content-Type': 'application/json' } });
   }
-  
-  return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+
+  // To prevent 404 console spam during polling, return 200 OK with empty representation
+  if (type === 'ice-host' || type === 'ice-client') {
+    return new Response('[]', { headers: { 'Content-Type': 'application/json' } });
+  }
+  return new Response('null', { headers: { 'Content-Type': 'application/json' } });
 }

@@ -42,6 +42,8 @@ export class AdminPanel {
               <button id="nav-dashboard" class="admin-nav-btn active">Dashboard</button>
               <button id="nav-users" class="admin-nav-btn">Users Management</button>
               <button id="nav-logos" class="admin-nav-btn">Airdrop Logos</button>
+              <button id="nav-spritesets" class="admin-nav-btn">Sprite Sets</button>
+              <button id="nav-weapons" class="admin-nav-btn">Weapons</button>
               <button id="admin-logout-btn" class="admin-nav-btn danger">Logout</button>
             </nav>
           </aside>
@@ -127,6 +129,85 @@ export class AdminPanel {
                 </table>
               </div>
             </section>
+
+            <section id="section-spritesets" class="admin-section">
+              <div class="section-header">
+                <h2>Worm Sprite Sets</h2>
+                <button id="load-spritesets" class="secondary-btn small-btn">Refresh</button>
+              </div>
+              <div class="upload-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
+                <h3>Add New Sprite Set</h3>
+                <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">Select files to encode to base64. Ensure they are PNGs with transparent backgrounds.</p>
+                <div style="display: flex; gap: 10px; margin-top: 10px; flex-direction: column;">
+                  <input type="text" id="sprite-name" placeholder="Skin Name (e.g. Soldier)" class="retro-input" style="max-width: 300px;">
+                  <label>Idle Sprite: <input type="file" id="sprite-idle" accept="image/png"></label>
+                  <label>Walk Sprite: <input type="file" id="sprite-walk" accept="image/png"></label>
+                  <label>Jump Sprite: <input type="file" id="sprite-jump" accept="image/png"></label>
+                  <label>Grave Sprite: <input type="file" id="sprite-grave" accept="image/png"></label>
+                  <label>Aim Bazooka (Optional): <input type="file" id="sprite-aim-bazooka" accept="image/png"></label>
+                  <button id="create-spriteset-btn" class="primary-btn small-btn" style="max-width: 200px; margin-top: 10px;">Create Sprite Set</button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Idle Preview</th>
+                      <th>Walk Preview</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="spritesets-list-body">
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="section-weapons" class="admin-section">
+              <div class="section-header">
+                <h2>Weapons</h2>
+                <button id="load-weapons" class="secondary-btn small-btn">Refresh</button>
+              </div>
+              <div class="upload-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
+                <h3>Add New Weapon</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                  <input type="text" id="wpn-name" placeholder="Weapon Name" class="retro-input">
+                  <input type="color" id="wpn-color" value="#ff0000" class="retro-input" style="height: 50px;">
+                  <input type="number" id="wpn-damage" placeholder="Damage (e.g. 45)" class="retro-input">
+                  <input type="number" id="wpn-radius" placeholder="Explosion Radius (e.g. 60)" class="retro-input">
+                  <input type="number" id="wpn-knockback" placeholder="Knockback (e.g. 15)" class="retro-input">
+                  <input type="number" id="wpn-wind" placeholder="Wind Multiplier (e.g. 1.0)" class="retro-input" step="0.1">
+                  <input type="number" id="wpn-spread" placeholder="Spread (e.g. 0)" class="retro-input" step="0.1">
+                  <input type="number" id="wpn-projectiles" placeholder="Projectiles Per Shot (e.g. 1)" class="retro-input">
+                  <input type="number" id="wpn-cooldown" placeholder="Cooldown (e.g. 1)" class="retro-input">
+                  <input type="number" id="wpn-chargespeed" placeholder="Charge Speed (e.g. 0.05)" class="retro-input" step="0.01">
+                  <input type="number" id="wpn-speedmod" placeholder="Speed Modifier (e.g. 1.0)" class="retro-input" step="0.1">
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 10px; flex-direction: column;">
+                  <label>Icon Sprite (Optional): <input type="file" id="wpn-icon" accept="image/png"></label>
+                  <label>Projectile Sprite (Optional): <input type="file" id="wpn-projectile" accept="image/png"></label>
+                  <button id="create-weapon-btn" class="primary-btn small-btn" style="max-width: 200px; margin-top: 10px;">Create Weapon</button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Icon</th>
+                      <th>Name</th>
+                      <th>Damage</th>
+                      <th>Radius</th>
+                      <th>Projectiles</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="weapons-list-body">
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
           </main>
         </div>
       </div>
@@ -148,7 +229,18 @@ export class AdminPanel {
       this.switchTab('logos', e.target as HTMLElement);
       this.loadLogosData();
     });
+    document.getElementById('nav-spritesets')?.addEventListener('click', (e) => {
+      this.switchTab('spritesets', e.target as HTMLElement);
+      this.loadSpriteSetsData();
+    });
+    document.getElementById('nav-weapons')?.addEventListener('click', (e) => {
+      this.switchTab('weapons', e.target as HTMLElement);
+      this.loadWeaponsData();
+    });
+
     document.getElementById('load-logos')?.addEventListener('click', () => this.loadLogosData());
+    document.getElementById('load-spritesets')?.addEventListener('click', () => this.loadSpriteSetsData());
+    document.getElementById('load-weapons')?.addEventListener('click', () => this.loadWeaponsData());
     
     // Cropper & Logo Upload Events
     const fileInput = document.getElementById('logo-file') as HTMLInputElement;
@@ -158,6 +250,10 @@ export class AdminPanel {
     uploadBtn?.addEventListener('click', () => this.openCropper());
     document.getElementById('confirm-crop-btn')?.addEventListener('click', () => this.confirmCropAndUpload());
     document.getElementById('cancel-crop-btn')?.addEventListener('click', () => this.closeCropper());
+
+    // SpriteSets & Weapons Creation
+    document.getElementById('create-spriteset-btn')?.addEventListener('click', () => this.handleCreateSpriteSet());
+    document.getElementById('create-weapon-btn')?.addEventListener('click', () => this.handleCreateWeapon());
   }
 
   private switchTab(tabId: string, btnElement: HTMLElement) {
@@ -295,6 +391,16 @@ export class AdminPanel {
     // Bind logo delete buttons
     document.querySelectorAll('.delete-logo-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.deleteLogo(e));
+    });
+
+    // Bind spriteset delete buttons
+    document.querySelectorAll('.delete-spriteset-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.deleteSpriteSet(e));
+    });
+
+    // Bind weapon delete buttons
+    document.querySelectorAll('.delete-weapon-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.deleteWeapon(e));
     });
   }
 
@@ -652,5 +758,223 @@ export class AdminPanel {
         btn.style.backgroundColor = '';
       }, 2000);
     }
+  }
+
+  private async loadSpriteSetsData() {
+    try {
+      const res = await fetch(APIClient.BASE_URL + '/spritesets');
+      if (res.ok) {
+        const spritesets = await res.json();
+        this.renderSpriteSetsTable(spritesets);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  private renderSpriteSetsTable(spritesets: any[]) {
+    const tbody = document.getElementById('spritesets-list-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = spritesets.map(s => `
+      <tr>
+        <td>${s.name}</td>
+        <td><img src="${s.idle_src}" style="height: 40px; image-rendering: pixelated;"></td>
+        <td><img src="${s.walk_src}" style="height: 40px; image-rendering: pixelated;"></td>
+        <td>
+          <button class="delete-spriteset-btn danger-btn small-btn" data-id="${s.id}">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+    this.bindDynamicEvents();
+  }
+
+  private async loadWeaponsData() {
+    try {
+      const res = await fetch(APIClient.BASE_URL + '/weapons');
+      if (res.ok) {
+        const weapons = await res.json();
+        this.renderWeaponsTable(weapons);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  private renderWeaponsTable(weapons: any[]) {
+    const tbody = document.getElementById('weapons-list-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = weapons.map(w => `
+      <tr>
+        <td>${w.icon_src ? `<img src="${w.icon_src}" style="height: 40px; image-rendering: pixelated;">` : 'None'}</td>
+        <td><span style="color: ${w.color}">${w.name}</span></td>
+        <td>${w.damage}</td>
+        <td>${w.explosionRadius}</td>
+        <td>${w.projectilesPerShot}</td>
+        <td>
+          <button class="delete-weapon-btn danger-btn small-btn" data-id="${w.id}">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+    this.bindDynamicEvents();
+  }
+
+  private fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  private async handleCreateSpriteSet() {
+    const nameInput = document.getElementById('sprite-name') as HTMLInputElement;
+    const idleInput = document.getElementById('sprite-idle') as HTMLInputElement;
+    const walkInput = document.getElementById('sprite-walk') as HTMLInputElement;
+    const jumpInput = document.getElementById('sprite-jump') as HTMLInputElement;
+    const graveInput = document.getElementById('sprite-grave') as HTMLInputElement;
+    const aimBazookaInput = document.getElementById('sprite-aim-bazooka') as HTMLInputElement;
+
+    if (!nameInput.value || !idleInput.files?.[0] || !walkInput.files?.[0] || !jumpInput.files?.[0] || !graveInput.files?.[0]) {
+      alert("Name and required sprites (idle, walk, jump, grave) are missing.");
+      return;
+    }
+
+    const btn = document.getElementById('create-spriteset-btn') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.innerText = 'Uploading...';
+
+    try {
+      const idle_src = await this.fileToBase64(idleInput.files[0]);
+      const walk_src = await this.fileToBase64(walkInput.files[0]);
+      const jump_src = await this.fileToBase64(jumpInput.files[0]);
+      const grave_src = await this.fileToBase64(graveInput.files[0]);
+      const aim_bazooka_src = aimBazookaInput.files?.[0] ? await this.fileToBase64(aimBazookaInput.files[0]) : null;
+
+      const res = await fetch(APIClient.BASE_URL + '/admin/spritesets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        },
+        body: JSON.stringify({
+          name: nameInput.value,
+          idle_src, walk_src, jump_src, grave_src, aim_bazooka_src
+        })
+      });
+
+      if (res.ok) {
+        alert("Sprite Set Created!");
+        nameInput.value = '';
+        idleInput.value = ''; walkInput.value = ''; jumpInput.value = ''; graveInput.value = ''; aimBazookaInput.value = '';
+        this.loadSpriteSetsData();
+      } else {
+        alert("Error creating Sprite Set");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Upload failed");
+    } finally {
+      btn.disabled = false;
+      btn.innerText = 'Create Sprite Set';
+    }
+  }
+
+  private async handleCreateWeapon() {
+    const nameInput = document.getElementById('wpn-name') as HTMLInputElement;
+    const colorInput = document.getElementById('wpn-color') as HTMLInputElement;
+    const damageInput = document.getElementById('wpn-damage') as HTMLInputElement;
+    const radiusInput = document.getElementById('wpn-radius') as HTMLInputElement;
+    const knockbackInput = document.getElementById('wpn-knockback') as HTMLInputElement;
+    const windInput = document.getElementById('wpn-wind') as HTMLInputElement;
+    const spreadInput = document.getElementById('wpn-spread') as HTMLInputElement;
+    const projectilesInput = document.getElementById('wpn-projectiles') as HTMLInputElement;
+    const cooldownInput = document.getElementById('wpn-cooldown') as HTMLInputElement;
+    const chargeSpeedInput = document.getElementById('wpn-chargespeed') as HTMLInputElement;
+    const speedModInput = document.getElementById('wpn-speedmod') as HTMLInputElement;
+
+    const iconInput = document.getElementById('wpn-icon') as HTMLInputElement;
+    const projInput = document.getElementById('wpn-projectile') as HTMLInputElement;
+
+    if (!nameInput.value || !damageInput.value) {
+      alert("Name and Damage are required.");
+      return;
+    }
+
+    const btn = document.getElementById('create-weapon-btn') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.innerText = 'Uploading...';
+
+    try {
+      const icon_src = iconInput.files?.[0] ? await this.fileToBase64(iconInput.files[0]) : null;
+      const projectile_src = projInput.files?.[0] ? await this.fileToBase64(projInput.files[0]) : null;
+
+      const res = await fetch(APIClient.BASE_URL + '/admin/weapons', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        },
+        body: JSON.stringify({
+          name: nameInput.value,
+          color: colorInput.value,
+          damage: parseFloat(damageInput.value) || 0,
+          explosionRadius: parseFloat(radiusInput.value) || 0,
+          knockback: parseFloat(knockbackInput.value) || 0,
+          windMultiplier: parseFloat(windInput.value) || 0,
+          spread: parseFloat(spreadInput.value) || 0,
+          projectilesPerShot: parseInt(projectilesInput.value) || 1,
+          cooldown: parseInt(cooldownInput.value) || 0,
+          chargeSpeed: parseFloat(chargeSpeedInput.value) || 0.05,
+          speedModifier: parseFloat(speedModInput.value) || 1.0,
+          icon_src, projectile_src
+        })
+      });
+
+      if (res.ok) {
+        alert("Weapon Created!");
+        nameInput.value = ''; damageInput.value = '';
+        iconInput.value = ''; projInput.value = '';
+        this.loadWeaponsData();
+      } else {
+        alert("Error creating weapon");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Upload failed");
+    } finally {
+      btn.disabled = false;
+      btn.innerText = 'Create Weapon';
+    }
+  }
+
+  private async deleteSpriteSet(e: Event) {
+    if (!confirm('Are you sure?')) return;
+    const id = (e.target as HTMLButtonElement).dataset.id;
+    await fetch(APIClient.BASE_URL + '/admin/spritesets/' + id, {
+      method: 'DELETE',
+      headers: {
+        'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+        'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+      }
+    });
+    this.loadSpriteSetsData();
+  }
+
+  private async deleteWeapon(e: Event) {
+    if (!confirm('Are you sure?')) return;
+    const id = (e.target as HTMLButtonElement).dataset.id;
+    await fetch(APIClient.BASE_URL + '/admin/weapons/' + id, {
+      method: 'DELETE',
+      headers: {
+        'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+        'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+      }
+    });
+    this.loadWeaponsData();
   }
 }
