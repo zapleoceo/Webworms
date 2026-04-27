@@ -46,6 +46,17 @@ export default {
         INSERT OR IGNORE INTO Settings (key, value) VALUES ('turn_time', '30')
       `).run();
 
+      await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS Maps (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          image_data TEXT NOT NULL,
+          width INTEGER NOT NULL DEFAULT 1500,
+          height INTEGER NOT NULL DEFAULT 800,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+
       try {
         await env.DB.exec(`ALTER TABLE Users ADD COLUMN premium_until INTEGER DEFAULT 0;`);
       } catch (e) {
