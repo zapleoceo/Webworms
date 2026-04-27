@@ -502,6 +502,7 @@ export class PhysicsEngine {
     const pr = Math.max(1, Math.floor(proj.radius * 0.8)); // slightly smaller than visual radius for forgiveness
 
     let hitTerrain = false;
+    let hitEntity = false;
     let hitMaterial = 0;
     let hitX = newX;
     let hitY = newY;
@@ -511,6 +512,55 @@ export class PhysicsEngine {
       const checkX = oldX + (newX - oldX) * t;
       const checkY = oldY + (newY - oldY) * t;
 
+      // 1. Check Players
+      for (const player of state.players) {
+        if (player.health <= 0) continue;
+        const playerRadius = player.width / 2;
+        
+        // Prevent immediate self-collision when shooting
+        if (player === (proj as any).owner && (proj as any).framesAlive !== undefined && (proj as any).framesAlive < 5) {
+          continue;
+        }
+
+        if (MathUtils.distance(checkX, checkY, player.x, player.y) < playerRadius + proj.radius) {
+          hitEntity = true;
+          hitX = checkX;
+          hitY = checkY;
+          break;
+        }
+      }
+      if (hitEntity) break;
+
+      // 2. Check Props
+      for (const prop of state.props) {
+        if (MathUtils.distance(checkX, checkY, prop.x, prop.y) < prop.radius + proj.radius) {
+          hitEntity = true;
+          hitX = checkX;
+          hitY = checkY;
+          break;
+        }
+      }
+      if (hitEntity) break;
+
+      // 3. Check BrandLogos
+      if (state.brandLogos) {
+        for (const logo of state.brandLogos) {
+          const halfW = logo.width / 2;
+          const halfH = logo.height / 2;
+          
+          // Simple AABB check for logos (they are rectangles)
+          if (checkX > logo.x - halfW - proj.radius && checkX < logo.x + halfW + proj.radius &&
+              checkY > logo.y - halfH - proj.radius && checkY < logo.y + halfH + proj.radius) {
+            hitEntity = true;
+            hitX = checkX;
+            hitY = checkY;
+            break;
+          }
+        }
+      }
+      if (hitEntity) break;
+
+      // 4. Check Terrain
       const px = Math.floor(checkX);
       const py = Math.floor(checkY);
 
@@ -536,13 +586,15 @@ export class PhysicsEngine {
     proj.x = hitX;
     proj.y = hitY;
 
-    if (hitTerrain) {
+    if (hitTerrain || hitEntity) {
       // Determine material strength modifier for explosion radius
       let radiusModifier = 1.0;
-      if (hitMaterial === 2) radiusModifier = 0.75; // Meteorite Rock is harder
-      else if (hitMaterial === 4) radiusModifier = 0.5; // Metal Platform is very hard
-      else if (hitMaterial === 5) radiusModifier = 2.0; // Snow is very weak
-      else if (hitMaterial === 255) radiusModifier = 0.3; // Barely scratches the indestructible border
+      if (hitTerrain) {
+        if (hitMaterial === 2) radiusModifier = 0.75; // Meteorite Rock is harder
+        else if (hitMaterial === 4) radiusModifier = 0.5; // Metal Platform is very hard
+        else if (hitMaterial === 5) radiusModifier = 2.0; // Snow is very weak
+        else if (hitMaterial === 255) radiusModifier = 0.3; // Barely scratches the indestructible border
+      }
 
       this.explode(proj, state, radiusModifier);
       return;
@@ -550,29 +602,9 @@ export class PhysicsEngine {
 
     // (Projectile-projectile collision removed to prevent multi-shot instant explosions)
 
-    // Collision with players
-    for (const player of state.players) {
-      if (player.health <= 0) continue; // don't hit dead worms
-      const playerRadius = player.width / 2;
-      
-      // Prevent immediate self-collision when shooting
-      if (player === (proj as any).owner && (proj as any).framesAlive !== undefined && (proj as any).framesAlive < 5) {
-        continue; 
-      }
-
-      if (MathUtils.distance(proj.x, proj.y, player.x, player.y) < playerRadius + proj.radius) {
-        this.explode(proj, state, 1.0);
-        return;
-      }
-    }
-
-    // Collision with props
-    for (const prop of state.props) {
-      if (MathUtils.distance(proj.x, proj.y, prop.x, prop.y) < prop.radius + proj.radius) {
-        this.explode(proj, state, 1.0);
-        return;
-      }
-    }
+    // Substepping collision logic handles all these now!
+    // Also check brand logos
+    // Handled in substepping now!
 
     // Out of bounds / Hitting the unbreakable cosmic barrier (30px border)
     if (proj.x <= 30 || proj.x >= state.width - 30 || proj.y >= state.height - 30) {

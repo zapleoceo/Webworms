@@ -672,8 +672,9 @@ export class GamePresenter {
     const angularVelocity = (Math.random() - 0.5) * 2;
 
     const brandLogo = new BrandLogo(sprite, spawnX, spawnY, vx, vy, angle, angularVelocity);
-    brandLogo.width = width;
-    brandLogo.height = height;
+    // Increase the visual and physical size by 1.5x as requested
+    brandLogo.width = width * 1.5;
+    brandLogo.height = height * 1.5;
     
     if (!this.state.brandLogos) this.state.brandLogos = [];
     this.state.brandLogos.push(brandLogo);
