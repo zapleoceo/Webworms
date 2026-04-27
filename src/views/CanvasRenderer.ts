@@ -282,17 +282,25 @@ export class CanvasRenderer {
       state.landscape.needsUpdate = false;
     }
 
-    // 2. Process new craters using ultra-fast 'destination-out' to punch holes
+    // 2. Process new craters using ultra-fast composite operations to punch holes and add outlines
     if (state.landscape.newCraters.length > 0) {
-      this.terrainCtx.globalCompositeOperation = 'destination-out';
-      this.terrainCtx.fillStyle = 'black'; // Color doesn't matter for destination-out
-      
       for (const crater of state.landscape.newCraters) {
+        // Step 1: Draw slightly larger black circle using source-atop.
+        // This paints a dark outline only where terrain currently exists.
+        this.terrainCtx.globalCompositeOperation = 'source-atop';
+        this.terrainCtx.fillStyle = '#111'; // Dark outline color
+        this.terrainCtx.beginPath();
+        this.terrainCtx.arc(crater.x, crater.y, crater.r + 3, 0, Math.PI * 2);
+        this.terrainCtx.fill();
+
+        // Step 2: Punch the actual hole
+        this.terrainCtx.globalCompositeOperation = 'destination-out';
+        this.terrainCtx.fillStyle = 'black'; // Color doesn't matter for destination-out
         this.terrainCtx.beginPath();
         this.terrainCtx.arc(crater.x, crater.y, crater.r, 0, Math.PI * 2);
         this.terrainCtx.fill();
       }
-      
+
       this.terrainCtx.globalCompositeOperation = 'source-over'; // Restore
       
       // Fix for unbreakable alloy: Redraw any indestructible pixels (255) that were visually erased
@@ -315,8 +323,8 @@ export class CanvasRenderer {
               const mapY = minY + y;
               if (state.landscape.getMaterial(mapX, mapY) === 255) {
                 const idx = (y * w + x) * 4;
-                data[idx] = 30; data[idx+1] = 30; data[idx+2] = 40; data[idx+3] = 255;
-                if ((mapX+mapY)%10 === 0) { data[idx] = 50; data[idx+1] = 50; data[idx+2] = 60; }
+                data[idx] = 20; data[idx+1] = 20; data[idx+2] = 25; data[idx+3] = 255;
+                if ((mapX+mapY)%10 === 0) { data[idx] = 40; data[idx+1] = 40; data[idx+2] = 50; }
               }
             }
           }

@@ -64,7 +64,7 @@ export class Landscape {
         const dx = x - cx;
         const dy = y - cy;
         if (dx * dx + dy * dy <= r2) {
-          this.setMaterial(x, y, 0); // Completely remove material
+          this.grid[y * this.width + x] = 0; // Fast erase without full map update
         }
       }
     }
