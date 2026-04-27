@@ -491,15 +491,75 @@ export class AdminPanel {
       return;
     }
 
-    const base64Data = canvas.toDataURL('image/png');
-    this.uploadCroppedImage(base64Data);
+    // Trim transparent edges so the physical bounds exactly match the visible pixels
+    const trimmedInfo = this.trimCanvasTransparency(canvas);
+    if (!trimmedInfo) {
+      alert('Image is completely transparent.');
+      return;
+    }
+
+    const { canvas: trimmedCanvas, trimRatioW, trimRatioH } = trimmedInfo;
+    const base64Data = trimmedCanvas.toDataURL('image/png');
+    this.uploadCroppedImage(base64Data, trimRatioW, trimRatioH);
   }
 
-  private async uploadCroppedImage(base64Data: string) {
+  private trimCanvasTransparency(canvas: HTMLCanvasElement): { canvas: HTMLCanvasElement, trimRatioW: number, trimRatioH: number } | null {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const pixels = ctx.getImageData(0, 0, w, h);
+    const data = pixels.data;
+    
+    let top = h, bottom = 0, left = w, right = 0;
+    
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const alpha = data[(y * w + x) * 4 + 3];
+        if (alpha > 0) { // non-transparent pixel
+          if (x < left) left = x;
+          if (x > right) right = x;
+          if (y < top) top = y;
+          if (y > bottom) bottom = y;
+        }
+      }
+    }
+
+    if (top > bottom || left > right) {
+      return null; // Empty or fully transparent image
+    }
+
+    const trimmedWidth = right - left + 1;
+    const trimmedHeight = bottom - top + 1;
+
+    const trimmedCanvas = document.createElement('canvas');
+    trimmedCanvas.width = trimmedWidth;
+    trimmedCanvas.height = trimmedHeight;
+    const tCtx = trimmedCanvas.getContext('2d');
+    if (tCtx) {
+      tCtx.drawImage(canvas, left, top, trimmedWidth, trimmedHeight, 0, 0, trimmedWidth, trimmedHeight);
+    }
+
+    return { 
+      canvas: trimmedCanvas, 
+      trimRatioW: trimmedWidth / w,
+      trimRatioH: trimmedHeight / h
+    };
+  }
+
+  private async uploadCroppedImage(base64Data: string, trimRatioW: number, trimRatioH: number) {
     const widthInput = document.getElementById('logo-width') as HTMLInputElement;
     const heightInput = document.getElementById('logo-height') as HTMLInputElement;
     const hardnessInput = document.getElementById('logo-hardness') as HTMLInputElement;
     
+    const originalW = parseInt(widthInput.value) || 100;
+    const originalH = parseInt(heightInput.value) || 60;
+    
+    // Scale down physical dimensions if we trimmed transparent space
+    const finalWidth = Math.max(1, Math.round(originalW * trimRatioW));
+    const finalHeight = Math.max(1, Math.round(originalH * trimRatioH));
+
     const confirmBtn = document.getElementById('confirm-crop-btn') as HTMLButtonElement;
     const originalText = confirmBtn.innerText;
     confirmBtn.innerText = 'Uploading...';
@@ -515,8 +575,8 @@ export class AdminPanel {
         },
         body: JSON.stringify({
           image_data: base64Data,
-          width: parseInt(widthInput.value) || 100,
-          height: parseInt(heightInput.value) || 60,
+          width: finalWidth,
+          height: finalHeight,
           hardness: parseInt(hardnessInput.value) || 10
         })
       });

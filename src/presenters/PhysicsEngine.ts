@@ -547,10 +547,18 @@ export class PhysicsEngine {
         for (const logo of state.brandLogos) {
           const halfW = logo.width / 2;
           const halfH = logo.height / 2;
-          
-          // Simple AABB check for logos (they are rectangles)
-          if (checkX > logo.x - halfW - proj.radius && checkX < logo.x + halfW + proj.radius &&
-              checkY > logo.y - halfH - proj.radius && checkY < logo.y + halfH + proj.radius) {
+
+          // Transform checkX, checkY into logo's local space to account for its rotation
+          const dx = checkX - logo.x;
+          const dy = checkY - logo.y;
+          const cosA = Math.cos(-logo.angle);
+          const sinA = Math.sin(-logo.angle);
+          const localX = dx * cosA - dy * sinA;
+          const localY = dx * sinA + dy * cosA;
+
+          // Check against the unrotated bounding box in local space
+          if (localX > -halfW - proj.radius && localX < halfW + proj.radius &&
+              localY > -halfH - proj.radius && localY < halfH + proj.radius) {
             hitEntity = true;
             hitX = checkX;
             hitY = checkY;
