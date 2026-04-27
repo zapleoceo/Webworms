@@ -42,12 +42,12 @@
           <div class="game-settings">
           <!-- Map Selection Only -->
           <div class="mb-10 text-center">
-            <h3 class="mb-5">SELECT MAP</h3>
-            <select id="map-type-select" class="retro-input" style="width: 200px;">
-              <option value="islands">Islands</option>
-              <option value="cave">Cave</option>
-              <option value="flat">Flat</option>
-            </select>
+            <h3 class="mb-5 comic-text" style="font-size: 1.2rem;">MAP</h3>
+            <div class="select-wrapper">
+              <select id="map-type-select" class="retro-select retro-input">
+                <option value="" disabled selected>Loading maps...</option>
+              </select>
+            </div>
           </div>
           </div>
         </div>
@@ -58,10 +58,12 @@
         <h2 id="loader-text" class="comic-text">LOADING...</h2>
         <div class="spinner"></div>
         <div id="invite-panel" style="display: none;" class="modal-box">
-          <p>Send this link to your friend:</p>
-          <input type="text" id="invite-link" readonly class="share-input">
-          <button id="btn-copy-invite" class="secondary-btn small-btn">COPY LINK</button>
-          <button id="btn-cancel-invite" class="danger-btn small-btn">CANCEL</button>
+          <p class="comic-text" style="font-size: 1.2rem; margin-bottom: 10px;">Send this link to your friend:</p>
+          <input type="text" id="invite-link" readonly class="retro-input share-input" style="text-align: center; font-size: 0.9rem;">
+          <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
+            <button id="btn-copy-invite" class="secondary-btn w-full" style="font-size: 1.2rem; padding: 10px;">COPY LINK</button>
+            <button id="btn-cancel-invite" class="danger-btn w-full" style="font-size: 1.2rem; padding: 10px;">CANCEL</button>
+          </div>
         </div>
       </div>
 

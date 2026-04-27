@@ -45,12 +45,17 @@ if (!isAdminPage) {
 APIClient.getMaps().then(maps => {
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
   if (mapTypeSelect && maps && maps.length > 0) {
+    mapTypeSelect.innerHTML = ''; // Clear "Loading maps..."
     maps.forEach((m: any) => {
       const opt = document.createElement('option');
       opt.value = m.id;
-      opt.innerText = `[Custom] ${m.name}`;
+      // Strip 'custom_' prefix if it exists
+      const cleanName = m.name.replace(/^custom_/i, '');
+      opt.innerText = cleanName;
       mapTypeSelect.appendChild(opt);
     });
+  } else if (mapTypeSelect) {
+    mapTypeSelect.innerHTML = '<option disabled>No custom maps found</option>';
   }
 });
 
