@@ -168,7 +168,22 @@ button:hover {
 .menu-header {
   width: 100%;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.time-balance-box {
+  background: rgba(0, 0, 0, 0.6);
+  border: 2px solid var(--color-primary);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-family: var(--font-comic);
+  font-size: 0.9rem;
+  text-shadow: 1px 1px 0 #000;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  text-align: center;
+  min-width: 120px;
 }
 
 .logo-container {

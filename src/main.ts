@@ -80,7 +80,7 @@ let syncModule: MultiplayerSync | null = null;
 
 function updateTimeBalanceDisplay() {
   const display = document.getElementById('play-time-display');
-  if (!display) return;
+  const timeBalanceEl = document.getElementById('profile-stats-balance');
   
   const balanceStr = localStorage.getItem('playTimeBalance');
   const premiumStr = localStorage.getItem('premiumUntil');
@@ -88,32 +88,49 @@ function updateTimeBalanceDisplay() {
   if (premiumStr) {
     const premiumUntil = parseInt(premiumStr);
     if (premiumUntil > Date.now()) {
-      display.innerText = 'Time: ∞ (Premium)';
-      display.style.color = '#ffeb3b';
+      if (display) {
+        display.style.display = 'block';
+        display.innerText = 'Time: ∞ (Premium)';
+        display.style.color = '#ffeb3b';
+      }
+      if (timeBalanceEl) {
+        timeBalanceEl.innerText = 'Play Time: ∞ (Premium)';
+      }
       return;
     }
   }
 
   if (balanceStr) {
     const seconds = parseInt(balanceStr);
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    display.innerText = `Time: ${m}:${s.toString().padStart(2, '0')}`;
-    display.style.color = 'white';
+    const hrs = Math.floor(Math.max(0, seconds) / 3600);
+    const mins = Math.floor((Math.max(0, seconds) % 3600) / 60);
+    
+    if (display) {
+      display.style.display = 'block';
+      if (hrs > 0) {
+        display.innerText = `Time: ${hrs}h ${mins}m`;
+      } else {
+        display.innerText = `Time: ${mins}m`;
+      }
+      display.style.color = 'white';
+    }
+    
+    if (timeBalanceEl) {
+      timeBalanceEl.innerText = `Play Time Balance: ${hrs}h ${mins}m`;
+    }
+  } else if (display) {
+    display.style.display = 'none';
   }
 }
 
 const sessionId = localStorage.getItem('sessionId');
 if (sessionId) {
-  // @ts-ignore
   APIClient.getSession(sessionId).then((res: any) => {
     if (res.success && res.user) {
       localStorage.setItem('playTimeBalance', res.user.play_time_balance.toString());
       localStorage.setItem('premiumUntil', res.user.premium_until?.toString() || '0');
-      // @ts-ignore
-      if (typeof updateTimeBalanceDisplay === 'function') updateTimeBalanceDisplay();
-      // @ts-ignore
-      if (typeof updateAuthUI === 'function') updateAuthUI();
+      userBalanceSeconds = res.user.play_time_balance;
+      updateTimeBalanceDisplay();
     }
   });
 }
@@ -123,10 +140,7 @@ if (userSessionId && userSessionName) {
   btnOpenAuth.style.display = 'none';
   btnUserProfile.style.display = 'block';
   btnUserProfile.innerText = userSessionName;
-  
-  const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
-  const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
-  timeBalanceEl.innerText = `Time Left: ${hrs}h ${mins}m`;
+  updateTimeBalanceDisplay();
 }
 
 // Close modals manually if needed (already handled by ID-based listeners, but let's be safe)
@@ -264,9 +278,7 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
         btnUserProfile.style.display = 'block';
         btnUserProfile.innerText = userSessionName || 'USER';
 
-        const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
-        const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
-        timeBalanceEl.innerText = `Play Time Balance: ${hrs}h ${mins}m`;
+        updateTimeBalanceDisplay();
 
         const joinRoomId = new URLSearchParams(window.location.search).get('room');
         if (joinRoomId) {

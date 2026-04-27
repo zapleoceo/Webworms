@@ -16,6 +16,23 @@ const corsHeaders = {
 };
 
 export default {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    // Run daily balance reset
+    console.log(`Cron triggered at ${new Date(event.scheduledTime).toISOString()}`);
+    try {
+      // Set all players with < 3600 seconds to exactly 3600 seconds (60 mins)
+      // Players with premium or > 3600 seconds keep their balance
+      const result = await env.DB.prepare(`
+        UPDATE Users 
+        SET play_time_balance = 3600 
+        WHERE play_time_balance < 3600
+      `).run();
+      console.log(`Reset balance for ${result.meta.changes} users`);
+    } catch (e) {
+      console.error('Failed to run scheduled balance reset:', e);
+    }
+  },
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });

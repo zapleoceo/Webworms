@@ -25,7 +25,10 @@
       <div id="main-menu" class="screen active">
         <div class="menu-header">
           <button class="icon-btn auth-toggle-btn" id="btn-open-auth">👤 LOGIN</button>
-          <button class="icon-btn auth-toggle-btn" id="btn-user-profile" style="display: none;"></button>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+            <button class="icon-btn auth-toggle-btn" id="btn-user-profile" style="display: none;"></button>
+            <div id="play-time-display" class="time-balance-box" style="display: none;">Time: 60m 00s</div>
+          </div>
         </div>
 
         <div class="logo-container">
