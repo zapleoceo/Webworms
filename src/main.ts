@@ -469,10 +469,12 @@ let currentMatchToken: string | null = null;
   if (selectedMapId && selectedMapId !== 'islands' && selectedMapId !== 'cave' && selectedMapId !== 'flat') {
     const mapObj = maps.find((m: any) => m.id === selectedMapId);
     if (mapObj) {
-      // Need full map data
+      // The image_data is now a URL path like /api/maps/.../image
+      // Need to prefix with APIClient.BASE_URL without /api if needed, 
+      // but APIClient.BASE_URL is /api, so it already works as an absolute path
       const fullMap = await APIClient.getMapById(selectedMapId);
       if (fullMap) {
-        mapData = fullMap.image_data;
+        mapData = APIClient.BASE_URL.replace('/api', '') + fullMap.image_data;
       }
     }
   }
@@ -556,9 +558,12 @@ let currentMatchToken: string | null = null;
           Random.setSeed(stateData.mapSeed);
           
           if (stateData.mapData) {
+            // Ensure URL is absolute
+            const fullUrl = stateData.mapData.startsWith('http') ? stateData.mapData : APIClient.BASE_URL.replace('/api', '') + stateData.mapData;
+            
             // Need to wait for image to load, but we are in a sync loop. 
             // We can just trigger it, it will update when done.
-            window.presenter.state.landscape.generateFromImage(stateData.mapData).then(() => {
+            window.presenter.state.landscape.generateFromImage(fullUrl).then(() => {
               window.presenter.state.width = window.presenter.state.landscape.width;
               window.presenter.state.height = window.presenter.state.landscape.height;
               rebuildWorms();

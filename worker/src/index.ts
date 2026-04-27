@@ -148,6 +148,9 @@ export default {
       else if (url.pathname === '/api/maps' && request.method === 'GET') {
         response = await getMaps(env);
       }
+      else if (url.pathname.startsWith('/api/maps/') && url.pathname.endsWith('/image') && request.method === 'GET') {
+        response = await getMapImage(request, env);
+      }
       else if (url.pathname.startsWith('/api/maps/') && request.method === 'GET') {
         response = await getMapById(request, env);
       }
@@ -585,10 +588,45 @@ async function updateTurnTime(request: Request, env: Env): Promise<Response> {
 
 async function getMaps(env: Env): Promise<Response> {
   try {
-    const res = await env.DB.prepare('SELECT id, name, width, height, created_at FROM Maps ORDER BY created_at DESC').all();
+    const res = await env.DB.prepare('SELECT id, name, image_data, width, height, created_at FROM Maps ORDER BY created_at DESC').all();
     return new Response(JSON.stringify(res.results), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+async function getMapImage(request: Request, env: Env): Promise<Response> {
+    try {
+      const url = new URL(request.url);
+      const parts = url.pathname.split('/');
+      const id = parts[parts.length - 2]; // /api/maps/:id/image
+      if (!id) return new Response('Missing ID', { status: 400, headers: corsHeaders });
+  
+      const data = await env.ROOMS.get('map_img_' + id);
+      if (!data) return new Response('Not found', { status: 404, headers: corsHeaders });
+  
+      const b64 = data.split(',')[1];
+      if (!b64) {
+        // Fallback if not a standard data url
+        return new Response(data, { headers: { 'Content-Type': 'image/png', ...corsHeaders }});
+      }
+
+    const binaryStr = atob(b64);
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+    }
+    
+    return new Response(bytes, {
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=31536000',
+        ...corsHeaders
+      }
+    });
+  } catch (e: any) {
+    return new Response(e.message, { status: 500, headers: corsHeaders });
   }
 }
 
@@ -621,8 +659,13 @@ async function createMap(request: Request, env: Env): Promise<Response> {
     }
 
     const id = crypto.randomUUID();
+    const imageUrl = `/api/maps/${id}/image`;
+    
+    // Store actual base64 data in KV to avoid D1 limits
+    await env.ROOMS.put('map_img_' + id, image_data);
+
     await env.DB.prepare('INSERT INTO Maps (id, name, image_data, width, height) VALUES (?, ?, ?, ?, ?)')
-      .bind(id, name, image_data, width || 1500, height || 800).run();
+      .bind(id, name, imageUrl, width || 1500, height || 800).run();
 
     return new Response(JSON.stringify({ success: true, id }), { status: 201, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
@@ -640,6 +683,9 @@ async function deleteMap(request: Request, env: Env): Promise<Response> {
     if (!id) {
       return new Response(JSON.stringify({ error: 'Missing ID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
+
+    // Clean up KV store
+    await env.ROOMS.delete('map_img_' + id);
 
     await env.DB.prepare('DELETE FROM Maps WHERE id = ?').bind(id).run();
     return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });

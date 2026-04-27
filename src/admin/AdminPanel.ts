@@ -603,7 +603,7 @@ export class AdminPanel {
 
     tbody.innerHTML = maps.map(map => `
       <tr>
-        <td><img src="${map.image_data}" alt="${map.name}" style="max-width: 150px; max-height: 100px; object-fit: contain; background: rgba(0,0,0,0.5); border-radius: 4px; padding: 2px;"></td>
+        <td><img src="${APIClient.BASE_URL.replace('/api', '')}${map.image_data}" alt="${map.name}" style="max-width: 150px; max-height: 100px; object-fit: contain; background: rgba(0,0,0,0.5); border-radius: 4px; padding: 2px;" crossorigin="anonymous"></td>
         <td>${map.name}</td>
         <td>${map.width} x ${map.height}</td>
         <td style="white-space: nowrap;">
