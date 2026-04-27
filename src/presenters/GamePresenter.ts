@@ -456,6 +456,11 @@ export class GamePresenter {
     const player = this.state.getCurrentPlayer();
     if (!player) return;
 
+    if (action === 'spawnAirdrop' && isActive && !isRemote) {
+      this.spawnAirdrop();
+      return;
+    }
+
     if (isActive) {
       this.activeInputs.add(action);
     } else {

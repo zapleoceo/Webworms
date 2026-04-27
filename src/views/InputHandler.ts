@@ -22,6 +22,8 @@ export class InputHandler {
     'q': 'switch',
     'Q': 'switch',
     'Shift': 'switch',
+    'c': 'spawnAirdrop',
+    'C': 'spawnAirdrop',
   };
 
   private mobileBtns: { id: string, action: string }[];
