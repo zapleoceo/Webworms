@@ -91,9 +91,14 @@ export class InputHandler {
   private activeKeys = new Set<string>();
 
   private handleKeyDown = (event: KeyboardEvent): void => {
+    // Do not capture keyboard events if the user is typing in an input field
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+      return;
+    }
+    
     const action = this.keyMap[event.key];
     if (action) {
-      if (action !== 'fire') event.preventDefault(); // allow default space/enter if needed elsewhere? No, prevent scrolling.
+      event.preventDefault();
       if (this.activeKeys.has(event.code)) return;
       this.activeKeys.add(event.code);
       this.presenter.handleInput(action, true);
@@ -101,6 +106,11 @@ export class InputHandler {
   }
 
   private handleKeyUp = (event: KeyboardEvent): void => {
+    // Do not capture keyboard events if the user is typing in an input field
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+      return;
+    }
+
     const action = this.keyMap[event.key];
     if (action) {
       event.preventDefault();
