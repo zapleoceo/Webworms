@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "canvas": "^3.2.3",
+    "pngjs": "^7.0.0",
     "puppeteer": "^24.42.0"
   }
 }

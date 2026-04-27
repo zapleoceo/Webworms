@@ -38,14 +38,14 @@ export class CanvasRenderer {
       'grave': { src: '/sprites/Misc/grave1.png', frameWidth: 24, frameHeight: 32, frameCount: 1 }, // Grave
       // Weapons
       'bazooka': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'minigun': { src: '/sprites/Worms/wminlnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'minigun': { src: '/sprites/Worms/wmini.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'shotgun': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'rocket': { src: '/sprites/Worms/wmollnk.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'rocket': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       // Projectiles
-      'proj_bazooka': { src: '/sprites/Weapons/missile.png', frameWidth: 32, frameHeight: 32, frameCount: 1 },
-      'proj_minigun': { src: '/sprites/Weapons/bullet.png', frameWidth: 16, frameHeight: 16, frameCount: 1 },
-      'proj_shotgun': { src: '/sprites/Weapons/bullet.png', frameWidth: 16, frameHeight: 16, frameCount: 1 },
-      'proj_rocket': { src: '/sprites/Weapons/missile.png', frameWidth: 32, frameHeight: 32, frameCount: 1 },
+      'proj_bazooka': { src: '/sprites/Weapons/missile.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'proj_minigun': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'proj_shotgun': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'proj_rocket': { src: '/sprites/Weapons/missile.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
     });
 
     // Load brand assets for airdrops
@@ -335,11 +335,11 @@ export class CanvasRenderer {
         animKey = weaponMap[weapon.id] || 'bazooka';
 
         // Calculate aim frame (0 to 31)
-        // aimAngle is -90 (up) to 90 (down)
-        // Let's assume frame 0 is Straight UP (-90), and frame 31 is Straight DOWN (+90).
-        // Total range is 180 degrees.
-        const normalizedAngle = player.aimAngle + 90; // 0 to 180
-        frameIndex = Math.floor((normalizedAngle / 180) * 31);
+        // aimAngle is -PI/2 (up) to PI/2 (down)
+        // Let's assume frame 0 is Straight UP (-PI/2), and frame 31 is Straight DOWN (+PI/2).
+        // Total range is PI radians (180 degrees).
+        const normalizedAngle = player.aimAngle + Math.PI / 2; // 0 to PI
+        frameIndex = Math.floor((normalizedAngle / Math.PI) * 31);
         frameIndex = Math.max(0, Math.min(31, frameIndex));
       } else {
         // Idle breathing
@@ -423,24 +423,34 @@ export class CanvasRenderer {
     for (const proj of state.projectiles) {
       this.ctx.save();
       this.ctx.translate(proj.x, proj.y);
-      
-      const angle = Math.atan2(proj.vy, proj.vx);
-      this.ctx.rotate(angle);
 
       const animKey = `proj_${proj.weaponId}`;
       const hasSprite = this.animCtrl.getAnimLength(animKey) > 0;
 
       if (hasSprite) {
-        // Offset Y if needed based on the sprite size. Usually missiles are centered.
+        // Map velocity angle to 32 frames
+        // angle is -PI to PI
+        let angle = Math.atan2(proj.vy, proj.vx);
+        
+        // Frame 0 is pointing UP (-PI/2).
+        // Let's normalize angle so -PI/2 maps to 0.
+        // angle + PI/2 maps UP to 0, RIGHT to PI/2, DOWN to PI, LEFT to 1.5PI
+        let normalizedAngle = angle + Math.PI / 2;
+        if (normalizedAngle < 0) normalizedAngle += Math.PI * 2;
+        
+        let frameIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * 32) % 32;
+
+        // Offset Y is 30 because projectiles are 60x60 and we want to center them at (0,0)
+        // rather than drawing them resting on the ground.
         this.animCtrl.drawFrame(
           this.ctx,
           animKey,
-          0,
+          frameIndex,
           0,
           0,
           1.0,
           false,
-          0
+          30
         );
       } else {
         // Fallback to circle
