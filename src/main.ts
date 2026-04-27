@@ -220,7 +220,7 @@ const profilePasswordInput = document.getElementById('profile-password') as HTML
 
 document.getElementById('btn-save-profile')!.addEventListener('click', async () => {
   const newName = (document.getElementById('profile-username') as HTMLInputElement).value.trim();
-  const newPassword = profilePasswordInput ? profilePasswordInput.value.trim() : '';
+  const newPassword = profilePasswordInput ? profilePasswordInput.value : '';
 
   if (!newName && !newPassword) {
     profileScreen.classList.remove('active');

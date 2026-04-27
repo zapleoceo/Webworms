@@ -563,10 +563,19 @@ async function deleteLogo(request: Request, env: Env): Promise<Response> {
 }
 
 async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
+  if (request.method === 'OPTIONS') return true;
+
   const email = request.headers.get('X-Admin-Email');
-  const password = request.headers.get('X-Admin-Password');
+  const passwordEncoded = request.headers.get('X-Admin-Password');
   
-  if (!email || !password) return false;
+  if (!email || !passwordEncoded) return false;
+
+  let password = passwordEncoded;
+  try {
+    password = decodeURIComponent(passwordEncoded);
+  } catch (e) {
+    // If not properly encoded, fallback to raw
+  }
   
   const hashedPassword = await hashPassword(password);
   const user = await env.DB.prepare('SELECT id FROM Users WHERE email = ? AND password_hash = ? AND is_admin = 1').bind(email, hashedPassword).first();

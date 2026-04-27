@@ -178,7 +178,7 @@ export class AdminPanel {
     }
     
     this.adminHeaders.set('X-Admin-Email', email);
-    this.adminHeaders.set('X-Admin-Password', pass);
+    this.adminHeaders.set('X-Admin-Password', encodeURIComponent(pass));
     
     // Attempt to load stats/users to verify credentials
     this.loadUsersData().then(success => {
