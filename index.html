@@ -27,7 +27,10 @@
           <button class="icon-btn auth-toggle-btn" id="btn-open-auth">👤 LOGIN</button>
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
             <button class="icon-btn auth-toggle-btn" id="btn-user-profile" style="display: none;"></button>
-            <div id="play-time-display" class="time-balance-box" style="display: none;">Time: 60m 00s</div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <div id="play-time-display" class="time-balance-box" style="display: none;">Time: 60m 00s</div>
+              <button id="btn-buy-premium" class="premium-btn pulse-anim" style="display: none; animation-delay: 0.25s;">+ $1</button>
+            </div>
           </div>
         </div>
 
@@ -35,10 +38,11 @@
           <img src="/logo.png?v=5" alt="Worms Logo" class="main-logo bounce-anim" style="filter: drop-shadow(0px 10px 10px rgba(0,0,0,0.8));" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 class=\\'fallback-logo\\'>WEBWORMS</h1>')">
         </div>
 
-        <div class="menu-actions">
-          <button class="primary-btn pulse-anim" id="btn-play-training">PLAY NOW</button>
-          <button class="secondary-btn" id="btn-play-friends">PLAY WITH FRIEND</button>
-          <p class="tutorial-hint">Hover / Drag to aim. First match is a tutorial!</p>
+        <div class="menu-actions" style="display: flex; flex-direction: column; gap: 10px; max-width: 300px; margin: 0 auto;">
+          <button class="primary-btn pulse-anim" id="btn-play-training" style="animation-delay: 0s;">PLAY NOW</button>
+          <button class="primary-btn pulse-anim" id="btn-play-random" style="animation-delay: 0.5s;">PLAY RANDOM</button>
+          <button class="primary-btn pulse-anim" id="btn-play-friends" style="animation-delay: 1.0s;">PLAY WITH FRIEND</button>
+          <p class="tutorial-hint" style="margin-top: 10px;">Hover / Drag to aim. First match is a tutorial!</p>
         </div>
 
         <div class="menu-footer">
@@ -102,6 +106,16 @@
           <button id="btn-save-profile" class="secondary-btn w-full mb-10">SAVE</button>
           
           <button id="btn-logout" class="danger-btn w-full">LOGOUT</button>
+        </div>
+      </div>
+
+      <!-- PAYPAL MODAL -->
+      <div id="paypal-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-box">
+          <button class="close-modal" id="btn-close-paypal">&times;</button>
+          <h2 class="comic-text">PREMIUM</h2>
+          <p class="stats-text" style="margin-bottom: 20px;">Get 7 Days of UNLIMITED Play Time for just $1.00 USD.</p>
+          <div id="paypal-button-container" style="min-height: 150px; background: #fff; padding: 10px; border-radius: 8px;"></div>
         </div>
       </div>
 
@@ -196,6 +210,7 @@
       </div>
 
     </div>
+    <script src="https://www.paypal.com/sdk/js?client-id=test&currency=USD"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

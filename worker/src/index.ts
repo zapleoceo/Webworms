@@ -210,6 +210,11 @@ export default {
         response = await createRoom(request, env);
       }
       
+      // Matchmaking
+      else if (url.pathname === '/api/rooms/random' && request.method === 'POST') {
+        response = await joinRandomRoom(request, env);
+      }
+
       // Signaling endpoints
       else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/join') && request.method === 'POST') {
         response = await joinRoomState(request, env);
@@ -1057,8 +1062,61 @@ async function createRoom(request: Request, env: Env): Promise<Response> {
   });
 }
 
+async function joinRandomRoom(request: Request, env: Env): Promise<Response> {
+  let playerId: string | null = null;
+  try {
+    const body = await request.json() as any;
+    playerId = body?.playerId || null;
+  } catch {}
+  if (!playerId) return new Response(JSON.stringify({ error: 'playerId required' }), { status: 400 });
+
+  const queueKey = 'matchmaking_queue';
+  const queueStr = await env.ROOMS.get(queueKey);
+  let queue: string[] = queueStr ? JSON.parse(queueStr) : [];
+
+  // Try to find a valid waiting room
+  while (queue.length > 0) {
+    const roomId = queue.shift()!;
+    const roomStr = await env.ROOMS.get(roomId);
+    if (roomStr) {
+      const room = JSON.parse(roomStr);
+      // Ensure the room is still waiting and the host isn't the same as the joining player
+      if (room.status === 'waiting' && room.hostId !== playerId) {
+        // We found a room! Join it.
+        room.clientId = playerId;
+        room.status = 'reserved';
+        room.reservedAt = Date.now();
+        await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
+        await env.ROOMS.put(queueKey, JSON.stringify(queue), { expirationTtl: 3600 });
+        return new Response(JSON.stringify({ roomId, isHost: false }));
+      }
+    }
+  }
+
+  // If no valid room found, create a new one and add it to the queue
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let roomId = '';
+  for (let i = 0; i < 4; i++) {
+    roomId += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+
+  await env.ROOMS.put(roomId, JSON.stringify({
+    status: 'waiting',
+    hostId: playerId,
+    clientId: null,
+    reservedAt: null,
+    activeAt: null
+  }), { expirationTtl: 3600 });
+
+  queue.push(roomId);
+  await env.ROOMS.put(queueKey, JSON.stringify(queue), { expirationTtl: 3600 });
+
+  return new Response(JSON.stringify({ roomId, isHost: true }), {
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
 async function joinRoomState(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
   const parts = url.pathname.split('/');
   const roomId = parts[3]; // /api/rooms/{id}/join
 

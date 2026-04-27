@@ -5,8 +5,8 @@
 import { APIClient } from './APIClient';
 
 export class MultiplayerSync {
-  private roomId: string | null = null;
-  private isHost: boolean = false;
+  public roomId: string | null = null;
+  public isHost: boolean = false;
   public peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
   
@@ -20,9 +20,12 @@ export class MultiplayerSync {
 
   constructor() {}
 
-  public async createOrJoinRoom(roomId: string | undefined, playerId: string, forceHost: boolean = false): Promise<string> {
+  public async createOrJoinRoom(roomId: string | undefined, playerId: string, forceHost: boolean = false, isRandom: boolean = false): Promise<string> {
     this.peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
     });
 
     this.peerConnection.onicecandidate = (event) => {
@@ -38,6 +41,20 @@ export class MultiplayerSync {
         if (this.onPeerDisconnected) this.onPeerDisconnected();
       }
     };
+
+    if (isRandom) {
+      const res = await APIClient.joinRandomRoom(playerId);
+      if (res.error) throw new Error(res.error);
+      this.roomId = res.roomId;
+      this.isHost = res.isHost;
+      if (this.isHost) {
+        await this.hostRoom();
+      }
+      else {
+        await this.joinRoom();
+      }
+      return this.roomId!;
+    }
 
     if (roomId && forceHost) {
       this.roomId = roomId;

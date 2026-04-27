@@ -81,13 +81,16 @@ let syncModule: MultiplayerSync | null = null;
 function updateTimeBalanceDisplay() {
   const display = document.getElementById('play-time-display');
   const timeBalanceEl = document.getElementById('profile-stats-balance');
+  const btnBuyPremium = document.getElementById('btn-buy-premium');
   
   const balanceStr = localStorage.getItem('playTimeBalance');
   const premiumStr = localStorage.getItem('premiumUntil');
   
+  let hasPremium = false;
   if (premiumStr) {
     const premiumUntil = parseInt(premiumStr);
     if (premiumUntil > Date.now()) {
+      hasPremium = true;
       if (display) {
         display.style.display = 'block';
         display.innerText = 'Time: ∞ (Premium)';
@@ -96,32 +99,97 @@ function updateTimeBalanceDisplay() {
       if (timeBalanceEl) {
         timeBalanceEl.innerText = 'Play Time: ∞ (Premium)';
       }
-      return;
+      if (btnBuyPremium) btnBuyPremium.style.display = 'none';
     }
   }
 
-  if (balanceStr) {
-    const seconds = parseInt(balanceStr);
-    const hrs = Math.floor(Math.max(0, seconds) / 3600);
-    const mins = Math.floor((Math.max(0, seconds) % 3600) / 60);
-    
-    if (display) {
-      display.style.display = 'block';
-      if (hrs > 0) {
-        display.innerText = `Time: ${hrs}h ${mins}m`;
-      } else {
-        display.innerText = `Time: ${mins}m`;
+  if (!hasPremium) {
+    if (btnBuyPremium && localStorage.getItem('sessionId')) {
+      btnBuyPremium.style.display = 'block';
+    } else if (btnBuyPremium) {
+      btnBuyPremium.style.display = 'none';
+    }
+
+    if (balanceStr) {
+      const seconds = parseInt(balanceStr);
+      const hrs = Math.floor(Math.max(0, seconds) / 3600);
+      const mins = Math.floor((Math.max(0, seconds) % 3600) / 60);
+      
+      if (display) {
+        display.style.display = 'block';
+        if (hrs > 0) {
+          display.innerText = `Time: ${hrs}h ${mins}m`;
+        } else {
+          display.innerText = `Time: ${mins}m`;
+        }
+        display.style.color = 'white';
       }
-      display.style.color = 'white';
+      
+      if (timeBalanceEl) {
+        timeBalanceEl.innerText = `Play Time Balance: ${hrs}h ${mins}m`;
+      }
+    } else if (display) {
+      display.style.display = 'none';
     }
-    
-    if (timeBalanceEl) {
-      timeBalanceEl.innerText = `Play Time Balance: ${hrs}h ${mins}m`;
-    }
-  } else if (display) {
-    display.style.display = 'none';
   }
 }
+
+// Add PayPal Button Rendering
+function renderPayPalButton() {
+  const buttonContainer = document.getElementById('paypal-button-container');
+  if (!buttonContainer) return;
+
+  // Render PayPal button only if it hasn't been rendered yet
+  if (buttonContainer.innerHTML === '') {
+    try {
+      // @ts-ignore
+      paypal.Buttons({
+        createOrder: function(_data: any, actions: any) {
+          return actions.order.create({
+            purchase_units: [{
+              amount: { value: '1.00', currency_code: 'USD' },
+              description: '7 Days Unlimited Play Time'
+            }]
+          });
+        },
+        onApprove: function(data: any, actions: any) {
+          return actions.order.capture().then(function(_details: any) {
+            // Verify with our backend
+            const sessionId = localStorage.getItem('sessionId');
+            fetch(APIClient.BASE_URL + '/payment/paypal/capture', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${sessionId}`
+              },
+              body: JSON.stringify({ orderID: data.orderID })
+            }).then(res => res.json()).then((res: any) => {
+              if (res.success) {
+                alert('Payment successful! You now have 7 Days of Unlimited Play Time.');
+                localStorage.setItem('premiumUntil', res.premium_until.toString());
+                updateTimeBalanceDisplay();
+                document.getElementById('paypal-modal')!.style.display = 'none';
+              } else {
+                alert('Verification failed: ' + res.error);
+              }
+            });
+          });
+        }
+      }).render('#paypal-button-container');
+    } catch(e) {
+      console.error("PayPal failed to load", e);
+    }
+  }
+}
+
+document.getElementById('btn-buy-premium')?.addEventListener('click', () => {
+  document.getElementById('paypal-modal')!.style.display = 'flex';
+  renderPayPalButton();
+});
+
+document.getElementById('btn-close-paypal')?.addEventListener('click', () => {
+  document.getElementById('paypal-modal')!.style.display = 'none';
+});
 
 const sessionId = localStorage.getItem('sessionId');
 if (sessionId) {
@@ -435,7 +503,7 @@ let currentMatchToken: string | null = null;
 
   // Start Game Helpers
   async function startGame(mode: 'training' | 'friend' | 'random') {
-  currentMode = mode;
+    currentMode = mode;
 
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
   const mapType = (mapTypeSelect?.value || 'islands') as 'islands' | 'cave' | 'flat';
@@ -542,9 +610,9 @@ let currentMatchToken: string | null = null;
   }
 
   // Handle Multiplayer Mode
-  if (mode === 'friend') {
+  if (mode === 'friend' || mode === 'random') {
     if (!userSessionId) {
-      alert('You must be logged in to play with a friend!');
+      alert('You must be logged in to play multiplayer!');
       loaderScreen.classList.remove('active');
       authScreen.classList.add('active');
       return;
@@ -562,6 +630,7 @@ let currentMatchToken: string | null = null;
     const isHostResume = !!(joinRoomId && savedHostRoomId && joinRoomId === savedHostRoomId);
 
   syncModule.onReady = () => {
+      document.getElementById('btn-cancel-random')?.remove();
       invitePanel.style.display = 'none';
       loaderScreen.classList.remove('active');
       gameScreen.classList.add('active');
@@ -727,33 +796,57 @@ let currentMatchToken: string | null = null;
       const roomId = await syncModule.createOrJoinRoom(
         isHostResume ? joinRoomId : joinRoomId,
         userSessionId,
-        isHostResume
+        isHostResume,
+        mode === 'random'
       );
 
-      const isJoining = !!(joinRoomId && !isHostResume);
+      const isJoining = mode === 'random' ? !syncModule.isHost : !!(joinRoomId && !isHostResume);
       if (!isJoining) {
         // We are the host, waiting for someone
         window.presenter.localTeam = 'team1';
         loaderText.innerText = 'WAITING FOR OPPONENT...';
-        invitePanel.style.display = 'flex';
+        
+        if (mode === 'friend') {
+          invitePanel.style.display = 'flex';
+          const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+          inviteInput.value = inviteUrl;
+          localStorage.setItem('friendHostRoomId', roomId);
+          window.history.replaceState({}, document.title, inviteUrl);
+          
+          // Make it clear the host shouldn't open this link
+          if (!document.getElementById('host-warning-text')) {
+            const hostWarning = document.createElement('p');
+            hostWarning.id = 'host-warning-text';
+            hostWarning.innerText = "Don't open this link yourself! Just send it to your friend.";
+            hostWarning.style.color = '#ffeb3b';
+            hostWarning.style.fontSize = '12px';
+            hostWarning.style.marginTop = '10px';
+            invitePanel.appendChild(hostWarning);
+          }
 
-        const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
-        inviteInput.value = inviteUrl;
-        localStorage.setItem('friendHostRoomId', roomId);
-        window.history.replaceState({}, document.title, inviteUrl);
-
-        // Make it clear the host shouldn't open this link
-        const hostWarning = document.createElement('p');
-        hostWarning.innerText = "Don't open this link yourself! Just send it to your friend.";
-        hostWarning.style.color = '#ffeb3b';
-        hostWarning.style.fontSize = '12px';
-        hostWarning.style.marginTop = '10px';
-        invitePanel.appendChild(hostWarning);
-
-        document.getElementById('btn-copy-invite')!.onclick = () => {
-          navigator.clipboard.writeText(inviteUrl);
-          document.getElementById('btn-copy-invite')!.innerText = 'COPIED!';
-        };
+          document.getElementById('btn-copy-invite')!.onclick = () => {
+            navigator.clipboard.writeText(inviteUrl);
+            document.getElementById('btn-copy-invite')!.innerText = 'COPIED!';
+          };
+        } else {
+          invitePanel.style.display = 'none'; // Random mode doesn't show invite
+          
+          // Add a simple cancel button for random matchmaking
+          const cancelBtn = document.createElement('button');
+          cancelBtn.innerText = 'CANCEL SEARCH';
+          cancelBtn.className = 'danger-btn mt-10';
+          cancelBtn.id = 'btn-cancel-random';
+          cancelBtn.onclick = () => {
+            if (syncModule) {
+              syncModule.peerConnection?.close();
+              syncModule = null;
+            }
+            cancelBtn.remove();
+            loaderScreen.classList.remove('active');
+            menuScreen.classList.add('active');
+          };
+          loaderScreen.appendChild(cancelBtn);
+        }
 
         document.getElementById('btn-cancel-invite')!.onclick = () => {
           if (syncModule) {
@@ -820,6 +913,10 @@ let currentMatchToken: string | null = null;
 document.getElementById('btn-play-training')!.addEventListener('click', () => {
   AudioManager.isGameStarted = true; // Enable sounds
   startGame('training');
+});
+document.getElementById('btn-play-random')!.addEventListener('click', () => {
+  AudioManager.isGameStarted = true; // Enable sounds
+  startGame('random');
 });
 document.getElementById('btn-play-friends')!.addEventListener('click', () => {
   AudioManager.isGameStarted = true; // Enable sounds

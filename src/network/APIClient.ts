@@ -165,6 +165,23 @@ export class APIClient {
     }
   }
 
+  static async joinRandomRoom(playerId: string) {
+    try {
+      const response = await fetch(`${this.BASE_URL}/rooms/random`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        return { success: false, error: data.error };
+      }
+      return data; // { roomId, isHost }
+    } catch (e) {
+      return { success: false, error: 'Network error joining random room' };
+    }
+  }
+
   static async getRoomState(roomId: string) {
     try {
       const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/state?t=${Date.now()}`);
