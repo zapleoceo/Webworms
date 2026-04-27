@@ -1,8 +1,12 @@
 import { APIClient } from '../network/APIClient';
+import 'cropperjs/dist/cropper.css';
+import Cropper from 'cropperjs';
 import '../styles/admin.css';
 
 export class AdminPanel {
   private adminHeaders = new Headers();
+
+  private cropper: Cropper | null = null;
 
   constructor() {
     this.renderInitialUI();
@@ -92,11 +96,20 @@ export class AdminPanel {
               <div class="upload-logo-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
                 <h3>Upload New Logo</h3>
                 <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
-                  <input type="file" id="logo-file" accept="image/*" style="color: white;">
-                  <input type="number" id="logo-width" placeholder="Width (px)" value="60" class="retro-input" style="width: 100px; padding: 5px;">
+                  <input type="file" id="logo-file" accept="image/png, image/jpeg, image/webp" style="color: white;">
+                  <input type="number" id="logo-width" placeholder="Width (px)" value="100" class="retro-input" style="width: 100px; padding: 5px;">
                   <input type="number" id="logo-height" placeholder="Height (px)" value="60" class="retro-input" style="width: 100px; padding: 5px;">
                   <input type="number" id="logo-hardness" placeholder="Hardness" value="10" class="retro-input" style="width: 100px; padding: 5px;">
-                  <button id="upload-logo-btn" class="primary-btn small-btn">Upload</button>
+                  <button id="upload-logo-btn" class="primary-btn small-btn" disabled>Crop & Upload</button>
+                </div>
+                
+                <!-- Cropper UI Container (Hidden by default) -->
+                <div id="cropper-container" style="display: none; margin-top: 15px; background: #222; padding: 10px; border-radius: 5px; text-align: center;">
+                  <div style="max-height: 400px; max-width: 100%; overflow: hidden; margin-bottom: 10px;">
+                    <img id="cropper-image" src="" style="max-width: 100%;">
+                  </div>
+                  <button id="confirm-crop-btn" class="primary-btn small-btn" style="background: #4CAF50;">Confirm & Upload</button>
+                  <button id="cancel-crop-btn" class="secondary-btn small-btn" style="background: #f44336;">Cancel</button>
                 </div>
               </div>
               <div class="table-responsive">
@@ -136,7 +149,15 @@ export class AdminPanel {
       this.loadLogosData();
     });
     document.getElementById('load-logos')?.addEventListener('click', () => this.loadLogosData());
-    document.getElementById('upload-logo-btn')?.addEventListener('click', () => this.handleLogoUpload());
+    
+    // Cropper & Logo Upload Events
+    const fileInput = document.getElementById('logo-file') as HTMLInputElement;
+    const uploadBtn = document.getElementById('upload-logo-btn') as HTMLButtonElement;
+    
+    fileInput?.addEventListener('change', (e) => this.handleFileSelect(e));
+    uploadBtn?.addEventListener('click', () => this.openCropper());
+    document.getElementById('confirm-crop-btn')?.addEventListener('click', () => this.confirmCropAndUpload());
+    document.getElementById('cancel-crop-btn')?.addEventListener('click', () => this.closeCropper());
   }
 
   private switchTab(tabId: string, btnElement: HTMLElement) {
@@ -374,51 +395,129 @@ export class AdminPanel {
     this.bindDynamicEvents();
   }
 
-  private async handleLogoUpload() {
-    const fileInput = document.getElementById('logo-file') as HTMLInputElement;
-    const widthInput = document.getElementById('logo-width') as HTMLInputElement;
-    const heightInput = document.getElementById('logo-height') as HTMLInputElement;
-    const hardnessInput = document.getElementById('logo-hardness') as HTMLInputElement;
+  private handleFileSelect(e: Event) {
+    const fileInput = e.target as HTMLInputElement;
+    const uploadBtn = document.getElementById('upload-logo-btn') as HTMLButtonElement;
+    
+    if (fileInput.files && fileInput.files.length > 0) {
+      uploadBtn.disabled = false;
+    } else {
+      uploadBtn.disabled = true;
+    }
+  }
 
+  private openCropper() {
+    const fileInput = document.getElementById('logo-file') as HTMLInputElement;
+    const cropperContainer = document.getElementById('cropper-container') as HTMLElement;
+    const cropperImage = document.getElementById('cropper-image') as HTMLImageElement;
+    
     const file = fileInput.files?.[0];
     if (!file) {
-      alert('Please select an image file');
+      alert('Please select an image file first');
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = async (e) => {
-      const base64Data = e.target?.result as string;
+    reader.onload = (e) => {
+      cropperImage.src = e.target?.result as string;
+      cropperContainer.style.display = 'block';
       
-      try {
-        const res = await fetch(APIClient.BASE_URL + '/admin/logos', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
-            'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
-          },
-          body: JSON.stringify({
-            image_data: base64Data,
-            width: parseInt(widthInput.value) || 60,
-            height: parseInt(heightInput.value) || 60,
-            hardness: parseInt(hardnessInput.value) || 10
-          })
-        });
-
-        if (res.ok) {
-          alert('Logo uploaded successfully');
-          fileInput.value = ''; // clear
-          this.loadLogosData();
-        } else {
-          const err = await res.json();
-          alert('Failed to upload logo: ' + (err.error || 'Unknown error'));
-        }
-      } catch (err) {
-        alert('Network error during upload');
+      // Initialize Cropper.js
+      if (this.cropper) {
+        this.cropper.destroy();
       }
+      
+      // Destroy previous instance to avoid bugs
+      this.cropper = new Cropper(cropperImage, {
+        viewMode: 1,
+        dragMode: 'crop',
+        autoCropArea: 0.8,
+        restore: false,
+        guides: true,
+        center: true,
+        highlight: false,
+        cropBoxMovable: true,
+        cropBoxResizable: true,
+        toggleDragModeOnDblclick: false,
+      });
+      
+      // Scroll to cropper
+      cropperContainer.scrollIntoView({ behavior: 'smooth' });
     };
     reader.readAsDataURL(file);
+  }
+
+  private closeCropper() {
+    const cropperContainer = document.getElementById('cropper-container') as HTMLElement;
+    cropperContainer.style.display = 'none';
+    if (this.cropper) {
+      this.cropper.destroy();
+      this.cropper = null;
+    }
+  }
+
+  private async confirmCropAndUpload() {
+    if (!this.cropper) return;
+
+    // Get cropped canvas. Important: set format to png to preserve transparency
+    const canvas = this.cropper.getCroppedCanvas({
+      imageSmoothingEnabled: true,
+      imageSmoothingQuality: 'high',
+    });
+
+    if (!canvas) {
+      alert('Could not crop the image');
+      return;
+    }
+
+    const base64Data = canvas.toDataURL('image/png');
+    this.uploadCroppedImage(base64Data);
+  }
+
+  private async uploadCroppedImage(base64Data: string) {
+    const widthInput = document.getElementById('logo-width') as HTMLInputElement;
+    const heightInput = document.getElementById('logo-height') as HTMLInputElement;
+    const hardnessInput = document.getElementById('logo-hardness') as HTMLInputElement;
+    
+    const confirmBtn = document.getElementById('confirm-crop-btn') as HTMLButtonElement;
+    const originalText = confirmBtn.innerText;
+    confirmBtn.innerText = 'Uploading...';
+    confirmBtn.disabled = true;
+
+    try {
+      const res = await fetch(APIClient.BASE_URL + '/admin/logos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        },
+        body: JSON.stringify({
+          image_data: base64Data,
+          width: parseInt(widthInput.value) || 100,
+          height: parseInt(heightInput.value) || 60,
+          hardness: parseInt(hardnessInput.value) || 10
+        })
+      });
+
+      if (res.ok) {
+        alert('Logo cropped and uploaded successfully!');
+        const fileInput = document.getElementById('logo-file') as HTMLInputElement;
+        fileInput.value = ''; // clear
+        (document.getElementById('upload-logo-btn') as HTMLButtonElement).disabled = true;
+        this.closeCropper();
+        this.loadLogosData();
+      } else {
+        const err = await res.json();
+        alert('Failed to upload logo: ' + (err.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while uploading logo');
+    } finally {
+      confirmBtn.innerText = originalText;
+      confirmBtn.disabled = false;
+    }
   }
 
   private async deleteLogo(e: Event) {

@@ -642,13 +642,26 @@ export class GamePresenter {
   }
 
   private spawnAirdrop() {
-    const logos = [
-      '/assets/logos/mega_mart.png',
-      '/assets/logos/kostar.png',
-      '/assets/logos/mugdonalds.png',
-      '/assets/logos/burgo_burger.png'
-    ];
-    const sprite = logos[Math.floor(Math.random() * logos.length)];
+    let sprite = '';
+    let width = 100;
+    let height = 60;
+    
+    // Check if custom logos from DB are available
+    if (this.state.availableLogos && this.state.availableLogos.length > 0) {
+      const logo = this.state.availableLogos[Math.floor(Math.random() * this.state.availableLogos.length)];
+      sprite = logo.image_data; // This contains the base64
+      width = logo.width || 100;
+      height = logo.height || 60;
+    } else {
+      // Fallback to local files
+      const logos = [
+        '/assets/logos/mega_mart.png',
+        '/assets/logos/kostar.png',
+        '/assets/logos/mugdonalds.png',
+        '/assets/logos/burgo_burger.png'
+      ];
+      sprite = logos[Math.floor(Math.random() * logos.length)];
+    }
 
     const spawnX = Math.random() * (this.state.landscape.width - 200) + 100;
     const spawnY = -100; // Above screen
@@ -659,6 +672,8 @@ export class GamePresenter {
     const angularVelocity = (Math.random() - 0.5) * 2;
 
     const brandLogo = new BrandLogo(sprite, spawnX, spawnY, vx, vy, angle, angularVelocity);
+    brandLogo.width = width;
+    brandLogo.height = height;
     
     if (!this.state.brandLogos) this.state.brandLogos = [];
     this.state.brandLogos.push(brandLogo);
