@@ -313,7 +313,6 @@ export class GamePresenter {
     const player = this.state.getCurrentPlayer();
     if (!player) return;
 
-    const aimSpeed = 90; // degrees per second
     const chargeSpeed = 100; // max power per second
     // Halved speeds as per user request + floaty worms physics
     const moveForce = 200 * player.speedMultiplier; // pixels per second squared (acceleration)
@@ -322,20 +321,20 @@ export class GamePresenter {
 
     // --- Handle Aiming (Keyboard + Analog Joystick) ---
     // Slower aim speed
-    const actualAimSpeed = aimSpeed * 0.4;
+    const actualAimSpeed = Math.PI; // rad/sec
 
     if (Math.abs(this.analogY) > 0.1) {
-      // Map Y (-1 to 1) to angle (-90 to 90 degrees)
+      // Map Y (-1 to 1) to angle (-PI/2 to PI/2 rad)
       // If Y is negative (stick pushed UP), angle should be negative (aiming UP)
       // If Y is positive (stick pushed DOWN), angle should be positive (aiming DOWN)
-      const targetAngle = this.analogY * 90; 
-      
-      // Smoothly rotate towards target angle based on stick deflection, but slower
-      player.aimAngle += (targetAngle - player.aimAngle) * dt * 1; // Halved
-      
+      const targetAngle = this.analogY * (Math.PI / 2);
+
+      // Smoothly rotate towards target angle based on stick deflection
+      player.aimAngle += (targetAngle - player.aimAngle) * dt * 5;
+
       // Clamp angle
-      if (player.aimAngle < -90) player.aimAngle = -90;
-      if (player.aimAngle > 90) player.aimAngle = 90;
+      if (player.aimAngle < -Math.PI / 2) player.aimAngle = -Math.PI / 2;
+      if (player.aimAngle > Math.PI / 2) player.aimAngle = Math.PI / 2;
     } else {
       // Keyboard fallback
       if (this.activeInputs.has('up')) {
@@ -583,16 +582,21 @@ export class GamePresenter {
 
     // Calculate vector based on angle and power
     // Determine global Aim Angle
-    // In W:A, 0 is directly right. The sprite natively points right? Or left?
-    // If the sprite natively faces LEFT, then when facingRight is TRUE, we flipped it.
-    // The aimAngle is -90 (up) to +90 (down).
-    let globalAimAngle = player.aimAngle;
-    if (!player.facingRight) {
-      // If facing left, mirror the angle
-      globalAimAngle = 180 - player.aimAngle;
-    }
+      // aimAngle goes from -PI/2 (up) to PI/2 (down).
+      // We assume aimAngle 0 is pointing "Forward".
+      let globalAimAngle = player.aimAngle;
+      
+      // If facing left, the bullet should go left.
+      // -PI/2 is up. If we face left, up is still up (-PI/2).
+      // 0 is right. If we face left, we want it to be PI (left).
+      // PI/2 is down. If we face left, down is still down (PI/2).
+      // The transformation for facing left:
+      if (!player.facingRight) {
+        // Mirrored angle across Y-axis:
+        globalAimAngle = Math.PI - player.aimAngle;
+      }
 
-    const baseRad = globalAimAngle * (Math.PI / 180);
+      const baseRad = globalAimAngle;
     let speed = power * 3; // Adjust scalar for slower, realistic floaty arcs
 
     if (weapon.id === 'blaster') {

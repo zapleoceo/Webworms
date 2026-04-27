@@ -543,8 +543,13 @@ let currentMatchToken: string | null = null;
   }
 
   function showControls() {
+    const controlsHelp = document.getElementById('controls-help') as HTMLElement;
     if (window.innerWidth <= 768) {
       mobileControls.style.display = 'flex';
+      if (controlsHelp) controlsHelp.style.display = 'none';
+    } else {
+      mobileControls.style.display = 'none';
+      if (controlsHelp) controlsHelp.style.display = 'block';
     }
   }
 
@@ -794,6 +799,8 @@ function bindPresenterEvents() {
     gameScreen.style.display = 'none'; // Fallback
 
     mobileControls.style.display = 'none';
+    const controlsHelp = document.getElementById('controls-help') as HTMLElement;
+    if (controlsHelp) controlsHelp.style.display = 'none';
 
     gameOverScreen.style.display = '';
     gameOverScreen.classList.add('active');

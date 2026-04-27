@@ -42,6 +42,35 @@ html, body {
   align-items: center;
 }
 
+.controls-help {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 12px 15px;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  pointer-events: none;
+  z-index: 100;
+  display: none; /* Shown via JS when game starts, or hidden via media query */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  text-shadow: 1px 1px 0 #000;
+}
+.controls-help b {
+  color: #ffeb3b;
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .controls-help {
+    display: none !important;
+  }
+}
+
 /* === SCREENS & LAYERS === */
 .screen {
   position: absolute;
