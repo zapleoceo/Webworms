@@ -158,8 +158,8 @@ export class MultiplayerSync {
           this.dataChannel.send(JSON.stringify({ type: 'ping' }));
         }
         
-        // If we haven't received a message in 5 seconds, assume disconnected
-        if (Date.now() - lastHeartbeatReceived > 5000) {
+        // If we haven't received a message in 15 seconds, assume disconnected
+        if (Date.now() - lastHeartbeatReceived > 15000) {
           console.warn('Heartbeat timeout! Peer disconnected.');
           clearInterval(heartbeatInterval);
           if (this.onPeerDisconnected) this.onPeerDisconnected();

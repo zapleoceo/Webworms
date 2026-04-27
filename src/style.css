@@ -247,6 +247,7 @@ button:hover {
   color: white;
   font-family: var(--font-comic);
   cursor: pointer;
+  pointer-events: auto; /* Ensure it's clickable */
   z-index: 100;
   text-shadow: 1px 1px 0 #000;
   box-shadow: inset 0 -3px 0 rgba(0,0,0,0.3);
@@ -418,6 +419,10 @@ canvas {
   align-items: flex-start;
   padding: 15px;
   pointer-events: none;
+}
+
+.hud-top .team-status {
+  pointer-events: auto; /* allow clicks on children like LEAVE button */
 }
 
 .team-status {
