@@ -8,6 +8,8 @@ import { MultiplayerSync } from './network/MultiplayerSync';
 import { AudioManager } from './utils/AudioManager';
 import { Random } from './utils/Random';
 import { Worm } from './models/Worm';
+import { Projectile } from './models/Projectile';
+import { WEAPONS } from './models/Weapon';
 
 declare global {
   interface Window {
@@ -581,8 +583,8 @@ let currentMatchToken: string | null = null;
               window.presenter.isPaused = false;
             });
           } else {
-            window.presenter.state.landscape.generateTerrain(stateData.mapSeed);
-            rebuildWorms();
+            console.error('Client received no mapData. Cannot generate procedural map.');
+            alert('Host sent an invalid map. Refresh to reconnect.');
           }
           
           function rebuildWorms() {
@@ -607,13 +609,13 @@ let currentMatchToken: string | null = null;
             for (let i = 0; i < 3; i++) {
               const s = window.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, stateData.mapSeed);
               spawnPoints.push(s);
-              const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster']);
+              const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team1');
               window.presenter.state.addPlayer(p);
             }
             for (let i = 0; i < 3; i++) {
               const s = window.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, stateData.mapSeed);
               spawnPoints.push(s);
-              const p = new Worm(s.x, s.y, false, `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster']);
+              const p = new Worm(s.x, s.y, false, `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team2');
               window.presenter.state.addPlayer(p);
             }
           }
@@ -629,10 +631,8 @@ let currentMatchToken: string | null = null;
 
         window.presenter.state.wind = stateData.wind;
         
-        // Sync turn time only if it's drifting significantly to avoid stuttering/overwriting client's local countdown
-        if (Math.abs(window.presenter.turnTimeLeft - stateData.turnTimeLeft) > 1.5) {
-          window.presenter.turnTimeLeft = stateData.turnTimeLeft;
-        }
+        // Exact turn time sync (client doesn't compute physics anyway)
+        window.presenter.turnTimeLeft = stateData.turnTimeLeft;
         
         window.presenter.hasFiredThisTurn = stateData.hasFiredThisTurn;
         if (stateData.lastPlayedIndex) {
@@ -644,35 +644,41 @@ let currentMatchToken: string | null = null;
           if (window.presenter.state.players[i]) {
             const p = window.presenter.state.players[i];
             
-            // Only update positions forcefully if they are wildly out of sync or if it's not their turn
-            if (window.presenter.state.currentPlayerIndex !== i || Math.abs(p.x - pData.x) > 50 || Math.abs(p.y - pData.y) > 50) {
-              p.x = pData.x;
-              p.y = pData.y;
-              p.vx = pData.vx;
-              p.vy = pData.vy;
-            }
-            
+            // DUMB CLIENT: Apply exact positions from host for perfect sync
+            // Interpolation can be added later for smoothness, but exact coordinates are safe.
+            p.x = pData.x;
+            p.y = pData.y;
+            p.vx = pData.vx;
+            p.vy = pData.vy;
             p.health = pData.health;
+            p.aimAngle = pData.aimAngle;
+            p.facingRight = pData.facingRight;
             
-            // Do not override aim properties if this is the local player! 
-            // That causes terrible jitter.
-            if (p.team !== window.presenter.localTeam) {
-              p.aimAngle = pData.aimAngle;
-              p.facingRight = pData.facingRight;
-              
-              if (pData.currentWeaponIndex !== undefined) {
-                p.currentWeaponIndex = pData.currentWeaponIndex;
-              }
+            if (pData.currentWeaponIndex !== undefined) {
+              p.currentWeaponIndex = pData.currentWeaponIndex;
             }
             
             p.team = pData.team;
             
-            // Sync unitClass if changed
             if (pData.unitClass && p.unitClass !== pData.unitClass) {
               p.unitClass = pData.unitClass;
             }
           }
         });
+
+        // Sync projectiles exactly
+        window.presenter.state.projectiles = stateData.projectiles.map((projData: any) => {
+          const weapon = WEAPONS[projData.weaponId] || WEAPONS['bazooka'];
+          const p = new Projectile(projData.x, projData.y, projData.vx, projData.vy, weapon);
+          return p;
+        });
+        
+        // Process new craters exactly
+        if (stateData.craters && stateData.craters.length > 0) {
+          stateData.craters.forEach((crater: any) => {
+            window.presenter.state.landscape.createCrater(crater.x, crater.y, crater.r);
+          });
+        }
       }
     };
 
@@ -725,6 +731,7 @@ let currentMatchToken: string | null = null;
         };
       } else {
         window.presenter.localTeam = 'team2';
+        window.presenter.isHost = false; // Important for dumb client
         window.presenter.state.mode = 'friend'; // Fix: Ensure client is not in training mode
         window.presenter.maxTurnTime = 30; // Fix: Ensure maxTurnTime is not Infinity
         loaderText.innerText = 'JOINING ROOM...';

@@ -339,6 +339,10 @@ export class CanvasRenderer {
       this.terrainCtx.globalCompositeOperation = 'source-over'; // Restore
       
       // Fix for unbreakable alloy: Redraw any indestructible pixels (255) that were visually erased
+      // OPTIMIZATION: Instead of using getImageData which is slow, we draw the crater using source-atop
+      // and use a pre-calculated pattern or just skip getImageData.
+      // Wait, we need to restore ONLY pixels that are 255 in the physics grid.
+      // To do this FAST without CPU loops, we can use a clipping path or a temporary canvas.
       for (const crater of state.landscape.newCraters) {
         // Expand the visual restoration area just in case physical radius was larger
         const minX = Math.max(0, Math.floor(crater.x - crater.r - 4));

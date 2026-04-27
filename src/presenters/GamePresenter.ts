@@ -19,7 +19,13 @@ export class GamePresenter {
   private analogX: number = 0;
   private analogY: number = 0;
 
-  public handleAnalogInput(x: number, y: number): void {
+  public handleAnalogInput(x: number, y: number, isRemote: boolean = false): void {
+    if (!this.isHost && !isRemote) {
+      if (this.onLocalAction) {
+        this.onLocalAction('analog', true, {x, y});
+      }
+      return;
+    }
     this.analogX = x;
     this.analogY = y;
   }
@@ -28,11 +34,11 @@ export class GamePresenter {
   private initialHeight: number;
   private cameraFreeMode: boolean = false;
 
-  private matchTime: number = 0;
   public turnTimeLeft: number = 30;
   public maxTurnTime: number = 30;
   public hasFiredThisTurn: boolean = false;
   public isPaused: boolean = false;
+  public isHost: boolean = true; // Is this client computing physics?
   public brandAssets: string[] = ['apple', 'android', 'windows'];
   
   // Camera delay after explosion
@@ -120,26 +126,26 @@ export class GamePresenter {
     this.state.mode = settings.mode;
     this.state.availableLogos = settings.logos || [];
     
-    // Check if we have a custom map
-    if (settings.mapData) {
-      this.state.mapData = settings.mapData;
-      await this.state.landscape.generateFromImage(settings.mapData);
-      worldWidth = this.state.landscape.width;
-      worldHeight = this.state.landscape.height;
-      this.state.width = worldWidth;
-      this.state.height = worldHeight;
-    } else {
-      // Set map seed for deterministic terrain generation in multiplayer
-      this.state.mapSeed = settings.seed || Math.floor(Math.random() * 1000000);
-      Random.setSeed(this.state.mapSeed!); // Initialize our deterministic PRNG
-      this.state.landscape.generateTerrain(this.state.mapSeed);
+    // Require a custom map
+    if (!settings.mapData) {
+      throw new Error("No map data provided. Custom map is required.");
     }
+    
+    this.state.mapData = settings.mapData;
+    await this.state.landscape.generateFromImage(settings.mapData);
+    worldWidth = this.state.landscape.width;
+    worldHeight = this.state.landscape.height;
+    this.state.width = worldWidth;
+    this.state.height = worldHeight;
+
+    // Set map seed for deterministic item generation (airdrops, wind, etc.)
+    this.state.mapSeed = settings.seed || Math.floor(Math.random() * 1000000);
+    Random.setSeed(this.state.mapSeed!);
 
     this.state.airdropTimer = 20 + Random.next() * 25; // First airdrop in 20-45s
     this.state.cameraX = Math.max(0, (worldWidth - this.initialWidth) / 2);
     this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
-    this.matchTime = 0;
     
     // Reset timers
     this.hasFiredThisTurn = false;
@@ -225,23 +231,24 @@ export class GamePresenter {
   public update(dt: number): void {
     if (this.isPaused) return;
 
-    if (this.isRunning) {
-      this.matchTime += dt;
+    // Only host computes physics and updates timers
+    if (this.isRunning && this.isHost) {
+      // Find active player before physics step
+      const currentPlayer = this.state.getCurrentPlayer();
+      if (!currentPlayer) return;
 
-      // Timer countdown logic
-      if (!this.hasFiredThisTurn) {
-        if (this.turnTimeLeft > 0 && this.turnTimeLeft !== Infinity) {
-          const oldTime = Math.ceil(this.turnTimeLeft);
+      const wasMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0;
+      
+      // Update Physics
+      this.physics.update(this.state, dt);
+      
+      const isMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0;
+
+      // Handle Turn Timers (only if game isn't resolving physics)
+      if (!isMoving && !wasMoving) {
+        // Decrease timer only when nobody is moving
+        if (this.turnTimeLeft > 0 && this.state.mode !== 'training') {
           this.turnTimeLeft -= dt;
-          const newTime = Math.ceil(this.turnTimeLeft);
-          
-          // Tick sound at 5 seconds left
-          if (newTime <= 5 && newTime > 0 && oldTime !== newTime) {
-            // Optional: Play tick sound here
-            // this.soundManager.playTick();
-            // We just let UI handle it, but it's good to have it triggered
-          }
-          
           if (this.turnTimeLeft <= 0) {
             this.turnTimeLeft = 0;
             this.nextTurn();
@@ -257,25 +264,30 @@ export class GamePresenter {
         this.spawnAirdrop();
         this.state.airdropTimer = 20 + Random.next() * 25; // 20 to 45 seconds
       }
+      
+      this.processActiveInputs(dt);
+      
+      // Check game over
+      const winner = this.checkGameOver();
+      if (winner !== undefined) {
+        this.isRunning = false;
+        const t1Dmg = this.state.players.filter(p => p.team === 'team1').reduce((sum, p) => sum + p.damageDealt, 0);
+        const t2Dmg = this.state.players.filter(p => p.team === 'team2').reduce((sum, p) => sum + p.damageDealt, 0);
+        const stats = {
+          p1Dmg: Math.round(t1Dmg),
+          p2Dmg: Math.round(t2Dmg)
+        };
+        if (this.onGameOver) this.onGameOver(winner === null ? 'draw' : winner, stats);
+        return;
+      }
+    } else if (this.isRunning && !this.isHost) {
+      // CLIENT MODE: Only process local inputs to send to host, and update camera
+      // Local inputs are still collected in activeInputs, but we don't apply physics.
+      // MultiplayerSync will send them.
     }
 
-    this.processActiveInputs(dt);
-    this.physics.update(this.state, dt);
+    // Camera update happens for both host and client
     this.updateCamera(dt);
-
-    // Check game over
-    const winner = this.checkGameOver();
-    if (winner !== undefined) {
-      this.isRunning = false;
-      const t1Dmg = this.state.players.filter(p => p.team === 'team1').reduce((sum, p) => sum + p.damageDealt, 0);
-      const t2Dmg = this.state.players.filter(p => p.team === 'team2').reduce((sum, p) => sum + p.damageDealt, 0);
-      const stats = {
-        p1Dmg: Math.round(t1Dmg),
-        p2Dmg: Math.round(t2Dmg)
-      };
-      if (this.onGameOver) this.onGameOver(winner === null ? 'draw' : winner, stats);
-      return;
-    }
 
     // Call onStateUpdate for HUD
     if (this.onStateUpdate) {
@@ -450,14 +462,18 @@ export class GamePresenter {
   }
 
   public postRender(): void {
-    this.state.landscape.newCraters = [];
+    if (this.isHost) {
+      this.state.landscape.newCraters = [];
+    }
   }
 
   public handleInput(action: string, isActive: boolean, isRemote: boolean = false, payload?: any): void {
     if (!this.isRunning) return;
 
     if (action === 'spawnAirdrop' && isActive) {
-      this.spawnAirdrop();
+      if (this.isHost) {
+        this.spawnAirdrop();
+      }
       return;
     }
     
@@ -482,6 +498,17 @@ export class GamePresenter {
     // Unlock Web Audio API on first user interaction
     if (isActive) {
       this.soundManager.init();
+    }
+
+    // DUMB CLIENT: If we are not the host, we ONLY send the input to the host via onLocalAction above.
+    // We do NOT apply it to the local physics/state. The host will compute it and send the new state back.
+    // Except for UI-only actions like 'switchWorm' which we might want to predict, but for safety let's skip them or only do local UI.
+    // Actually, 'switchWorm' needs to be authorized by host too.
+    if (!this.isHost && !isRemote) {
+      // We still want to let the UI update if needed, but we shouldn't change physics state.
+      // We return here so we don't modify the player object.
+      // Wait, if it's an analog stick move, it comes through handleAnalogInput, which isn't 'action'.
+      return;
     }
 
     const player = this.state.getCurrentPlayer();

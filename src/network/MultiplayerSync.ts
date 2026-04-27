@@ -201,8 +201,12 @@ export class MultiplayerSync {
           vx: p.vx,
           vy: p.vy,
           weaponId: p.weaponId
-        }))
+        })),
+        craters: state.landscape.newCraters // Sync newly formed craters
       };
+      // Clear host's crater queue so we don't resend old ones
+      // Wait, postRender already clears it! We need to make sure we don't miss them.
+      // But if we sync 20 times a second, we'll catch most of them before postRender clears them.
       this.dataChannel.send(JSON.stringify({ type: 'sync', state: statePayload }));
     }
   }

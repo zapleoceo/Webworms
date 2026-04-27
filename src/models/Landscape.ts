@@ -1,5 +1,3 @@
-import { TerrainGenerator } from '../utils/TerrainGenerator';
-
 import { Random } from '../utils/Random';
 
 export class Landscape {
@@ -106,11 +104,6 @@ export class Landscape {
       img.onerror = () => reject(new Error(`Failed to load map image: ${imageUrl}`));
       img.src = imageUrl;
     });
-  }
-
-  public generateTerrain(seed?: number): void {
-    this.grid = TerrainGenerator.generate(this.width, this.height, seed);
-    this.needsUpdate = true;
   }
 
   public createCrater(cx: number, cy: number, radius: number): void {
