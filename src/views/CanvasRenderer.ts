@@ -390,13 +390,13 @@ export class CanvasRenderer {
       if (player === state.getCurrentPlayer() && !player.isJumping && player.health > 0) {
         let globalAimAngle = player.aimAngle;
         if (!player.facingRight) {
-          globalAimAngle = 180 - player.aimAngle;
+          globalAimAngle = Math.PI - player.aimAngle;
         }
 
         // Draw Crosshair (Reticle)
         const reticleDist = 60; // distance from worm
-        const rx = Math.cos(globalAimAngle * Math.PI / 180) * reticleDist;
-        const ry = Math.sin(globalAimAngle * Math.PI / 180) * reticleDist;
+        const rx = Math.cos(globalAimAngle) * reticleDist;
+        const ry = Math.sin(globalAimAngle) * reticleDist;
         
         this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
         this.ctx.lineWidth = 2;
