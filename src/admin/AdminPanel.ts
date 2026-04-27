@@ -457,8 +457,11 @@ export class AdminPanel {
           </span>
         </td>
         <td>
-          <input type="number" class="retro-input balance-input" data-id="${userId}" value="${u.play_time_balance}" style="width: 80px;">
-          <button class="secondary-btn small-btn add-time-btn" data-id="${userId}">+ Time</button>
+          <div style="display: flex; flex-direction: column; gap: 5px;">
+            <input type="number" class="retro-input balance-input" data-id="${userId}" value="${u.play_time_balance}" style="width: 80px;" title="Seconds">
+            <span style="font-size: 12px; color: #aaa;">${Math.floor(u.play_time_balance / 3600).toString().padStart(2, '0')}:${Math.floor((u.play_time_balance % 3600) / 60).toString().padStart(2, '0')}</span>
+            <button class="secondary-btn small-btn add-time-btn" data-id="${userId}">+ Time</button>
+          </div>
         </td>
         <td>
           <label class="cb-container">

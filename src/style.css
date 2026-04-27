@@ -891,6 +891,19 @@ canvas {
   100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 
+@keyframes wormWiggle {
+  0% { transform: rotate(0deg) translateY(0); }
+  25% { transform: rotate(-5deg) translateY(-3px) scaleY(0.95); }
+  50% { transform: rotate(0deg) translateY(0) scaleY(1.05); }
+  75% { transform: rotate(5deg) translateY(-3px) scaleY(0.95); }
+  100% { transform: rotate(0deg) translateY(0); }
+}
+
+.worm-wiggle-anim {
+  animation: wormWiggle 2s infinite ease-in-out;
+  transform-origin: bottom center;
+}
+
 /* === RESPONSIVE === */
 @media (max-width: 768px) {
   .huge-text { font-size: 3rem; }

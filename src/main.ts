@@ -120,7 +120,7 @@ function updateTimeBalanceDisplay() {
   }
 
   if (!hasPremium) {
-    if (btnAddTime && localStorage.getItem('sessionId')) {
+    if (btnAddTime && localStorage.getItem('userSessionId')) {
       btnAddTime.style.display = 'block';
     } else if (btnAddTime) {
       btnAddTime.style.display = 'none';
@@ -183,7 +183,7 @@ function renderPayPalButton() {
         onApprove: function(data: any, actions: any) {
           return actions.order.capture().then(function(_details: any) {
             // Verify with our backend
-            const sessionId = localStorage.getItem('sessionId');
+            const sessionId = localStorage.getItem('userSessionId');
             fetch(APIClient.BASE_URL + '/payment/paypal/capture', {
               method: 'POST',
               headers: {
@@ -219,9 +219,9 @@ document.getElementById('btn-close-payment')?.addEventListener('click', () => {
   document.getElementById('payment-modal')!.style.display = 'none';
 });
 
-const sessionId = localStorage.getItem('sessionId');
-if (sessionId) {
-  APIClient.getSession(sessionId).then((res: any) => {
+const savedSessionId = localStorage.getItem('userSessionId');
+if (savedSessionId) {
+  APIClient.getSession(savedSessionId).then((res: any) => {
     if (res.success && res.user) {
       localStorage.setItem('playTimeBalance', res.user.play_time_balance.toString());
       localStorage.setItem('premiumUntil', res.user.premium_until?.toString() || '0');
@@ -238,6 +238,35 @@ if (userSessionId && userSessionName) {
   btnUserProfile.innerText = userSessionName;
   updateTimeBalanceDisplay();
 }
+
+// Contact Author Modal
+const contactModal = document.getElementById('contact-modal')!;
+const contactMessage = document.getElementById('contact-message') as HTMLTextAreaElement;
+
+document.getElementById('btn-contact-author')?.addEventListener('click', () => {
+  contactModal.style.display = 'flex';
+});
+
+document.getElementById('btn-close-contact')?.addEventListener('click', () => {
+  contactModal.style.display = 'none';
+});
+
+document.getElementById('btn-send-message')?.addEventListener('click', () => {
+  const msg = contactMessage.value.trim();
+  if (!msg) {
+    alert('Please enter a message first!');
+    return;
+  }
+  
+  // Use mailto link
+  const subject = encodeURIComponent('WebWorms Feedback');
+  const body = encodeURIComponent(msg + '\n\n---\nSent from WebWorms App');
+  window.location.href = `mailto:demoniwwwe@gmail.com?subject=${subject}&body=${body}`;
+  
+  // Close modal and clear text
+  contactModal.style.display = 'none';
+  contactMessage.value = '';
+});
 
 // Close modals manually if needed (already handled by ID-based listeners, but let's be safe)
 const btnCloseAuth = document.getElementById('btn-close-auth')!;

@@ -7,7 +7,22 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>Worms Multiplayer</title>
+    
+    <!-- SEO & Social Meta Tags -->
+    <title>WebWorms - Browser Multiplayer Artillery Game</title>
+    <meta name="description" content="Play WebWorms, a free browser-based multiplayer artillery game inspired by the classics. Battle friends, climb the ranks, and blow up the terrain!" />
+    <meta name="keywords" content="webworms, worms game, browser game, multiplayer game, artillery game, free web game, online multiplayer" />
+    <meta name="author" content="zapleoceo" />
+    <meta property="og:title" content="WebWorms - Play Free in Browser" />
+    <meta property="og:description" content="Battle your friends in this classic destructible-terrain artillery game directly in your browser." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://webworms.pages.dev/" />
+    <meta property="og:image" content="https://webworms.pages.dev/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="WebWorms - Browser Multiplayer Artillery Game" />
+    <meta name="twitter:description" content="Battle your friends in this classic destructible-terrain artillery game directly in your browser." />
+    <meta name="twitter:image" content="https://webworms.pages.dev/logo.png" />
+    
     <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     </head>
   <body>
@@ -26,7 +41,7 @@
         <div class="menu-header">
           <button class="icon-btn auth-toggle-btn" id="btn-open-auth">👤 LOGIN</button>
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <button class="icon-btn auth-toggle-btn" id="btn-user-profile" style="display: none;"></button>
+            <button class="icon-btn auth-toggle-btn worm-wiggle-anim" id="btn-user-profile" style="display: none;"></button>
             <div style="display: flex; gap: 10px; align-items: center;">
               <div id="play-time-display" class="time-balance-box" style="display: none;">Time: 01:00</div>
               <button id="btn-add-time" class="time-add-btn pulse-anim" style="display: none; animation-delay: 0.25s;">+ $1</button>
@@ -43,6 +58,9 @@
           <button class="primary-btn pulse-anim" id="btn-play-random" style="animation-delay: 0.5s;">PLAY RANDOM</button>
           <button class="primary-btn pulse-anim" id="btn-play-friends" style="animation-delay: 1.0s;">PLAY WITH FRIEND</button>
           <p class="tutorial-hint" style="margin-top: 10px;">Hover / Drag to aim. First match is a tutorial!</p>
+          <div style="text-align: center; margin-top: 10px;">
+            <p class="stats-text" style="color: #ffeb3b; font-size: 1rem; text-shadow: 1px 1px 0 #000; animation: pulse 2s infinite;">🔥 Jump in and try it out with friends! 🔥</p>
+          </div>
         </div>
 
         <div class="menu-footer">
@@ -56,6 +74,10 @@
               </select>
             </div>
             <div id="map-size-display" class="map-size-badge" style="display: none;"></div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+            <button id="btn-contact-author" class="secondary-btn w-full" style="font-size: 1rem; padding: 10px;">✉️ CONTACT AUTHOR</button>
           </div>
           </div>
         </div>
@@ -117,6 +139,17 @@
           <h2 class="comic-text">PREMIUM</h2>
           <p class="stats-text" style="margin-bottom: 20px;">Get 7 Days of UNLIMITED Play Time for just $1.00 USD.</p>
           <div id="payment-container" style="min-height: 150px; background: #fff; padding: 10px; border-radius: 8px;"></div>
+        </div>
+      </div>
+
+      <!-- CONTACT AUTHOR MODAL -->
+      <div id="contact-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-box bounce-anim">
+          <button class="close-modal" id="btn-close-contact">&times;</button>
+          <h2 class="comic-text" style="color: #ffeb3b;">SAY HELLO!</h2>
+          <p class="stats-text" style="margin-bottom: 15px;">Found a bug? Have an idea? Write a message to the author!</p>
+          <textarea id="contact-message" class="retro-input" rows="5" placeholder="Write your message here..." style="resize: none; font-family: 'Inter', sans-serif; font-size: 1rem;"></textarea>
+          <button id="btn-send-message" class="primary-btn w-full" style="margin-top: 10px;">SEND MESSAGE</button>
         </div>
       </div>
 
