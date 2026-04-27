@@ -72,24 +72,22 @@ export class Landscape {
         // Build physics grid
         // Format: [R, G, B, A, R, G, B, A, ...]
         for (let i = 0; i < imageData.length; i += 4) {
+          const r = imageData[i];
+          const g = imageData[i + 1];
+          const b = imageData[i + 2];
           const alpha = imageData[i + 3];
           const pixelIndex = i / 4;
           
-          if (alpha < 10) {
-            // Transparent = air
-            this.grid[pixelIndex] = 0;
-          } else {
-            // Opaque = land
-            // Check if it's pure black for indestructible (or near black)
-            const r = imageData[i];
-            const g = imageData[i + 1];
-            const b = imageData[i + 2];
-            
-            if (r < 10 && g < 10 && b < 10) {
-              this.grid[pixelIndex] = 255; // Indestructible
-            } else {
-              this.grid[pixelIndex] = 1;   // Destructible earth
+          // Treat transparent pixels OR black background pixels as AIR
+          if (alpha < 10 || (r < 10 && g < 10 && b < 10)) {
+            this.grid[pixelIndex] = 0; // Air
+            // Also force it to be visually transparent so the game background shows through
+            if (this.pixelData) {
+              this.pixelData[i + 3] = 0;
             }
+          } else {
+            // Everything else is fully destructible earth
+            this.grid[pixelIndex] = 1;
           }
         }
         

@@ -32,6 +32,7 @@ export class GamePresenter {
   public turnTimeLeft: number = 30;
   public maxTurnTime: number = 30;
   public hasFiredThisTurn: boolean = false;
+  public isPaused: boolean = false;
   public brandAssets: string[] = ['apple', 'android', 'windows'];
   
   // Camera delay after explosion
@@ -222,6 +223,8 @@ export class GamePresenter {
   }
 
   public update(dt: number): void {
+    if (this.isPaused) return;
+
     if (this.isRunning) {
       this.matchTime += dt;
 

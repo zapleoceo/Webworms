@@ -463,16 +463,18 @@ let currentMatchToken: string | null = null;
   const logos = await APIClient.getLogos();
   const maps = await APIClient.getMaps();
 
-  // Use a map if one is selected, else generate
+  // Use the first uploaded custom map if available
   let mapData = null;
-  const selectedMapId = mapTypeSelect.value;
-  if (selectedMapId && selectedMapId !== 'islands' && selectedMapId !== 'cave' && selectedMapId !== 'flat') {
-    const mapObj = maps.find((m: any) => m.id === selectedMapId);
+  if (maps && maps.length > 0) {
+    // If a specific map is selected, try to use it. Otherwise use the first one.
+    const selectedMapId = mapTypeSelect.value;
+    let mapObj = maps.find((m: any) => m.id === selectedMapId);
+    if (!mapObj) {
+      mapObj = maps[0];
+    }
+    
     if (mapObj) {
-      // The image_data is now a URL path like /api/maps/.../image
-      // Need to prefix with APIClient.BASE_URL without /api if needed, 
-      // but APIClient.BASE_URL is /api, so it already works as an absolute path
-      const fullMap = await APIClient.getMapById(selectedMapId);
+      const fullMap = await APIClient.getMapById(mapObj.id);
       if (fullMap) {
         mapData = APIClient.BASE_URL.replace('/api', '') + fullMap.image_data;
       }
@@ -489,7 +491,12 @@ let currentMatchToken: string | null = null;
     mapData: mapData
   });
   window.presenter.localTeam = mode === 'training' ? 'training' : 'team1';
-  window.presenter.start();
+  
+  // Do NOT start the presenter loop here if we are playing with a friend and waiting!
+  // It will be started in onReady.
+  if (mode === 'training') {
+    window.presenter.start();
+  }
 
   function resizeCanvas() {
     // Canvas internal size remains fixed for proper physics/camera calculations
@@ -561,12 +568,17 @@ let currentMatchToken: string | null = null;
             // Ensure URL is absolute
             const fullUrl = stateData.mapData.startsWith('http') ? stateData.mapData : APIClient.BASE_URL.replace('/api', '') + stateData.mapData;
             
-            // Need to wait for image to load, but we are in a sync loop. 
-            // We can just trigger it, it will update when done.
+            // Pause the game until map is loaded to prevent worms from falling
+            window.presenter.isPaused = true;
+            
             window.presenter.state.landscape.generateFromImage(fullUrl).then(() => {
               window.presenter.state.width = window.presenter.state.landscape.width;
               window.presenter.state.height = window.presenter.state.landscape.height;
               rebuildWorms();
+              window.presenter.isPaused = false;
+            }).catch(e => {
+              console.error('Failed to load map on client:', e);
+              window.presenter.isPaused = false;
             });
           } else {
             window.presenter.state.landscape.generateTerrain(stateData.mapSeed);
@@ -938,24 +950,6 @@ function bindPresenterEvents() {
 }
 
 bindPresenterEvents();
-
-let lastTime = performance.now();
-function gameLoop(time: number) {
-  try {
-    const dt = (time - lastTime) / 1000;
-    lastTime = time;
-
-    window.presenter.update(dt);
-    window.renderer.render(window.presenter.state);
-
-    requestAnimationFrame(gameLoop);
-  } catch (e) {
-    console.error('Game Loop Error:', e);
-    requestAnimationFrame(gameLoop);
-  }
-}
-
-requestAnimationFrame(gameLoop);
 
 // Auto-join logic if room URL param exists
 const initUrlParams = new URLSearchParams(window.location.search);
