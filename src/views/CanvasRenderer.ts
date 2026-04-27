@@ -242,6 +242,19 @@ export class CanvasRenderer {
                 data[idx + 3] = 255;
               }
             }
+            
+            // If it's material 255 (indestructible alloy) and we are using custom maps,
+            // we should visually override it with the dark alloy texture so players know they can't shoot it.
+            // If we just kept the black pixels from the image, they might blend in too much or just look like a shadow.
+            // By overriding it, we make it an explicit game element.
+            if (material === 255 && state.landscape.pixelData) {
+              const isLine = (x + y) % 10 === 0 || (x - y) % 10 === 0;
+              const color = isLine ? [40, 40, 50] : [20, 20, 25];
+              data[idx] = color[0];
+              data[idx + 1] = color[1];
+              data[idx + 2] = color[2];
+              data[idx + 3] = 255;
+            }
           }
         }
       }
@@ -345,15 +358,11 @@ export class CanvasRenderer {
               const mapY = minY + y;
               if (state.landscape.getMaterial(mapX, mapY) === 255) {
                 const idx = (y * w + x) * 4;
-                if (state.landscape.pixelData) {
-                  data[idx] = state.landscape.pixelData[(mapY * state.landscape.width + mapX) * 4];
-                  data[idx+1] = state.landscape.pixelData[(mapY * state.landscape.width + mapX) * 4 + 1];
-                  data[idx+2] = state.landscape.pixelData[(mapY * state.landscape.width + mapX) * 4 + 2];
-                  data[idx+3] = 255;
-                } else {
-                  data[idx] = 20; data[idx+1] = 20; data[idx+2] = 25; data[idx+3] = 255;
-                  if ((mapX+mapY)%10 === 0) { data[idx] = 40; data[idx+1] = 40; data[idx+2] = 50; }
-                }
+                
+                // For indestructible alloy, we ALWAYS draw the alloy texture (even on custom maps),
+                // so that players can clearly see why their rocket didn't destroy this part of the map.
+                data[idx] = 20; data[idx+1] = 20; data[idx+2] = 25; data[idx+3] = 255;
+                if ((mapX+mapY)%10 === 0) { data[idx] = 40; data[idx+1] = 40; data[idx+2] = 50; }
               }
             }
           }
