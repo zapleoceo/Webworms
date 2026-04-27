@@ -321,7 +321,7 @@ export class GamePresenter {
 
     // --- Handle Aiming (Keyboard + Analog Joystick) ---
     // Slower aim speed
-    const actualAimSpeed = Math.PI; // rad/sec
+    const actualAimSpeed = Math.PI / 2; // rad/sec
 
     if (Math.abs(this.analogY) > 0.1) {
       // Map Y (-1 to 1) to angle (-PI/2 to PI/2 rad)
@@ -330,7 +330,7 @@ export class GamePresenter {
       const targetAngle = this.analogY * (Math.PI / 2);
 
       // Smoothly rotate towards target angle based on stick deflection
-      player.aimAngle += (targetAngle - player.aimAngle) * dt * 5;
+      player.aimAngle += (targetAngle - player.aimAngle) * dt * 2.5;
 
       // Clamp angle
       if (player.aimAngle < -Math.PI / 2) player.aimAngle = -Math.PI / 2;
