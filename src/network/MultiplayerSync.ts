@@ -93,16 +93,20 @@ export class MultiplayerSync {
   }
 
   private pollForIceCandidates(targetType: string) {
+    let lastProcessedIndex = 0;
     const iceInterval = window.setInterval(async () => {
       if (this.peerConnection!.connectionState === 'connected') {
         clearInterval(iceInterval);
         return;
       }
-      const candidate = await APIClient.getSignal(this.roomId!, targetType);
-      if (candidate) {
-        try {
-          await this.peerConnection!.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) {}
+      const candidates = await APIClient.getSignal(this.roomId!, targetType);
+      if (Array.isArray(candidates)) {
+        for (let i = lastProcessedIndex; i < candidates.length; i++) {
+          try {
+            await this.peerConnection!.addIceCandidate(new RTCIceCandidate(candidates[i]));
+          } catch (e) {}
+        }
+        lastProcessedIndex = candidates.length;
       }
     }, 2000);
   }

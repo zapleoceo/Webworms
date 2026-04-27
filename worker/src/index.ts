@@ -799,13 +799,29 @@ async function handleSignaling(request: Request, env: Env): Promise<Response> {
   const parts = url.pathname.split('/');
   const roomId = parts[3]; // /api/rooms/{id}/{type}
   const type = parts[4]; // offer, answer, ice-host, ice-client
-  
+
   if (!roomId || !type) return new Response('Bad Request', { status: 400 });
 
   const data = await request.text();
-  // Store the signaling data in KV with a short TTL (60 seconds)
-  await env.ROOMS.put(`${roomId}_${type}`, data, { expirationTtl: 60 });
   
+  if (type === 'ice-host' || type === 'ice-client') {
+    // Append ICE candidate to array
+    const existingStr = await env.ROOMS.get(`${roomId}_${type}`);
+    let candidates: any[] = [];
+    if (existingStr) {
+      try { candidates = JSON.parse(existingStr); } catch (e) {}
+    }
+    
+    let newCandidate;
+    try { newCandidate = JSON.parse(data); } catch (e) { return new Response('Bad JSON', { status: 400 }); }
+    
+    candidates.push(newCandidate);
+    await env.ROOMS.put(`${roomId}_${type}`, JSON.stringify(candidates), { expirationTtl: 300 });
+  } else {
+    // Store offer or answer directly
+    await env.ROOMS.put(`${roomId}_${type}`, data, { expirationTtl: 300 });
+  }
+
   return new Response(JSON.stringify({ success: true }));
 }
 
