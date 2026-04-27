@@ -40,8 +40,8 @@ export class AdminPanel {
           <aside class="admin-sidebar">
             <h2>Worms Admin</h2>
             <nav>
-              <button id="nav-maps" class="admin-nav-btn active">Custom Maps</button>
-              <button id="nav-dashboard" class="admin-nav-btn">Dashboard</button>
+              <button id="nav-dashboard" class="admin-nav-btn active">Dashboard</button>
+              <button id="nav-maps" class="admin-nav-btn">Custom Maps</button>
               <button id="nav-users" class="admin-nav-btn">Users Management</button>
               <button id="nav-logos" class="admin-nav-btn">Airdrop Logos</button>
               <button id="nav-spritesets" class="admin-nav-btn">Sprite Sets</button>
@@ -51,7 +51,25 @@ export class AdminPanel {
           </aside>
           
           <main class="admin-main-content">
-            <section id="section-maps" class="admin-section active">
+            <section id="section-dashboard" class="admin-section active">
+              <h2>Dashboard Statistics</h2>
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <h3>Total Users</h3>
+                  <p id="stat-total-users">Loading...</p>
+                </div>
+                <div class="stat-card">
+                  <h3>Active Users</h3>
+                  <p id="stat-active-users">Loading...</p>
+                </div>
+                <div class="stat-card">
+                  <h3>Admins</h3>
+                  <p id="stat-admins">Loading...</p>
+                </div>
+              </div>
+            </section>
+
+            <section id="section-maps" class="admin-section">
               <div class="section-header">
                 <h2>Custom Maps</h2>
                 <button id="load-maps" class="secondary-btn small-btn">Refresh</button>
@@ -78,24 +96,6 @@ export class AdminPanel {
                   <tbody id="maps-list-body">
                   </tbody>
                 </table>
-              </div>
-            </section>
-
-            <section id="section-dashboard" class="admin-section">
-              <h2>Dashboard Statistics</h2>
-              <div class="stats-grid">
-                <div class="stat-card">
-                  <h3>Total Users</h3>
-                  <p id="stat-total-users">Loading...</p>
-                </div>
-                <div class="stat-card">
-                  <h3>Active Users</h3>
-                  <p id="stat-active-users">Loading...</p>
-                </div>
-                <div class="stat-card">
-                  <h3>Admins</h3>
-                  <p id="stat-admins">Loading...</p>
-                </div>
               </div>
             </section>
 
@@ -346,14 +346,12 @@ export class AdminPanel {
 
   private switchTab(tabId: string, btnElement: HTMLElement) {
     document.querySelectorAll('.admin-section').forEach(el => {
-      (el as HTMLElement).style.display = 'none';
       el.classList.remove('active');
     });
     document.querySelectorAll('.admin-nav-btn').forEach(el => el.classList.remove('active'));
     
     const targetSection = document.getElementById(`section-${tabId}`);
     if (targetSection) {
-      targetSection.style.display = 'block';
       targetSection.classList.add('active');
     }
     btnElement.classList.add('active');

@@ -139,11 +139,11 @@
 }
 
 .admin-section {
-  display: none;
+  display: none !important;
 }
 
 .admin-section.active {
-  display: block;
+  display: block !important;
 }
 
 .section-header {
