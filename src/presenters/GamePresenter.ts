@@ -2,9 +2,10 @@ import { GameState } from '../models/GameState';
 import { PhysicsEngine } from './PhysicsEngine';
 import { Worm } from '../models/Worm';
 import { Projectile } from '../models/Projectile';
-import { PhysicsProp } from '../models/PhysicsProp';
 import { SoundManager } from '../utils/SoundManager';
 import { AudioManager } from '../utils/AudioManager';
+
+import { BrandLogo } from '../models/BrandLogo';
 
 export class GamePresenter {
   public state: GameState;
@@ -75,7 +76,10 @@ export class GamePresenter {
     this.physics.onFallUpdate = (vy) => this.soundManager.updateFalling(vy);
     this.physics.onFallStop = () => this.soundManager.stopFalling();
     this.physics.onLand = () => this.soundManager.playLand();
-    this.physics.onHeavyImpact = () => this.soundManager.playHeavyImpact();
+    this.physics.onHeavyImpact = () => {
+      this.soundManager.playHeavyImpact();
+      this.state.cameraShakeTime = 0.3; // 300ms shake
+    };
   }
 
   public updateScreenSize(width: number, height: number): void {
@@ -110,7 +114,7 @@ export class GamePresenter {
     let worldHeight = this.initialHeight * 1.2;
     this.state = new GameState(worldWidth, worldHeight);
     this.state.availableLogos = settings.logos || [];
-    this.state.airdropTimer = 60; // First airdrop in 60s
+    this.state.airdropTimer = 20 + Math.random() * 25; // First airdrop in 20-45s
     this.state.cameraX = Math.max(0, (worldWidth - this.initialWidth) / 2);
     this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
@@ -216,7 +220,7 @@ export class GamePresenter {
       this.state.airdropTimer -= dt;
       if (this.state.airdropTimer <= 0) {
         this.spawnAirdrop();
-        this.state.airdropTimer = 60; // Reset for next minute
+        this.state.airdropTimer = 20 + Math.random() * 25; // 20 to 45 seconds
       }
     }
 
@@ -290,6 +294,16 @@ export class GamePresenter {
 
       // Clamp camera to world bounds
       this.clampCamera(this.initialWidth, this.initialHeight);
+    }
+
+    // Apply Camera Shake
+    if (this.state.cameraShakeTime > 0) {
+      this.state.cameraShakeTime -= dt;
+      if (this.state.cameraShakeTime > 0) {
+        const shakeIntensity = 15 * (this.state.cameraShakeTime / 0.3); // up to 15px
+        this.state.cameraX += (Math.random() - 0.5) * shakeIntensity;
+        this.state.cameraY += (Math.random() - 0.5) * shakeIntensity;
+      }
     }
   }
 
@@ -628,24 +642,26 @@ export class GamePresenter {
   }
 
   private spawnAirdrop() {
-    if (!this.state.availableLogos || this.state.availableLogos.length === 0) return;
+    const logos = [
+      '/assets/logos/mega_mart.png',
+      '/assets/logos/kostar.png',
+      '/assets/logos/mugdonalds.png',
+      '/assets/logos/burgo_burger.png'
+    ];
+    const sprite = logos[Math.floor(Math.random() * logos.length)];
 
-    // Pick random logo
-    const logo = this.state.availableLogos[Math.floor(Math.random() * this.state.availableLogos.length)];
-    
-    // Spawn at top, random X
     const spawnX = Math.random() * (this.state.landscape.width - 200) + 100;
-    const spawnY = -200; // Above screen
+    const spawnY = -100; // Above screen
+    
+    const vx = (Math.random() - 0.5) * 60; // -30 to +30
+    const vy = 0;
+    const angle = (Math.random() - 0.5) * 0.5; // slight initial tilt
+    const angularVelocity = (Math.random() - 0.5) * 2;
 
-    const prop = new PhysicsProp(spawnX, spawnY, 'brand', undefined, logo.hardness, logo.image_data);
-    // Override width/height from DB settings
-    prop.width = logo.width || 60;
-    prop.height = logo.height || 60;
-    prop.radius = Math.max(prop.width, prop.height) / 2;
-    prop.mass = logo.hardness * 2; // Harder logos are heavier
-    prop.defense = logo.hardness;
-
-    this.state.props.push(prop);
+    const brandLogo = new BrandLogo(sprite, spawnX, spawnY, vx, vy, angle, angularVelocity);
+    
+    if (!this.state.brandLogos) this.state.brandLogos = [];
+    this.state.brandLogos.push(brandLogo);
   }
 
   public updateMobileWeaponIcon(player: any) {

@@ -62,14 +62,30 @@ export class PhysicsEngine {
     // Update dynamic props
     this.updateProps(state, dt);
 
+    // Update brand logos
+    this.updateBrandLogos(state, dt);
+
     // Handle worm-to-worm collisions (Heavy Pushing)
     this.handleWormCollisions(state);
 
     // Handle worm-to-prop collisions (Kinetic damage, falling)
     this.handleWormPropCollisions(state);
 
+    // Handle worm-to-brandLogo collisions
+    this.handleWormBrandLogoCollisions(state);
+
     // Cleanup dead props
     state.props = state.props.filter(p => p.health > 0);
+
+    // Update particles
+    if (state.particles) {
+      for (const p of state.particles) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= dt;
+      }
+      state.particles = state.particles.filter(p => p.life > 0);
+    }
 
     // Update floating texts
     if (state.floatingTexts) {
@@ -83,59 +99,39 @@ export class PhysicsEngine {
     this.updateSnowflakes(state, dt);
   }
 
-  private updateSnowflakes(_state: GameState, _dt: number): void {
-    // SNOW DISABLED TEMPORARILY
-    /*
-    const flakes = state.snowflakes;
-    if (!flakes) return;
+  private updateSnowflakes(_state: GameState, _dt: number): void {}
 
-    // Spawn new flakes randomly
-    // Spawn rate relative to map width
-    const spawnRate = state.width * 0.05;
-    for (let i = 0; i < spawnRate; i++) {
-      if (Math.random() < 0.1) {
-        flakes.push({
-          x: Math.random() * state.width,
-          y: 0,
-          vx: 0,
-          vy: 30 + Math.random() * 20 // constant fall speed, no acceleration
-        });
+  private updateBrandLogos(state: GameState, dt: number): void {
+    if (!state.brandLogos) return;
+
+    for (const logo of state.brandLogos) {
+      const wasDynamic = logo.isDynamic;
+      logo.update(dt, this.gravity, state.landscape, state.brandLogos);
+
+      // Effect: Landed this frame
+      if (wasDynamic && !logo.isDynamic) {
+        AudioManager.playLand();
+        // Shake camera slightly
+        if (this.onHeavyImpact) {
+          this.onHeavyImpact(); // The presenter should have logic for this
+        }
+        
+        // Spawn dust particles
+        if (!state.particles) state.particles = [];
+        for (let i = 0; i < 20; i++) {
+          state.particles.push({
+            x: logo.x + (Math.random() - 0.5) * logo.width,
+            y: logo.y + logo.height / 2,
+            vx: (Math.random() - 0.5) * 100,
+            vy: -Math.random() * 50 - 20,
+            life: 0.3 + Math.random() * 0.4,
+            maxLife: 0.7,
+            color: '#8B5A2B', // Dirt color
+            size: 2 + Math.random() * 3
+          });
+        }
       }
     }
-
-    for (let i = flakes.length - 1; i >= 0; i--) {
-      const flake = flakes[i];
-      // Wind affects horizontal speed
-      flake.vx = state.wind * 0.5;
-
-      flake.x += flake.vx * dt;
-      flake.y += flake.vy * dt;
-
-      const px = Math.floor(flake.x);
-      const py = Math.floor(flake.y);
-
-      // Check bounds
-      if (py >= state.height - 30 || px < 30 || px >= state.width - 30) {
-        flakes.splice(i, 1);
-        continue;
-      }
-
-      // Check collision
-      if (state.landscape.isSolid(px, py)) {
-        // Find highest non-solid pixel to pile up snow
-        let targetY = py - 1;
-        while (targetY > 0 && state.landscape.isSolid(px, targetY)) {
-          targetY--;
-        }
-
-        // Become snow (material 5)
-        if (targetY > 0) {
-          state.landscape.setMaterial(px, targetY, 5);
-        }
-        flakes.splice(i, 1);
-      }
-    }
-    */
   }
 
   private updateProps(state: GameState, dt: number): void {
@@ -200,6 +196,44 @@ export class PhysicsEngine {
       if (prop.x < 30) { prop.x = 30; prop.vx *= -0.5; }
       if (prop.x > state.width - 30) { prop.x = state.width - 30; prop.vx *= -0.5; }
       if (prop.y > state.height) { prop.health = 0; }
+    }
+  }
+
+  private handleWormBrandLogoCollisions(state: GameState): void {
+    if (!state.brandLogos) return;
+
+    for (const worm of state.players) {
+      if (worm.health <= 0) continue;
+
+      for (const logo of state.brandLogos) {
+        const halfW = logo.width / 2;
+        const halfH = logo.height / 2;
+        
+        // Use a simple AABB collision check
+        const inX = worm.x + worm.width / 2 > logo.x - halfW && worm.x - worm.width / 2 < logo.x + halfW;
+        const inY = worm.y + worm.height > logo.y - halfH && worm.y < logo.y + halfH;
+
+        if (inX && inY) {
+          // If falling, stand on top
+          if (worm.vy > 0 && worm.y + worm.height - worm.vy * 0.016 <= logo.y - halfH + 10) {
+            worm.y = logo.y - halfH - worm.height;
+            worm.vy = 0;
+            worm.isJumping = false;
+            
+            // If logo is moving, carry worm
+            if (logo.isDynamic) {
+              worm.x += logo.vx * 0.016;
+            }
+          } else {
+            // Push out horizontally
+            if (worm.x < logo.x) {
+              worm.x = logo.x - halfW - worm.width / 2;
+            } else {
+              worm.x = logo.x + halfW + worm.width / 2;
+            }
+          }
+        }
+      }
     }
   }
 

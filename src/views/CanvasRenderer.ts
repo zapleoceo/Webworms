@@ -65,17 +65,32 @@ export class CanvasRenderer {
 
     this.drawSky(state);
     this.drawLandscape(state);
+    this.drawBrandLogos(state);
     this.drawProps(state);
     this.drawProjectiles(state);
     // this.drawSnowflakes(state);
     this.drawPlayers(state);
     this.drawFloatingTexts(state);
     this.drawExplosions(state);
+    this.drawParticles(state);
 
     this.ctx.restore(); // Restore camera so UI is drawn fixed to screen
 
     this.drawOffscreenPointers(state);
     this.drawUI(state);
+  }
+
+  private drawBrandLogos(state: GameState): void {
+    if (!state.brandLogos) return;
+    for (const logo of state.brandLogos) {
+      let img = this.wormImages[logo.sprite];
+      if (!img) {
+        img = new Image();
+        img.src = logo.sprite;
+        this.wormImages[logo.sprite] = img;
+      }
+      logo.draw(this.ctx, img);
+    }
   }
 
   private drawProps(state: GameState): void {
@@ -606,6 +621,18 @@ export class CanvasRenderer {
 
       this.ctx.restore();
     }
+  }
+
+  private drawParticles(state: GameState): void {
+    if (!state.particles) return;
+    for (const p of state.particles) {
+      this.ctx.globalAlpha = p.life / p.maxLife;
+      this.ctx.fillStyle = p.color;
+      this.ctx.beginPath();
+      this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.globalAlpha = 1.0;
   }
 
   private drawOffscreenPointers(state: GameState): void {

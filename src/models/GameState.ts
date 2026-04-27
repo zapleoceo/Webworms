@@ -3,6 +3,7 @@ import { Worm } from './Worm';
 import { Projectile } from './Projectile';
 import { Explosion } from './Explosion';
 import { PhysicsProp } from './PhysicsProp';
+import { BrandLogo } from './BrandLogo';
 
 export interface FloatingText {
   x: number;
@@ -13,14 +14,27 @@ export interface FloatingText {
   maxLife: number;
 }
 
+export interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  size: number;
+}
+
 export class GameState {
-  public landscape: Landscape;
+  public landscape!: Landscape;
   public players: Worm[] = [];
+  public currentPlayerIndex: number = 0;
   public projectiles: Projectile[] = [];
   public explosions: Explosion[] = [];
   public props: PhysicsProp[] = [];
+  public brandLogos: BrandLogo[] = [];
+  public particles: Particle[] = [];
   public floatingTexts: FloatingText[] = [];
-  public currentPlayerIndex: number = 0;
   
   public width: number;
   public height: number;
@@ -36,6 +50,7 @@ export class GameState {
   public turnTimeLeft: number = 30;
   public availableLogos: any[] = [];
   public airdropTimer: number = 60;
+  public cameraShakeTime: number = 0;
 
   constructor(width: number, height: number) {
     this.width = width;
