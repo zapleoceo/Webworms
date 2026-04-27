@@ -390,8 +390,8 @@ export class GamePresenter {
 
     const chargeSpeed = 100; // max power per second
     // Halved speeds as per user request + floaty worms physics
-    const moveForce = 200 * player.speedMultiplier; // pixels per second squared (acceleration)
-    const maxSpeed = 35 * player.speedMultiplier; // pixels per second
+    const moveForce = 100 * player.speedMultiplier; // pixels per second squared (acceleration)
+    const maxSpeed = 17.5 * player.speedMultiplier; // pixels per second (2x slower)
     const airControl = 0.3; // 30% control while in the air
 
     // --- Handle Aiming (Keyboard + Analog Joystick) ---
