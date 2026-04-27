@@ -251,21 +251,35 @@ document.getElementById('btn-close-contact')?.addEventListener('click', () => {
   contactModal.style.display = 'none';
 });
 
-document.getElementById('btn-send-message')?.addEventListener('click', () => {
+document.getElementById('btn-send-message')?.addEventListener('click', async () => {
   const msg = contactMessage.value.trim();
   if (!msg) {
     alert('Please enter a message first!');
     return;
   }
   
-  // Use mailto link
-  const subject = encodeURIComponent('WebWorms Feedback');
-  const body = encodeURIComponent(msg + '\n\n---\nSent from WebWorms App');
-  window.location.href = `mailto:demoniwwwe@gmail.com?subject=${subject}&body=${body}`;
-  
-  // Close modal and clear text
-  contactModal.style.display = 'none';
-  contactMessage.value = '';
+  const btn = document.getElementById('btn-send-message') as HTMLButtonElement;
+  const originalText = btn.innerText;
+  btn.innerText = 'SENDING...';
+  btn.disabled = true;
+
+  try {
+    const token = localStorage.getItem('userSessionId');
+    const res = await APIClient.sendContactMessage(msg, token);
+    
+    if (res.success) {
+      alert('Message sent successfully! Thank you for your feedback.');
+      contactModal.style.display = 'none';
+      contactMessage.value = '';
+    } else {
+      alert('Failed to send message: ' + (res.error || 'Unknown error'));
+    }
+  } catch (e: any) {
+    alert('Error sending message: ' + e.message);
+  } finally {
+    btn.innerText = originalText;
+    btn.disabled = false;
+  }
 });
 
 // Close modals manually if needed (already handled by ID-based listeners, but let's be safe)
@@ -995,6 +1009,45 @@ document.getElementById('btn-confirm-leave')?.addEventListener('click', () => {
   window.presenter.handleInput('surrender', true);
 });
 
+// Helper to process sprites for UI (remove background)
+const transparentSprites: Record<string, string> = {};
+function getTransparentSprite(url: string, fw: number, fh: number, callback: (newUrl: string) => void) {
+  if (transparentSprites[url]) {
+    return callback(transparentSprites[url]);
+  }
+  const img = new Image();
+  img.crossOrigin = "Anonymous";
+  img.src = url;
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return callback(url);
+    ctx.drawImage(img, 0, 0);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imgData.data;
+    const bgR = data[0], bgG = data[1], bgB = data[2];
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.abs(data[i] - bgR) < 10 && Math.abs(data[i+1] - bgG) < 10 && Math.abs(data[i+2] - bgB) < 10) {
+        data[i+3] = 0;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    
+    // Crop first frame
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = fw;
+    cropCanvas.height = fh;
+    cropCanvas.getContext('2d')?.drawImage(canvas, 0, 0, fw, fh, 0, 0, fw, fh);
+    
+    const newUrl = cropCanvas.toDataURL('image/png');
+    transparentSprites[url] = newUrl;
+    callback(newUrl);
+  };
+  img.onerror = () => callback(url);
+}
+
 // Update HUD elements
 const hpLocalEl = document.getElementById('hp-local')!;
 const hpEnemyEl = document.getElementById('hp-enemy')!;
@@ -1030,17 +1083,19 @@ function updateWormSelectionUI(state: any) {
     const spriteUrl = item.p.health > 0 ? '/sprites/Worms/wbrth1.png' : '/sprites/Misc/grave1.png';
     const hpStr = Math.ceil(Math.max(0, item.p.health)).toString();
     
-    btn.innerHTML = `<img src="${spriteUrl}" alt="W${i+1}"><span class="hp">${hpStr}</span>`;
+    // We create a temporary placeholder, and load the transparent sprite asynchronously
+    const imgId = `worm-img-${item.p.id || i}`;
+    btn.innerHTML = `<img id="${imgId}" src="" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
+    
+    getTransparentSprite(spriteUrl, item.p.health > 0 ? 60 : 24, item.p.health > 0 ? 60 : 32, (newUrl) => {
+      const imgEl = document.getElementById(imgId) as HTMLImageElement;
+      if (imgEl) imgEl.src = newUrl;
+    });
     
     btn.addEventListener('click', () => {
       if (item.p.health > 0 && !window.presenter.hasFiredThisTurn) {
-        // Find actual index in global players array, not just team index
-        const globalIndex = window.presenter.state.players.indexOf(item.p);
-        if (globalIndex !== -1) {
-          window.presenter.state.currentPlayerIndex = globalIndex;
-          window.presenter.updateMobileWeaponIcon(item.p);
-          updateWormSelectionUI(window.presenter.state); // Force re-render immediately
-        }
+        window.presenter.handleInput('switchWorm', true, false, i);
+        updateWormSelectionUI(window.presenter.state); // Force re-render immediately
       }
     });
     

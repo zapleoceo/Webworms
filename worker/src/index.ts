@@ -135,6 +135,10 @@ export default {
         response = await deleteAdminUser(request, env);
       }
       
+      else if (url.pathname === '/api/contact' && request.method === 'POST') {
+        response = await handleContactEmail(request, env);
+      }
+      
       // 6. Match Endpoints
       else if (url.pathname === '/api/match/start' && request.method === 'POST') {
         response = await startMatch(request, env);
@@ -330,6 +334,87 @@ async function sendResendEmail(env: Env, to: string, token: string, host: string
   } catch (err: any) {
     console.error("Failed to send email via Resend:", err);
     return err.message;
+  }
+}
+
+async function handleContactEmail(request: Request, env: Env): Promise<Response> {
+  try {
+    const { message } = await request.json() as { message: string };
+    if (!message) {
+      return new Response(JSON.stringify({ error: 'Message is required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    let senderEmail = 'anonymous@webworms.com';
+    let senderName = 'Anonymous Player';
+
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const session = await env.DB.prepare('SELECT user_id FROM Sessions WHERE token = ?').bind(token).first();
+      if (session) {
+        const user = await env.DB.prepare('SELECT username, email FROM Users WHERE id = ?').bind(session.user_id).first();
+        if (user) {
+          senderName = user.username as string;
+          senderEmail = user.email as string;
+        }
+      }
+    }
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+        <h2 style="color: #FF4500;">New WebWorms Feedback</h2>
+        <p><strong>From:</strong> ${senderName} (${senderEmail})</p>
+        <p><strong>Message:</strong></p>
+        <div style="background: #f9f9f9; padding: 15px; border-radius: 4px; white-space: pre-wrap;">${message}</div>
+      </div>
+    `;
+
+    // Use built-in Resend API if available
+    if (env.RESEND_API_KEY) {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: 'WebWorms Feedback <noreply@zapleo.com>', // Verified domain
+          to: ['demoniwwwe@gmail.com'],
+          subject: \`WebWorms Feedback from \${senderName}\`,
+          html: htmlContent
+        })
+      });
+      
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("Resend API error:", errText);
+        return new Response(JSON.stringify({ error: 'Failed to send via Resend', details: errText }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+      }
+    } else {
+      // Fallback to MailChannels if Resend is not configured (Native to Cloudflare Workers)
+      const res = await fetch('https://api.mailchannels.net/tx/v1/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: 'demoniwwwe@gmail.com', name: 'Author' }] }],
+          from: { email: 'noreply@webworms.pages.dev', name: 'WebWorms Game' },
+          subject: \`WebWorms Feedback from \${senderName}\`,
+          content: [{ type: 'text/html', value: htmlContent }]
+        })
+      });
+
+      if (!res.ok) {
+         const errText = await res.text();
+         console.error("MailChannels API error:", errText);
+         // If both fail, we still return success but log it, or we return 500
+         return new Response(JSON.stringify({ error: 'Failed to send via MailChannels', details: errText }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (err: any) {
+    console.error("Contact Email Error:", err);
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
 

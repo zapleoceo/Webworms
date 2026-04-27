@@ -235,4 +235,16 @@ export class APIClient {
     } catch (e) {}
     return null;
   }
+
+  static async sendContactMessage(message: string, token: string | null) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${this.BASE_URL}/contact`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message })
+    });
+    return res.json();
+  }
 }

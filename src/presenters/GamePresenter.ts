@@ -594,6 +594,24 @@ export class GamePresenter {
           this.updateMobileWeaponIcon(player);
         }
         break;
+      case 'switchWorm':
+        if (isActive && typeof payload === 'number') {
+          if (this.hasFiredThisTurn) break;
+          // Directly switch to specific worm by team index
+          const currentTeam = player.team;
+          const teamWorms = this.state.players.filter(p => p.team === currentTeam);
+          if (payload >= 0 && payload < teamWorms.length) {
+            const targetWorm = teamWorms[payload];
+            if (targetWorm.health > 0) {
+              const globalIndex = this.state.players.indexOf(targetWorm);
+              if (globalIndex !== -1) {
+                this.state.currentPlayerIndex = globalIndex;
+                this.updateMobileWeaponIcon(targetWorm);
+              }
+            }
+          }
+        }
+        break;
     }
   }
 
