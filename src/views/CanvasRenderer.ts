@@ -336,10 +336,13 @@ export class CanvasRenderer {
 
         // Calculate aim frame (0 to 31)
         // aimAngle is -PI/2 (up) to PI/2 (down)
-        // Let's assume frame 0 is Straight UP (-PI/2), and frame 31 is Straight DOWN (+PI/2).
+        // In the sprite, Frame 0 is Straight DOWN (+PI/2), and Frame 31 is Straight UP (-PI/2).
         // Total range is PI radians (180 degrees).
-        const normalizedAngle = player.aimAngle + Math.PI / 2; // 0 to PI
-        frameIndex = Math.floor((normalizedAngle / Math.PI) * 31);
+        // So we invert the angle calculation:
+        // Angle from -PI/2 to PI/2 maps to 31 down to 0.
+        // Let's normalize so -PI/2 gives 31, and PI/2 gives 0.
+        const normalizedAngle = player.aimAngle + Math.PI / 2; // 0 (up) to PI (down)
+        frameIndex = Math.floor((1 - (normalizedAngle / Math.PI)) * 31);
         frameIndex = Math.max(0, Math.min(31, frameIndex));
       } else {
         // Idle breathing
