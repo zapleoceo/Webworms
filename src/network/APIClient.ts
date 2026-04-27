@@ -167,7 +167,7 @@ export class APIClient {
 
   static async getRoomState(roomId: string) {
     try {
-      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/state`);
+      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/state?t=${Date.now()}`);
       if (!response.ok) return null;
       return await response.json();
     } catch (e) {
@@ -178,17 +178,42 @@ export class APIClient {
   // WebRTC Signaling
   static async sendSignal(roomId: string, type: string, payload: any) {
     try {
-      await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}`, {
+      const res = await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-    } catch (e) {}
+      if (!res.ok) {
+        console.error('sendSignal error:', res.status, await res.text());
+      }
+    } catch (e) {
+      console.error('sendSignal exception:', e);
+    }
   }
 
   static async getSignal(roomId: string, type: string) {
     try {
-      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}`);
+      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}?t=${Date.now()}`);
+      if (response.ok) return await response.json();
+      console.error('getSignal error:', response.status, await response.text());
+    } catch (e) {
+      console.error('getSignal exception:', e);
+    }
+    return null;
+  }
+
+  // Maps endpoints
+  static async getMaps() {
+    try {
+      const response = await fetch(`${this.BASE_URL}/maps`);
+      if (response.ok) return await response.json();
+    } catch (e) {}
+    return [];
+  }
+
+  static async getMapById(id: string) {
+    try {
+      const response = await fetch(`${this.BASE_URL}/maps/${id}`);
       if (response.ok) return await response.json();
     } catch (e) {}
     return null;

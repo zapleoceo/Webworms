@@ -133,6 +133,20 @@ export default {
         response = await deleteLogo(request, env);
       }
 
+      // Maps Endpoints
+      else if (url.pathname === '/api/maps' && request.method === 'GET') {
+        response = await getMaps(env);
+      }
+      else if (url.pathname.startsWith('/api/maps/') && request.method === 'GET') {
+        response = await getMapById(request, env);
+      }
+      else if (url.pathname === '/api/admin/maps' && request.method === 'POST') {
+        response = await createMap(request, env);
+      }
+      else if (url.pathname.startsWith('/api/admin/maps/') && request.method === 'DELETE') {
+        response = await deleteMap(request, env);
+      }
+
       // SpriteSets Endpoints
       else if (url.pathname === '/api/spritesets' && request.method === 'GET') {
         response = await getSpriteSets(env);
@@ -558,6 +572,71 @@ async function updateTurnTime(request: Request, env: Env): Promise<Response> {
   }
 }
 
+async function getMaps(env: Env): Promise<Response> {
+  try {
+    const res = await env.DB.prepare('SELECT id, name, width, height, created_at FROM Maps ORDER BY created_at DESC').all();
+    return new Response(JSON.stringify(res.results), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+async function getMapById(request: Request, env: Env): Promise<Response> {
+  try {
+    const id = new URL(request.url).pathname.split('/').pop();
+    if (!id) {
+      return new Response(JSON.stringify({ error: 'Missing ID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+    const res = await env.DB.prepare('SELECT * FROM Maps WHERE id = ?').bind(id).first();
+    if (!res) {
+      return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+    return new Response(JSON.stringify(res), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+async function createMap(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  try {
+    const { name, image_data, width, height } = await request.json() as any;
+    
+    if (!name || !image_data) {
+      return new Response(JSON.stringify({ error: 'Missing name or image_data' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare('INSERT INTO Maps (id, name, image_data, width, height) VALUES (?, ?, ?, ?, ?)')
+      .bind(id, name, image_data, width || 1500, height || 800).run();
+
+    return new Response(JSON.stringify({ success: true, id }), { status: 201, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+async function deleteMap(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  try {
+    const id = new URL(request.url).pathname.split('/').pop();
+    if (!id) {
+      return new Response(JSON.stringify({ error: 'Missing ID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    await env.DB.prepare('DELETE FROM Maps WHERE id = ?').bind(id).run();
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
 async function getLogos(env: Env): Promise<Response> {
   try {
     const res = await env.DB.prepare('SELECT * FROM Logos').all();
@@ -957,7 +1036,7 @@ async function getRoomState(request: Request, env: Env): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404 });
   }
 
-  return new Response(roomStr, { headers: { 'Content-Type': 'application/json' } });
+  return new Response(roomStr, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 }
 
 async function handleSignaling(request: Request, env: Env): Promise<Response> {
@@ -982,12 +1061,16 @@ async function handleSignaling(request: Request, env: Env): Promise<Response> {
     let newCandidate;
     try { newCandidate = JSON.parse(data); } catch (e) { return new Response('Bad JSON', { status: 400 }); }
 
-    candidates.push(newCandidate);
-    await env.DB.prepare(`
-      INSERT INTO Signaling (room_id, type, data, updated_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(room_id, type) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
-    `).bind(roomId, type, JSON.stringify(candidates)).run();
+    // Deduplicate candidates
+    const newStr = JSON.stringify(newCandidate);
+    if (!candidates.some(c => JSON.stringify(c) === newStr)) {
+      candidates.push(newCandidate);
+      await env.DB.prepare(`
+        INSERT INTO Signaling (room_id, type, data, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(room_id, type) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
+      `).bind(roomId, type, JSON.stringify(candidates)).run();
+    }
   } else {
     // Store offer or answer directly
     await env.DB.prepare(`
@@ -1021,12 +1104,12 @@ async function handleSignalingGet(request: Request, env: Env): Promise<Response>
   const row = await env.DB.prepare('SELECT data FROM Signaling WHERE room_id = ? AND type = ?')
     .bind(roomId, type).first<any>();
   if (row?.data) {
-    return new Response(row.data, { headers: { 'Content-Type': 'application/json' } });
+    return new Response(row.data, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   }
 
   // To prevent 404 console spam during polling, return 200 OK with empty representation
   if (type === 'ice-host' || type === 'ice-client') {
-    return new Response('[]', { headers: { 'Content-Type': 'application/json' } });
+    return new Response('[]', { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   }
-  return new Response('null', { headers: { 'Content-Type': 'application/json' } });
+  return new Response('null', { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 }

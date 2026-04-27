@@ -2,6 +2,7 @@ import { GameState } from '../models/GameState';
 import { PhysicsEngine } from './PhysicsEngine';
 import { Worm } from '../models/Worm';
 import { Projectile } from '../models/Projectile';
+import { Random } from '../utils/Random';
 import { SoundManager } from '../utils/SoundManager';
 import { AudioManager } from '../utils/AudioManager';
 
@@ -89,7 +90,7 @@ export class GamePresenter {
 
   public localTeam: string | null = null;
 
-  public startGame(settings: any) {
+  public async startGame(settings: any) {
     if (settings.mode !== 'training') {
       const premiumStr = localStorage.getItem('premiumUntil');
       let isPremium = false;
@@ -109,49 +110,84 @@ export class GamePresenter {
 
     this.maxTurnTime = settings.mode === 'training' ? Infinity : (settings.turnTime || 30);
     this.turnTimeLeft = this.maxTurnTime;
+    this.state.turnTimeLeft = this.turnTimeLeft;
+    this.state.hasFiredThisTurn = this.hasFiredThisTurn;
     
     let worldWidth = this.initialWidth * 1.5;
     let worldHeight = this.initialHeight * 1.2;
     this.state = new GameState(worldWidth, worldHeight);
+    this.state.mode = settings.mode;
     this.state.availableLogos = settings.logos || [];
-    this.state.airdropTimer = 20 + Math.random() * 25; // First airdrop in 20-45s
+    
+    // Check if we have a custom map
+    if (settings.mapData) {
+      this.state.mapData = settings.mapData;
+      await this.state.landscape.generateFromImage(settings.mapData);
+      worldWidth = this.state.landscape.width;
+      worldHeight = this.state.landscape.height;
+      this.state.width = worldWidth;
+      this.state.height = worldHeight;
+    } else {
+      // Set map seed for deterministic terrain generation in multiplayer
+      this.state.mapSeed = settings.seed || Math.floor(Math.random() * 1000000);
+      Random.setSeed(this.state.mapSeed); // Initialize our deterministic PRNG
+      this.state.landscape.generateTerrain(this.state.mapSeed);
+    }
+
+    this.state.airdropTimer = 20 + Random.next() * 25; // First airdrop in 20-45s
     this.state.cameraX = Math.max(0, (worldWidth - this.initialWidth) / 2);
     this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
     this.matchTime = 0;
+    
+    // Reset timers
+    this.hasFiredThisTurn = false;
+    this.state.hasFiredThisTurn = false;
+    this.turnTimeLeft = this.maxTurnTime;
+    this.state.turnTimeLeft = this.turnTimeLeft;
 
-    this.state.landscape.generateTerrain();
+    this.state.lastPlayedIndex = { 'team1': -1, 'team2': -1 };
+
+    // Set initial wind deterministically
+    this.state.wind = (Random.next() - 0.5) * 40;
 
     // Add teams of 3 worms
     const spawnPoints: {x: number, y: number}[] = [];
-    const availableWeapons = ['bazooka', 'minigun', 'triple', 'rocket'];
+    const availableWeapons = ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'];
     const availableClasses: ('soldier'|'heavy'|'scout')[] = ['soldier', 'heavy', 'scout'];
+
+    // Generate team classes deterministically from seed so both clients agree
+    const t1Classes = [
+      availableClasses[Random.nextInt(0, availableClasses.length - 1)],
+      availableClasses[Random.nextInt(0, availableClasses.length - 1)],
+      availableClasses[Random.nextInt(0, availableClasses.length - 1)]
+    ];
+    const t2Classes = [
+      availableClasses[Random.nextInt(0, availableClasses.length - 1)],
+      availableClasses[Random.nextInt(0, availableClasses.length - 1)],
+      availableClasses[Random.nextInt(0, availableClasses.length - 1)]
+    ];
 
     // Team 1 (Player 1)
     for (let i = 0; i < 3; i++) {
-      const s = this.state.landscape.getSafeSpawn(spawnPoints, 150);
+      const s = this.state.landscape.getSafeSpawn(spawnPoints, 150, this.state.mapSeed);
       spawnPoints.push(s);
-      const wpn = availableWeapons[Math.floor(Math.random() * availableWeapons.length)];
-      const cls = availableClasses[Math.floor(Math.random() * availableClasses.length)];
-      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, cls, [wpn]);
+      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster']);
       this.state.addPlayer(p);
     }
 
     // Team 2 (Player 2 or AI)
     for (let i = 0; i < 3; i++) {
-      const s = this.state.landscape.getSafeSpawn(spawnPoints, 150);
+      const s = this.state.landscape.getSafeSpawn(spawnPoints, 150, this.state.mapSeed);
       spawnPoints.push(s);
-      const wpn = availableWeapons[Math.floor(Math.random() * availableWeapons.length)];
-      const cls = availableClasses[Math.floor(Math.random() * availableClasses.length)];
-      const p = new Worm(s.x, s.y, true, `Enemy ${i+1}`, cls, [wpn]);
+      const p = new Worm(s.x, s.y, this.state.mode === 'training', `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster']);
       this.state.addPlayer(p);
     }
 
     // Set initial active player (first alive worm of team 1)
     this.state.currentPlayerIndex = 0;
-
-    // Set initial wind
-    this.state.wind = (Math.random() - 0.5) * 40;
+    this.state.lastPlayedIndex['team1'] = 0;
+    this.updateMobileWeaponIcon(this.state.players[0]);
 
     // Update UI right away
     if (this.onStateUpdate) {
@@ -187,11 +223,6 @@ export class GamePresenter {
   }
 
   public update(dt: number): void {
-    if ((this.state as any).gameEnded) {
-      this.postRender();
-      return;
-    }
-
     if (this.isRunning) {
       this.matchTime += dt;
 
@@ -215,12 +246,14 @@ export class GamePresenter {
           }
         }
       }
+      this.state.turnTimeLeft = this.turnTimeLeft;
+      this.state.hasFiredThisTurn = this.hasFiredThisTurn;
 
       // Airdrop Logic
       this.state.airdropTimer -= dt;
       if (this.state.airdropTimer <= 0) {
         this.spawnAirdrop();
-        this.state.airdropTimer = 20 + Math.random() * 25; // 20 to 45 seconds
+        this.state.airdropTimer = 20 + Random.next() * 25; // 20 to 45 seconds
       }
     }
 
@@ -232,9 +265,11 @@ export class GamePresenter {
     const winner = this.checkGameOver();
     if (winner !== undefined) {
       this.isRunning = false;
+      const t1Dmg = this.state.players.filter(p => p.team === 'team1').reduce((sum, p) => sum + p.damageDealt, 0);
+      const t2Dmg = this.state.players.filter(p => p.team === 'team2').reduce((sum, p) => sum + p.damageDealt, 0);
       const stats = {
-        p1Dmg: Math.round(this.state.players[0]?.damageDealt || 0),
-        p2Dmg: Math.round(this.state.players[1]?.damageDealt || 0)
+        p1Dmg: Math.round(t1Dmg),
+        p2Dmg: Math.round(t2Dmg)
       };
       if (this.onGameOver) this.onGameOver(winner === null ? 'draw' : winner, stats);
       return;
@@ -301,8 +336,8 @@ export class GamePresenter {
       this.state.cameraShakeTime -= dt;
       if (this.state.cameraShakeTime > 0) {
         const shakeIntensity = 15 * (this.state.cameraShakeTime / 0.3); // up to 15px
-        this.state.cameraX += (Math.random() - 0.5) * shakeIntensity;
-        this.state.cameraY += (Math.random() - 0.5) * shakeIntensity;
+        this.state.cameraX += (Random.next() - 0.5) * shakeIntensity;
+        this.state.cameraY += (Random.next() - 0.5) * shakeIntensity;
       }
     }
   }
@@ -412,25 +447,14 @@ export class GamePresenter {
     // This is overridden by main.ts
   }
 
-  // Hook for the view to clear state after rendering
   public postRender(): void {
     this.state.landscape.newCraters = [];
-    if ((this.state as any).gameEnded) {
-      if (!(this as any).gameOverLogged) {
-        (this as any).gameOverLogged = true;
-        const winner = this.state.players.find(p => p.health > 0);
-        setTimeout(() => {
-          alert(`Game Over! ${winner ? winner.name + ' wins!' : 'Draw!'}`);
-          window.location.reload();
-        }, 1000);
-      }
-    }
   }
 
   public handleInput(action: string, isActive: boolean, isRemote: boolean = false, payload?: any): void {
     if (!this.isRunning) return;
 
-    if (action === 'spawnAirdrop' && isActive && !isRemote) {
+    if (action === 'spawnAirdrop' && isActive) {
       this.spawnAirdrop();
       return;
     }
@@ -497,26 +521,15 @@ export class GamePresenter {
         }
         break;
       case 'switch':
-        if (isActive) {
+        if (isActive && typeof payload === 'number') {
+          // Directly switch to weapon index
+          player.setWeaponIndex(payload);
+          this.updateMobileWeaponIcon(player);
+        } else if (isActive) {
           if (this.hasFiredThisTurn) break;
 
-          const team = player.team;
-          const teamAliveWorms = this.state.players
-            .filter(p => p.team === team && p.health > 0);
-
-          if (teamAliveWorms.length > 1) {
-            // Find next index in the filtered team array
-            const currentIndexInTeam = teamAliveWorms.indexOf(player);
-            const nextIndexInTeam = (currentIndexInTeam + 1) % teamAliveWorms.length;
-            
-            // Get the actual player object
-            const nextPlayer = teamAliveWorms[nextIndexInTeam];
-            
-            // Find its global index in state.players
-            this.state.currentPlayerIndex = this.state.players.indexOf(nextPlayer);
-            
-            this.updateMobileWeaponIcon(nextPlayer);
-          }
+          player.switchWeapon();
+          this.updateMobileWeaponIcon(player);
         }
         break;
     }
@@ -591,6 +604,9 @@ export class GamePresenter {
       return;
     }
     
+    this.hasFiredThisTurn = true;
+    this.state.hasFiredThisTurn = true;
+    
     AudioManager.playShoot();
 
     // Apply cooldown (Dynamic: based on shot power, min 20% of base cooldown)
@@ -634,7 +650,7 @@ export class GamePresenter {
       let rad = baseRad;
       if (weapon.spread > 0) {
         const spreadRad = weapon.spread * (Math.PI / 180);
-        rad += (Math.random() - 0.5) * spreadRad;
+        rad += (Random.next() - 0.5) * spreadRad;
       }
 
       const vx = Math.cos(rad) * speed;
@@ -654,29 +670,29 @@ export class GamePresenter {
     
     // Check if custom logos from DB are available
     if (this.state.availableLogos && this.state.availableLogos.length > 0) {
-      const logo = this.state.availableLogos[Math.floor(Math.random() * this.state.availableLogos.length)];
+      const logo = this.state.availableLogos[Random.nextInt(0, this.state.availableLogos.length - 1)];
       sprite = logo.image_data; // This contains the base64
       width = logo.width || 100;
       height = logo.height || 60;
       hardness = logo.hardness || 10;
     } else {
-      // Fallback to local files
+      // Fallback to text_to_image URLs
       const logos = [
-        '/assets/logos/mega_mart.png',
-        '/assets/logos/kostar.png',
-        '/assets/logos/mugdonalds.png',
-        '/assets/logos/burgo_burger.png'
+        'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=A%20colorful%20supermarket%20logo%20saying%20MEGA%20MART%20transparent%20background&image_size=landscape_16_9',
+        'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=A%20coffee%20shop%20logo%20with%20a%20star%20saying%20KOSTAR%20transparent%20background&image_size=landscape_16_9',
+        'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=A%20fast%20food%20logo%20with%20golden%20M%20saying%20MUGDONALDS%20transparent%20background&image_size=landscape_16_9',
+        'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=A%20burger%20restaurant%20logo%20saying%20BURGO%20BURGER%20transparent%20background&image_size=landscape_16_9'
       ];
-      sprite = logos[Math.floor(Math.random() * logos.length)];
+      sprite = logos[Random.nextInt(0, logos.length - 1)];
     }
 
-    const spawnX = Math.max(100, Math.min(this.state.landscape.width - 100, this.state.cameraX + (this.initialWidth / this.state.zoom) / 2 + (Math.random() - 0.5) * 400));
+    const spawnX = Math.max(100, Math.min(this.state.landscape.width - 100, this.state.cameraX + (this.initialWidth / this.state.zoom) / 2 + (Random.next() - 0.5) * 400));
     const spawnY = -100; // Above screen
     
-    const vx = (Math.random() - 0.5) * 60; // -30 to +30
+    const vx = (Random.next() - 0.5) * 60; // -30 to +30
     const vy = 0;
-    const angle = (Math.random() - 0.5) * 0.5; // slight initial tilt
-    const angularVelocity = (Math.random() - 0.5) * 2;
+    const angle = (Random.next() - 0.5) * 0.5; // slight initial tilt
+    const angularVelocity = (Random.next() - 0.5) * 2;
 
     const brandLogo = new BrandLogo(sprite, spawnX, spawnY, vx, vy, angle, angularVelocity);
     // Increase the visual and physical size by 1.5x as requested
@@ -714,30 +730,95 @@ export class GamePresenter {
     if (totalPlayers === 0) return;
 
     this.hasFiredThisTurn = false;
+    this.state.hasFiredThisTurn = false;
 
+    // Keep track of which team went last
     const currentPlayer = this.state.getCurrentPlayer();
     const currentTeam = currentPlayer ? currentPlayer.team : 'team1';
-    const nextTeam = currentTeam === 'team1' ? 'team2' : 'team1';
-
-    const nextTeamAliveWorms = this.state.players
-      .map((p, index) => ({ p, index }))
-      .filter(item => item.p.team === nextTeam && item.p.health > 0);
-
-    if (nextTeamAliveWorms.length === 0) {
-      return;
-    }
-
-    const nextIndex = nextTeamAliveWorms[0].index;
-    this.state.currentPlayerIndex = nextIndex;
     
-    const player = this.state.getCurrentPlayer();
-    if (player) {
-      this.updateMobileWeaponIcon(player);
-      player.vx = 0;
-      player.vy = 0;
-      player.isJumping = false;
-      this.turnTimeLeft = this.maxTurnTime;
-      this.state.wind = (Math.random() - 0.5) * 40;
+    // Only switch teams if it's not training mode, otherwise just loop through team 1
+    const nextTeam = (this.state.mode === 'training') ? 'team1' : (currentTeam === 'team1' ? 'team2' : 'team1');
+
+    // Find the next worm for the NEXT team
+    let nextIndex = -1;
+    let attempts = 0;
+    
+    // In order to not just keep jumping to the same worm, we need to find the NEXT worm 
+    // that belongs to `nextTeam` and is alive. 
+    // BUT we also need to remember the turn order within that team.
+    // Right now, `currentPlayerIndex` might belong to `team1`. If we want the next `team2` worm,
+    // we should really keep a separate index for each team, OR just iterate from the last used index
+    // of `nextTeam`.
+    // Simple approach: start searching from `currentPlayerIndex + 1` wrapping around.
+    // This naturally cycles through all worms, effectively alternating teams if worms are interleaved,
+    // but they are NOT interleaved in the array (team1 is 0,1,2; team2 is 3,4,5).
+    // So if team1 finishes, searching from index 0+1=1 finds team1 again. 
+    // We MUST search for the next alive worm of `nextTeam`.
+    
+    // To ensure fair cycling within a team, we need to know the *last* worm that played for that team.
+    // We can just find the *first* alive worm of `nextTeam` that appears *after* the last worm that played for `nextTeam`.
+    
+    // If we haven't tracked this, we can just find the NEXT worm of the NEXT team starting from `currentPlayerIndex + 1` 
+    // Wait, if team1 is 0,1,2 and team2 is 3,4,5. 
+    // Player 0 (team1) plays. Next is team2. Search from 1. 1, 2 are team1. 3 is team2! Next is 3.
+    // Player 3 (team2) plays. Next is team1. Search from 4. 4, 5 are team2. 0 is team1! Next is 0.
+    // Player 0 plays again? No, we want player 1!
+    // Ah, because search from 4 wraps to 0. It finds 0 again.
+    
+    // Correct logic: find the NEXT worm of the target team, relative to the LAST worm that played for that team.
+    // Since we don't have that easily stored, we can calculate it:
+    // Actually, a simple fix is to keep `teamTurnIndex[team]` in GameState, but we can also just find the NEXT worm of `nextTeam` 
+    // starting from `lastPlayedIndex[nextTeam] + 1`.
+    
+    if (this.state.lastPlayedIndex === undefined) {
+      this.state.lastPlayedIndex = { 'team1': -1, 'team2': -1 };
     }
+    
+    this.state.lastPlayedIndex[currentTeam] = this.state.currentPlayerIndex;
+    
+    let searchIndex = (this.state.lastPlayedIndex[nextTeam] + 1) % totalPlayers;
+    
+    while (attempts < totalPlayers) {
+      const p = this.state.players[searchIndex];
+      if (p.team === nextTeam && p.health > 0) {
+        nextIndex = searchIndex;
+        break;
+      }
+      searchIndex = (searchIndex + 1) % totalPlayers;
+      attempts++;
+    }
+
+    // If the next team has no alive worms, try to find ANY alive worm (game over condition usually catches this first)
+    if (nextIndex === -1) {
+      searchIndex = (this.state.currentPlayerIndex + 1) % totalPlayers;
+      attempts = 0;
+      while (attempts < totalPlayers) {
+        const p = this.state.players[searchIndex];
+        if (p.health > 0) {
+          nextIndex = searchIndex;
+          break;
+        }
+        searchIndex = (searchIndex + 1) % totalPlayers;
+        attempts++;
+      }
+    }
+
+    // Update last played index ONLY if we successfully found a next worm
+    if (nextIndex !== -1) {
+      this.state.currentPlayerIndex = nextIndex;
+      // We found a worm for nextTeam, so we will update lastPlayedIndex for nextTeam right now?
+      // No, we update lastPlayedIndex[currentTeam] to be currentPlayerIndex, which we did.
+      const player = this.state.getCurrentPlayer();
+      if (player) {
+        this.updateMobileWeaponIcon(player);
+        player.vx = 0;
+        player.vy = 0;
+        player.isJumping = false;
+      }
+    }
+
+    this.turnTimeLeft = this.maxTurnTime;
+    this.state.turnTimeLeft = this.turnTimeLeft;
+    this.state.wind = (Random.next() - 0.5) * 40;
   }
 }

@@ -40,7 +40,8 @@ export class AdminPanel {
           <aside class="admin-sidebar">
             <h2>Worms Admin</h2>
             <nav>
-              <button id="nav-dashboard" class="admin-nav-btn active">Dashboard</button>
+              <button id="nav-maps" class="admin-nav-btn active">Custom Maps</button>
+              <button id="nav-dashboard" class="admin-nav-btn">Dashboard</button>
               <button id="nav-users" class="admin-nav-btn">Users Management</button>
               <button id="nav-logos" class="admin-nav-btn">Airdrop Logos</button>
               <button id="nav-spritesets" class="admin-nav-btn">Sprite Sets</button>
@@ -50,7 +51,37 @@ export class AdminPanel {
           </aside>
           
           <main class="admin-main-content">
-            <section id="section-dashboard" class="admin-section active">
+            <section id="section-maps" class="admin-section active">
+              <div class="section-header">
+                <h2>Custom Maps</h2>
+                <button id="load-maps" class="secondary-btn small-btn">Refresh</button>
+              </div>
+              <div class="upload-map-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
+                <h3>Upload New Map</h3>
+                <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">Upload a PNG image (ideal size: 1500x800). Transparent areas become air, colored areas become terrain, black (#000000) becomes indestructible alloy.</p>
+                <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; align-items: center;">
+                  <input type="text" id="map-name" placeholder="Map Name" class="retro-input">
+                  <input type="file" id="map-file" accept="image/png" style="color: white;">
+                  <button id="upload-map-btn" class="primary-btn small-btn" disabled>Upload Map</button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Preview</th>
+                      <th>Name</th>
+                      <th>Size</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="maps-list-body">
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="section-dashboard" class="admin-section">
               <h2>Dashboard Statistics</h2>
               <div class="stats-grid">
                 <div class="stat-card">
@@ -222,6 +253,10 @@ export class AdminPanel {
     
     // Navigation
     document.getElementById('nav-dashboard')?.addEventListener('click', (e) => this.switchTab('dashboard', e.target as HTMLElement));
+    document.getElementById('nav-maps')?.addEventListener('click', (e) => {
+      this.switchTab('maps', e.target as HTMLElement);
+      this.loadMapsData();
+    });
     document.getElementById('nav-users')?.addEventListener('click', (e) => {
       this.switchTab('users', e.target as HTMLElement);
       this.loadUsersData();
@@ -240,9 +275,61 @@ export class AdminPanel {
     });
 
     document.getElementById('load-logos')?.addEventListener('click', () => this.loadLogosData());
+    document.getElementById('load-maps')?.addEventListener('click', () => this.loadMapsData());
     document.getElementById('load-spritesets')?.addEventListener('click', () => this.loadSpriteSetsData());
     document.getElementById('load-weapons')?.addEventListener('click', () => this.loadWeaponsData());
     
+    // Maps Upload Events
+    const mapFileInput = document.getElementById('map-file') as HTMLInputElement;
+    const mapUploadBtn = document.getElementById('upload-map-btn') as HTMLButtonElement;
+    let selectedMapFile: File | null = null;
+    
+    mapFileInput?.addEventListener('change', (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        selectedMapFile = file;
+        mapUploadBtn.disabled = false;
+      }
+    });
+    
+    mapUploadBtn?.addEventListener('click', async () => {
+      if (!selectedMapFile) return;
+      const name = (document.getElementById('map-name') as HTMLInputElement).value || 'Unnamed Map';
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const base64 = ev.target?.result as string;
+        // Get dimensions
+        const img = new Image();
+        img.onload = async () => {
+          try {
+            const res = await fetch(APIClient.BASE_URL + '/admin/maps', {
+              method: 'POST',
+              headers: { ...Object.fromEntries(this.adminHeaders), 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name,
+                image_data: base64,
+                width: img.width,
+                height: img.height
+              })
+            });
+            if (res.ok) {
+              alert('Map uploaded successfully!');
+              this.loadMapsData();
+              (document.getElementById('map-name') as HTMLInputElement).value = '';
+              mapFileInput.value = '';
+              mapUploadBtn.disabled = true;
+            } else {
+              alert('Failed to upload map');
+            }
+          } catch(e) {
+            alert('Error uploading map');
+          }
+        };
+        img.src = base64;
+      };
+      reader.readAsDataURL(selectedMapFile);
+    });
+
     // Cropper & Logo Upload Events
     const fileInput = document.getElementById('logo-file') as HTMLInputElement;
     const uploadBtn = document.getElementById('upload-logo-btn') as HTMLButtonElement;
@@ -258,10 +345,17 @@ export class AdminPanel {
   }
 
   private switchTab(tabId: string, btnElement: HTMLElement) {
-    document.querySelectorAll('.admin-section').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.admin-section').forEach(el => {
+      (el as HTMLElement).style.display = 'none';
+      el.classList.remove('active');
+    });
     document.querySelectorAll('.admin-nav-btn').forEach(el => el.classList.remove('active'));
     
-    document.getElementById(`section-${tabId}`)?.classList.add('active');
+    const targetSection = document.getElementById(`section-${tabId}`);
+    if (targetSection) {
+      targetSection.style.display = 'block';
+      targetSection.classList.add('active');
+    }
     btnElement.classList.add('active');
   }
 
@@ -284,6 +378,9 @@ export class AdminPanel {
         localStorage.setItem('adminPassword', pass);
         document.getElementById('admin-auth')!.style.display = 'none';
         document.getElementById('admin-dashboard')!.style.display = 'flex';
+        
+        // Ensure Custom Maps is loaded initially since it's the active tab
+        this.loadMapsData();
       } else {
         localStorage.removeItem('adminEmail');
         localStorage.removeItem('adminPassword');
@@ -466,6 +563,67 @@ export class AdminPanel {
         this.loadUsersData();
       } else {
         alert('Failed to delete user');
+      }
+    } catch (err) {
+      alert('Network error');
+    }
+  }
+
+  // --- MAPS MANAGEMENT ---
+
+  private async loadMapsData() {
+    try {
+      const res = await fetch(APIClient.BASE_URL + '/maps');
+      if (!res.ok) throw new Error('Failed to fetch maps');
+      
+      const maps = await res.json();
+      this.renderMapsTable(maps);
+    } catch (e) {
+      console.error(e);
+      alert('Error loading maps');
+    }
+  }
+
+  private renderMapsTable(maps: any[]) {
+    const tbody = document.getElementById('maps-list-body');
+    if (!tbody) return;
+
+    if (maps.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No maps uploaded yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = maps.map(map => `
+      <tr>
+        <td><img src="${map.image_data}" alt="${map.name}" style="max-width: 150px; max-height: 100px; object-fit: contain; background: rgba(0,0,0,0.5); border-radius: 4px; padding: 2px;"></td>
+        <td>${map.name}</td>
+        <td>${map.width} x ${map.height}</td>
+        <td style="white-space: nowrap;">
+          <button class="secondary-btn small-btn delete-map-btn" data-id="${map.id}">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+
+    document.querySelectorAll('.delete-map-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.deleteMap(e));
+    });
+  }
+
+  private async deleteMap(e: Event) {
+    const id = (e.target as HTMLButtonElement).dataset.id;
+    if (!id) return;
+
+    if (!confirm('Are you sure you want to delete this map?')) return;
+
+    try {
+      const res = await fetch(APIClient.BASE_URL + `/admin/maps/${id}`, {
+        method: 'DELETE',
+        headers: this.adminHeaders
+      });
+      if (res.ok) {
+        this.loadMapsData();
+      } else {
+        alert('Failed to delete map');
       }
     } catch (err) {
       alert('Network error');

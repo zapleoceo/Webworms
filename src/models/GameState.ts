@@ -38,6 +38,8 @@ export class GameState {
   
   public width: number;
   public height: number;
+  public mapSeed?: number;
+  public mapData?: string; // Add mapData field
 
   public snowflakes: {x: number, y: number, vx: number, vy: number}[] = [];
 
@@ -47,10 +49,13 @@ export class GameState {
   
   public wind: number = 0; // Wind affecting projectiles
   public windTarget: number = 0; // Target for smooth random transition
+  public hasFiredThisTurn: boolean = false;
   public turnTimeLeft: number = 30;
+  public mode: string = 'training';
   public availableLogos: any[] = [];
   public airdropTimer: number = 60;
   public cameraShakeTime: number = 0;
+  public lastPlayedIndex?: { [team: string]: number };
 
   constructor(width: number, height: number) {
     this.width = width;

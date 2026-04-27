@@ -213,30 +213,29 @@ export class CanvasRenderer {
       // Generate base terrain mask and texture
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          const mat = state.landscape.getMaterial(x, y);
-          if (mat === 0) continue; // transparent
-          
-          const idx = (y * width + x) * 4;
-          data[idx + 3] = 255; // Alpha
-          
-          if (mat === 1) { // Dirt / Ground
-            data[idx] = 101; data[idx+1] = 67; data[idx+2] = 33; // Brown
-            // Add some deterministic noise texture to dirt
-            if ((x * 31 + y * 17) % 100 > 80) { data[idx]-=15; data[idx+1]-=10; data[idx+2]-=5; }
-          } else if (mat === 2) { // Rock
-            data[idx] = 80; data[idx+1] = 80; data[idx+2] = 85;
-            // Add deterministic noise to rock
-            if ((x * 13 + y * 37) % 100 > 75) { data[idx]-=15; data[idx+1]-=15; data[idx+2]-=15; }
-          } else if (mat === 3) { // Ice
-            data[idx] = 170; data[idx+1] = 221; data[idx+2] = 255;
-          } else if (mat === 4) { // Metal Platform
-            data[idx] = 120; data[idx+1] = 120; data[idx+2] = 130;
-            if ((x+y)%10 === 0) { data[idx] = 90; data[idx+1] = 90; data[idx+2] = 100; }
-          } else if (mat === 5) { // Snow
-            data[idx] = 255; data[idx+1] = 255; data[idx+2] = 255;
-          } else if (mat === 255) { // Alloy (Border)
-            data[idx] = 20; data[idx+1] = 20; data[idx+2] = 25;
-            if ((x+y)%10 === 0) { data[idx] = 40; data[idx+1] = 40; data[idx+2] = 50; }
+          const material = state.landscape.getMaterial(x, y);
+          if (material === 1) { // Destructible terrain
+            // Base color (dirt)
+            let color = [100 + (Math.random()*10), 60 + (Math.random()*10), 20];
+            
+            // Add noise texture
+            if (Math.random() > 0.9) color = [80, 50, 15]; // dark spots
+            if (Math.random() > 0.95) color = [130, 90, 40]; // light spots
+            
+            const idx = (y * width + x) * 4;
+            data[idx] = color[0];
+            data[idx + 1] = color[1];
+            data[idx + 2] = color[2];
+            data[idx + 3] = 255;
+          } else if (material === 255) { // Indestructible terrain
+            // Dark gray alloy texture
+            const isLine = (x + y) % 10 === 0 || (x - y) % 10 === 0;
+            const color = isLine ? [40, 40, 50] : [20, 20, 25];
+            const idx = (y * width + x) * 4;
+            data[idx] = color[0];
+            data[idx + 1] = color[1];
+            data[idx + 2] = color[2];
+            data[idx + 3] = 255;
           }
         }
       }
@@ -298,7 +297,7 @@ export class CanvasRenderer {
     }
 
     // 2. Process new craters using ultra-fast composite operations to punch holes and add outlines
-    if (state.landscape.newCraters.length > 0) {
+    if (state.landscape.newCraters && state.landscape.newCraters.length > 0) {
       for (const crater of state.landscape.newCraters) {
         // Step 1: Draw slightly larger black circle using source-atop.
         // This paints a dark outline only where terrain currently exists.
@@ -716,6 +715,14 @@ export class CanvasRenderer {
     this.ctx.fillStyle = 'white';
     this.ctx.fillRect(70, 28, 1, 9);
     
+    if (state.turnTimeLeft !== Infinity) {
+      this.ctx.fillStyle = 'white';
+      this.ctx.font = 'bold 24px Courier New';
+      this.ctx.textAlign = 'center';
+      const timeStr = Math.ceil(state.turnTimeLeft).toString();
+      this.ctx.fillText(`TIME: ${timeStr}`, this.canvas.width / 2, 30);
+    }
+
     const player = state.getCurrentPlayer();
     if (!player) return;
 

@@ -3,6 +3,7 @@ import { Projectile } from '../models/Projectile';
 import { Explosion } from '../models/Explosion';
 import { BrandLogo } from '../models/BrandLogo';
 import { MathUtils } from '../utils/MathUtils';
+import { Random } from '../utils/Random';
 import { AudioManager } from '../utils/AudioManager';
 
 export class PhysicsEngine {
@@ -49,8 +50,8 @@ export class PhysicsEngine {
     state.projectiles = state.projectiles.filter(p => p.active);
 
     // Smoothly transition wind to target
-    if (Math.random() < 0.01) { // Random chance to change wind direction every frame
-      state.windTarget = (Math.random() - 0.5) * 150; // Random wind up to +/- 75 px/s
+    if (Random.next() < 0.01) { // Random chance to change wind direction every frame
+      state.windTarget = (Random.next() - 0.5) * 150; // Random wind up to +/- 75 px/s
     }
     state.wind += (state.windTarget - state.wind) * dt * 0.5; // Lerp wind
 
@@ -124,14 +125,14 @@ export class PhysicsEngine {
         if (!state.particles) state.particles = [];
         for (let i = 0; i < 20; i++) {
           state.particles.push({
-            x: logo.x + (Math.random() - 0.5) * logo.width,
+            x: logo.x + (Random.next() - 0.5) * logo.width,
             y: logo.y + logo.height / 2,
-            vx: (Math.random() - 0.5) * 100,
-            vy: -Math.random() * 50 - 20,
-            life: 0.3 + Math.random() * 0.4,
+            vx: (Random.next() - 0.5) * 100,
+            vy: -Random.next() * 50 - 20,
+            life: 0.3 + Random.next() * 0.4,
             maxLife: 0.7,
             color: '#8B5A2B', // Dirt color
-            size: 2 + Math.random() * 3
+            size: 2 + Random.next() * 3
           });
         }
       }
@@ -650,11 +651,12 @@ export class PhysicsEngine {
 
     // Damage nearby players and push props
     for (const player of state.players) {
+      if (player.health <= 0) continue;
       const playerRadius = player.width / 2;
       const dist = MathUtils.distance(proj.x, proj.y, player.x, player.y);
-      if (dist <= proj.explosionRadius + playerRadius) {
+      if (dist <= finalRadius + playerRadius) {
         // Simple damage falloff
-        const damageRatio = 1 - (dist / (proj.explosionRadius + playerRadius));
+        const damageRatio = 1 - (dist / (finalRadius + playerRadius));
         const actualDamage = proj.damage * damageRatio;
         player.takeDamage(actualDamage);
         this.addFloatingText(state, player.x, player.y - 20, `-${Math.round(actualDamage)}`, '#FF0000');
@@ -686,7 +688,7 @@ export class PhysicsEngine {
         const knockback = (proj as any).knockback || proj.damage || 50;
         prop.vx += Math.cos(angle) * knockback * 2;
         prop.vy += Math.sin(angle) * knockback * 2;
-        prop.rotation += (Math.random() - 0.5) * 5;
+        prop.rotation += (Random.next() - 0.5) * 5;
         prop.isSettled = false;
       }
     }

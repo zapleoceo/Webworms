@@ -1,5 +1,7 @@
 import { TerrainGenerator } from '../utils/TerrainGenerator';
 
+import { Random } from '../utils/Random';
+
 export class Landscape {
   public width: number;
   public height: number;
@@ -40,8 +42,72 @@ export class Landscape {
     this.setMaterial(x, y, solid ? 1 : 0);
   }
 
-  public generateTerrain(): void {
-    this.grid = TerrainGenerator.generate(this.width, this.height);
+  public async generateFromImage(imageUrl: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.onload = () => {
+        // Adjust landscape size to image size
+        this.width = img.width;
+        this.height = img.height;
+        this.grid = new Uint8Array(this.width * this.height);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = this.width;
+        canvas.height = this.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        if (!ctx) {
+          reject(new Error("Cannot get 2d context"));
+          return;
+        }
+        
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, this.width, this.height).data;
+        
+        // Build physics grid
+        // Format: [R, G, B, A, R, G, B, A, ...]
+        for (let i = 0; i < imageData.length; i += 4) {
+          const alpha = imageData[i + 3];
+          const pixelIndex = i / 4;
+          
+          if (alpha < 10) {
+            // Transparent = air
+            this.grid[pixelIndex] = 0;
+          } else {
+            // Opaque = land
+            // Check if it's pure black for indestructible (or near black)
+            const r = imageData[i];
+            const g = imageData[i + 1];
+            const b = imageData[i + 2];
+            
+            if (r < 10 && g < 10 && b < 10) {
+              this.grid[pixelIndex] = 255; // Indestructible
+            } else {
+              this.grid[pixelIndex] = 1;   // Destructible earth
+            }
+          }
+        }
+        
+        // Ensure boundaries are solid (optional, but good for gameplay)
+        for (let y = 0; y < this.height; y++) {
+          for (let x = 0; x < this.width; x++) {
+            if (x < 10 || x >= this.width - 10 || y >= this.height - 10) {
+               this.grid[y * this.width + x] = 255;
+            }
+          }
+        }
+
+        this.needsUpdate = true;
+        resolve();
+      };
+      img.onerror = () => reject(new Error(`Failed to load map image: ${imageUrl}`));
+      img.src = imageUrl;
+    });
+  }
+
+  public generateTerrain(seed?: number): void {
+    this.grid = TerrainGenerator.generate(this.width, this.height, seed);
     this.needsUpdate = true;
   }
 
@@ -86,14 +152,16 @@ export class Landscape {
     return this.height - 10;
   }
 
-  public getSafeSpawn(existingPoints: {x: number, y: number}[], minDistance: number): {x: number, y: number} {
+  public getSafeSpawn(existingPoints: {x: number, y: number}[], minDistance: number, seed?: number): {x: number, y: number} {
     let bestX = this.width / 2;
     let bestY = this.getTopSolidY(bestX);
     const maxAttempts = 50;
 
+    const random = seed !== undefined ? (() => Random.next()) : Math.random;
+
     for (let i = 0; i < maxAttempts; i++) {
       // Pick random X, keeping away from borders
-      const testX = 50 + Math.random() * (this.width - 100);
+      const testX = 50 + random() * (this.width - 100);
       const testY = this.getTopSolidY(testX);
 
       let tooClose = false;

@@ -72,10 +72,14 @@ export class MultiplayerSync {
     // Poll for answer
     this.pollInterval = window.setInterval(async () => {
       const answer = await APIClient.getSignal(this.roomId!, 'answer');
-      if (answer && this.peerConnection!.signalingState !== 'stable') {
-        await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(answer));
-        if (this.pollInterval) clearInterval(this.pollInterval);
-        this.pollForIceCandidates('ice-client');
+      if (answer && this.peerConnection!.signalingState === 'have-local-offer') {
+        try {
+          await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(answer));
+          if (this.pollInterval) clearInterval(this.pollInterval);
+          this.pollForIceCandidates('ice-client');
+        } catch (e) {
+          console.error("Failed to set remote description", e);
+        }
       }
     }, 2000);
   }
@@ -94,12 +98,16 @@ export class MultiplayerSync {
       if (offer && this.peerConnection!.signalingState === 'stable') {
         if (this.pollInterval) clearInterval(this.pollInterval);
         
-        await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await this.peerConnection!.createAnswer();
-        await this.peerConnection!.setLocalDescription(answer);
-        
-        await APIClient.sendSignal(this.roomId!, 'answer', answer);
-        this.pollForIceCandidates('ice-host');
+        try {
+          await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await this.peerConnection!.createAnswer();
+          await this.peerConnection!.setLocalDescription(answer);
+          
+          await APIClient.sendSignal(this.roomId!, 'answer', answer);
+          this.pollForIceCandidates('ice-host');
+        } catch (e) {
+          console.error("Failed to handle offer", e);
+        }
       }
     }, 2000);
   }
@@ -115,8 +123,12 @@ export class MultiplayerSync {
       if (Array.isArray(candidates)) {
         for (let i = lastProcessedIndex; i < candidates.length; i++) {
           try {
-            await this.peerConnection!.addIceCandidate(new RTCIceCandidate(candidates[i]));
-          } catch (e) {}
+            if (candidates[i]) {
+              await this.peerConnection!.addIceCandidate(new RTCIceCandidate(candidates[i]));
+            }
+          } catch (e) {
+            console.error('Failed to add ICE candidate', e);
+          }
         }
         lastProcessedIndex = candidates.length;
       }
@@ -152,10 +164,46 @@ export class MultiplayerSync {
     this.dataChannel.send(JSON.stringify({ type: 'action', action, active, payload }));
   }
 
+  private lastSyncTime = 0;
+
   public sendStateSync(state: any): void {
     if (!this.isHost) return; // Only host dictates absolute state
+    
+    // Throttle sync to ~20fps to prevent data channel congestion
+    const now = performance.now();
+    if (now - this.lastSyncTime < 50) return;
+    this.lastSyncTime = now;
+
     if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      this.dataChannel.send(JSON.stringify({ type: 'sync', state }));
+      const statePayload = {
+        mapSeed: state.mapSeed,
+        mapData: state.mapData, // Added for custom maps
+        currentPlayerIndex: state.currentPlayerIndex,
+        wind: state.wind,
+        turnTimeLeft: state.turnTimeLeft,
+        hasFiredThisTurn: state.hasFiredThisTurn,
+        lastPlayedIndex: state.lastPlayedIndex,
+        players: state.players.map((p: any) => ({
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy,
+          health: p.health,
+          aimAngle: p.aimAngle,
+          facingRight: p.facingRight,
+          team: p.team,
+          unitClass: p.unitClass,
+          currentWeaponIndex: p.currentWeaponIndex
+        })),
+        projectiles: state.projectiles.map((p: any) => ({
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy,
+          weaponId: p.weaponId
+        }))
+      };
+      this.dataChannel.send(JSON.stringify({ type: 'sync', state: statePayload }));
     }
   }
 }

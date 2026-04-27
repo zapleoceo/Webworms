@@ -1,5 +1,5 @@
 export class TerrainGenerator {
-  public static generate(width: number, height: number): Uint8Array {
+  public static generate(width: number, height: number, seed?: number): Uint8Array {
     const grid = new Uint8Array(width * height);
     
     // Materials:
@@ -15,10 +15,18 @@ export class TerrainGenerator {
       }
     };
 
+    // Use a simple seeded PRNG if a seed is provided
+    const random = seed !== undefined ? (() => {
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }) : Math.random;
+
     const baseHeight = height * 0.6; // Lower 40% is solid ground base
-    const seed1 = Math.random() * 1000;
-    const seed2 = Math.random() * 1000;
-    const seed3 = Math.random() * 1000;
+    const seed1 = random() * 1000;
+    const seed2 = random() * 1000;
+    const seed3 = random() * 1000;
     const surface = new Float32Array(width);
 
     // Generate 1D surface profile with smoother Worms-like hills
@@ -91,7 +99,7 @@ export class TerrainGenerator {
               setPixel(x, y, 1); // Dirt islands
             } else if (noise > 1.2) {
               // Occasional small meteorite chunks floating
-              if (Math.random() < 0.02) {
+              if (random() < 0.02) {
                 setPixel(x, y, 2);
               }
             }

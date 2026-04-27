@@ -168,7 +168,22 @@ export class BrandLogo {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.shadowColor = 'transparent';
-      const name = this.sprite.split('/').pop()?.split('.')[0] || 'LOGO';
+      
+      let name = 'LOGO';
+      if (this.sprite.includes('prompt=')) {
+        try {
+          const url = new URL(this.sprite);
+          const prompt = url.searchParams.get('prompt');
+          if (prompt) {
+            // Extract the name like "MEGA MART" from "saying MEGA MART"
+            const match = prompt.match(/saying\s+([A-Z\s]+)\s+transparent/);
+            if (match && match[1]) name = match[1];
+          }
+        } catch(e) {}
+      } else {
+        name = this.sprite.split('/').pop()?.split('.')[0] || 'LOGO';
+      }
+      
       ctx.fillText(name.toUpperCase(), 0, 0);
     }
 

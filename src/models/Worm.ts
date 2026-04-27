@@ -76,13 +76,21 @@ export class Worm {
       this.teamColor = '#33FF33'; // Green
     }
 
-    if (isDummy) {
+    if (isDummy && window.location.pathname.indexOf('training') !== -1) {
       this.health = 10000;
       this.maxHealth = 10000;
       this.teamColor = '#4169E1';
     }
     
     // Load selected weapons
+    const WEAPONS: any = {
+      'bazooka': { id: 'bazooka', name: 'Bazooka', damage: 25, explosionRadius: 40, projectilesPerShot: 1, spread: 0, cooldown: 1.0, windMultiplier: 1.0 },
+      'minigun': { id: 'minigun', name: 'Minigun', damage: 4, explosionRadius: 15, projectilesPerShot: 1, spread: 15, cooldown: 0.1, windMultiplier: 0.5 },
+      'triple': { id: 'triple', name: 'Triple Shot', damage: 15, explosionRadius: 25, projectilesPerShot: 3, spread: 20, cooldown: 1.5, windMultiplier: 1.0 },
+      'rocket': { id: 'rocket', name: 'Heavy Rocket', damage: 40, explosionRadius: 60, projectilesPerShot: 1, spread: 0, cooldown: 2.0, windMultiplier: 1.2 },
+      'blaster': { id: 'blaster', name: 'Blaster', damage: 10, explosionRadius: 15, projectilesPerShot: 1, spread: 2, cooldown: 0.3, windMultiplier: 0.1 }
+    };
+
     for (const wid of selectedWeapons) {
       if (WEAPONS[wid]) {
         this.weapons.push(WEAPONS[wid]);

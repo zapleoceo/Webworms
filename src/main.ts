@@ -6,6 +6,8 @@ import { InputHandler } from './views/InputHandler';
 import { APIClient } from './network/APIClient';
 import { MultiplayerSync } from './network/MultiplayerSync';
 import { AudioManager } from './utils/AudioManager';
+import { Random } from './utils/Random';
+import { Worm } from './models/Worm';
 
 declare global {
   interface Window {
@@ -36,6 +38,19 @@ const timeBalanceEl = document.getElementById('profile-stats-balance')!;
 
 // Only run game logic if we are not on the admin page and have game elements
 if (!isAdminPage) {
+
+// Load custom maps into dropdown
+APIClient.getMaps().then(maps => {
+  const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
+  if (mapTypeSelect && maps && maps.length > 0) {
+    maps.forEach((m: any) => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.innerText = `[Custom] ${m.name}`;
+      mapTypeSelect.appendChild(opt);
+    });
+  }
+});
 
 // Weapon Carousel Logic
 const weaponSlots = document.querySelectorAll('.weapon-slot');
@@ -446,14 +461,30 @@ let currentMatchToken: string | null = null;
 
   const turnTime = await APIClient.getTurnTime();
   const logos = await APIClient.getLogos();
+  const maps = await APIClient.getMaps();
 
-  window.presenter.startGame({
+  // Use a map if one is selected, else generate
+  let mapData = null;
+  const selectedMapId = mapTypeSelect.value;
+  if (selectedMapId && selectedMapId !== 'islands' && selectedMapId !== 'cave' && selectedMapId !== 'flat') {
+    const mapObj = maps.find((m: any) => m.id === selectedMapId);
+    if (mapObj) {
+      // Need full map data
+      const fullMap = await APIClient.getMapById(selectedMapId);
+      if (fullMap) {
+        mapData = fullMap.image_data;
+      }
+    }
+  }
+
+  await window.presenter.startGame({
     width: 1500,
     height: 800,
     mapType: mapType,
     mode: mode,
     turnTime: turnTime,
-    logos: logos
+    logos: logos,
+    mapData: mapData
   });
   window.presenter.localTeam = mode === 'training' ? 'training' : 'team1';
   window.presenter.start();
@@ -514,6 +545,120 @@ let currentMatchToken: string | null = null;
       window.presenter.handleInput(action, active, true, payload); // true = from network
     };
 
+    syncModule.onStateReceived = (stateData) => {
+      if (window.presenter.localTeam === 'team2') {
+        // We are the client, update our state to match the host
+        
+        // Sync map seed if we haven't generated terrain with it yet
+        if (window.presenter.state.mapSeed !== stateData.mapSeed || (stateData.mapData && window.presenter.state.mapData !== stateData.mapData)) {
+          window.presenter.state.mapSeed = stateData.mapSeed;
+          window.presenter.state.mapData = stateData.mapData;
+          Random.setSeed(stateData.mapSeed);
+          
+          if (stateData.mapData) {
+            // Need to wait for image to load, but we are in a sync loop. 
+            // We can just trigger it, it will update when done.
+            window.presenter.state.landscape.generateFromImage(stateData.mapData).then(() => {
+              window.presenter.state.width = window.presenter.state.landscape.width;
+              window.presenter.state.height = window.presenter.state.landscape.height;
+              rebuildWorms();
+            });
+          } else {
+            window.presenter.state.landscape.generateTerrain(stateData.mapSeed);
+            rebuildWorms();
+          }
+          
+          function rebuildWorms() {
+            // Force regenerate worms with new seed
+            window.presenter.state.players = [];
+            
+            // Use the exact same generation logic as host
+            const spawnPoints: {x: number, y: number}[] = [];
+            const availableClasses = ['soldier', 'heavy', 'scout'];
+            
+            const t1Classes = [
+              availableClasses[Random.nextInt(0, availableClasses.length - 1)],
+              availableClasses[Random.nextInt(0, availableClasses.length - 1)],
+              availableClasses[Random.nextInt(0, availableClasses.length - 1)]
+            ];
+            const t2Classes = [
+              availableClasses[Random.nextInt(0, availableClasses.length - 1)],
+              availableClasses[Random.nextInt(0, availableClasses.length - 1)],
+              availableClasses[Random.nextInt(0, availableClasses.length - 1)]
+            ];
+
+            for (let i = 0; i < 3; i++) {
+              const s = window.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, stateData.mapSeed);
+              spawnPoints.push(s);
+              const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster']);
+              window.presenter.state.addPlayer(p);
+            }
+            for (let i = 0; i < 3; i++) {
+              const s = window.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, stateData.mapSeed);
+              spawnPoints.push(s);
+              const p = new Worm(s.x, s.y, false, `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster']);
+              window.presenter.state.addPlayer(p);
+            }
+          }
+        }
+
+        const oldCurrentPlayerIndex = window.presenter.state.currentPlayerIndex;
+        window.presenter.state.currentPlayerIndex = stateData.currentPlayerIndex;
+        
+        if (oldCurrentPlayerIndex !== stateData.currentPlayerIndex) {
+          const cp = window.presenter.state.getCurrentPlayer();
+          if (cp) window.presenter.updateMobileWeaponIcon(cp);
+        }
+
+        window.presenter.state.wind = stateData.wind;
+        
+        // Sync turn time only if it's drifting significantly to avoid stuttering/overwriting client's local countdown
+        if (Math.abs(window.presenter.state.turnTimeLeft - stateData.turnTimeLeft) > 1.5) {
+          window.presenter.turnTimeLeft = stateData.turnTimeLeft;
+        }
+        
+        window.presenter.hasFiredThisTurn = stateData.hasFiredThisTurn;
+        if (stateData.lastPlayedIndex) {
+          window.presenter.state.lastPlayedIndex = stateData.lastPlayedIndex;
+        }
+        
+        // Sync players
+        stateData.players.forEach((pData: any, i: number) => {
+          if (window.presenter.state.players[i]) {
+            const p = window.presenter.state.players[i];
+            
+            // Only update positions forcefully if they are wildly out of sync or if it's not their turn
+            if (window.presenter.state.currentPlayerIndex !== i || Math.abs(p.x - pData.x) > 50 || Math.abs(p.y - pData.y) > 50) {
+              p.x = pData.x;
+              p.y = pData.y;
+              p.vx = pData.vx;
+              p.vy = pData.vy;
+            }
+            
+            p.health = pData.health;
+            
+            // Do not override aim properties if this is the local player! 
+            // That causes terrible jitter.
+            if (p.team !== window.presenter.localTeam) {
+              p.aimAngle = pData.aimAngle;
+              p.facingRight = pData.facingRight;
+              
+              if (pData.currentWeaponIndex !== undefined) {
+                p.currentWeaponIndex = pData.currentWeaponIndex;
+              }
+            }
+            
+            p.team = pData.team;
+            
+            // Sync unitClass if changed
+            if (pData.unitClass && p.unitClass !== pData.unitClass) {
+              p.unitClass = pData.unitClass;
+            }
+          }
+        });
+      }
+    };
+
     window.presenter.onLocalAction = (action: string, active: boolean, payload?: any) => {
       syncModule?.sendAction(action, active, payload);
     };
@@ -563,6 +708,8 @@ let currentMatchToken: string | null = null;
         };
       } else {
         window.presenter.localTeam = 'team2';
+        window.presenter.state.mode = 'friend'; // Fix: Ensure client is not in training mode
+        window.presenter.maxTurnTime = 30; // Fix: Ensure maxTurnTime is not Infinity
         loaderText.innerText = 'JOINING ROOM...';
       }
     } catch (e: any) {
