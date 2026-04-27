@@ -350,13 +350,10 @@ async function handleContactEmail(request: Request, env: Env): Promise<Response>
     const authHeader = request.headers.get('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      const session = await env.DB.prepare('SELECT user_id FROM Sessions WHERE token = ?').bind(token).first();
-      if (session) {
-        const user = await env.DB.prepare('SELECT username, email FROM Users WHERE id = ?').bind(session.user_id).first();
-        if (user) {
-          senderName = user.username as string;
-          senderEmail = user.email as string;
-        }
+      const user = await env.DB.prepare('SELECT username, email FROM Users WHERE id = ?').bind(token).first<any>();
+      if (user) {
+        senderName = user.username as string;
+        senderEmail = user.email as string;
       }
     }
 
@@ -605,7 +602,7 @@ async function handleSession(request: Request, env: Env): Promise<Response> {
     }
 
     const sessionId = authHeader.split(' ')[1];
-    const user = await env.DB.prepare(`SELECT id, email, username, is_active, play_time_balance, premium_until FROM Users WHERE session_id = ?`).bind(sessionId).first<any>();
+    const user = await env.DB.prepare(`SELECT id, email, username, is_active, play_time_balance, premium_until FROM Users WHERE id = ?`).bind(sessionId).first<any>();
     
     if (!user) {
       return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -637,8 +634,8 @@ async function handleUpdateProfile(request: Request, env: Env): Promise<Response
 
     const sessionId = authHeader.split(' ')[1];
     
-    // Find user by session_id
-    const user = await env.DB.prepare('SELECT id FROM Users WHERE session_id = ?').bind(sessionId).first<any>();
+    // Find user by id
+    const user = await env.DB.prepare('SELECT id FROM Users WHERE id = ?').bind(sessionId).first<any>();
     if (!user) {
       return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
     }
@@ -666,7 +663,7 @@ async function handleUpdatePassword(request: Request, env: Env): Promise<Respons
 
     const sessionId = authHeader.split(' ')[1];
 
-    const user = await env.DB.prepare('SELECT id FROM Users WHERE session_id = ?').bind(sessionId).first<any>();
+    const user = await env.DB.prepare('SELECT id FROM Users WHERE id = ?').bind(sessionId).first<any>();
     if (!user) {
       return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
     }
@@ -1002,7 +999,7 @@ async function startMatch(request: Request, env: Env): Promise<Response> {
     if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
 
     const sessionId = authHeader.replace('Bearer ', '');
-    const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE session_id = ?`).bind(sessionId).first<any>();
+    const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE id = ?`).bind(sessionId).first<any>();
     if (!sessionData) return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
 
     const matchToken = crypto.randomUUID();
@@ -1027,7 +1024,7 @@ async function reportMatchEnd(request: Request, env: Env): Promise<Response> {
     if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
 
     const sessionId = authHeader.replace('Bearer ', '');
-    const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE session_id = ?`).bind(sessionId).first<any>();
+    const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE id = ?`).bind(sessionId).first<any>();
     if (!sessionData) return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
 
     const { winnerId, matchToken, isTechnical } = await request.json() as { winnerId: string, matchToken: string, isTechnical?: boolean };
@@ -1077,7 +1074,7 @@ async function capturePayPalOrder(request: Request, env: Env): Promise<Response>
     if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
     const sessionId = authHeader.replace('Bearer ', '');
-    const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE session_id = ?`).bind(sessionId).first<any>();
+    const sessionData = await env.DB.prepare(`SELECT id FROM Users WHERE id = ?`).bind(sessionId).first<any>();
     if (!sessionData) return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
     const { orderID } = await request.json() as { orderID: string };
