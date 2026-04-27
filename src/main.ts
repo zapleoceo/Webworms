@@ -36,7 +36,6 @@ const mobileControls = document.getElementById('mobile-controls')!;
 const profileScreen = document.getElementById('profile-screen')!;
 const btnOpenAuth = document.getElementById('btn-open-auth')!;
 const btnUserProfile = document.getElementById('btn-user-profile') as HTMLButtonElement;
-const timeBalanceEl = document.getElementById('profile-stats-balance')!;
 
 // Only run game logic if we are not on the admin page and have game elements
 if (!isAdminPage) {
@@ -100,7 +99,7 @@ function updateTimeBalanceDisplay() {
   const timeBalanceEl = document.getElementById('profile-stats-balance');
   const btnAddTime = document.getElementById('btn-add-time');
   
-  const balanceStr = localStorage.getItem('playTimeBalance');
+  const balanceStr = localStorage.getItem('playTimeBalance') || localStorage.getItem('userBalanceSeconds');
   const premiumStr = localStorage.getItem('premiumUntil');
   
   let hasPremium = false;
@@ -262,9 +261,7 @@ btnUserProfile.addEventListener('click', () => {
   profileScreen.style.display = ''; 
   profileScreen.classList.add('active');
   (document.getElementById('profile-username') as HTMLInputElement).value = userSessionName || '';
-  const hrs = Math.floor(Math.max(0, userBalanceSeconds) / 3600);
-  const mins = Math.floor((Math.max(0, userBalanceSeconds) % 3600) / 60);
-  timeBalanceEl.innerText = `Play Time Balance: ${hrs}h ${mins}m`;
+  updateTimeBalanceDisplay();
 });
 
 document.getElementById('btn-logout')!.addEventListener('click', () => {

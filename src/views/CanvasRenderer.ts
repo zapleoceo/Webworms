@@ -685,6 +685,8 @@ export class CanvasRenderer {
     const centerY = state.cameraY + (this.canvas.height / state.zoom) / 2;
 
     for (const player of state.players) {
+      if (player.health <= 0) continue;
+      
       if (player.x >= viewLeft && player.x <= viewRight && player.y >= viewTop && player.y <= viewBottom) {
         continue; // Visible
       }
@@ -694,17 +696,18 @@ export class CanvasRenderer {
       const dy = player.y - centerY;
       const angle = Math.atan2(dy, dx);
 
-      // Find intersection with screen edge
+      // Find intersection with screen edge (with some padding)
       let edgeX, edgeY;
       const slope = dy / dx;
+      const padding = 40;
 
-      if (Math.abs(slope) < this.canvas.height / this.canvas.width) {
+      if (Math.abs(slope) < (this.canvas.height - padding * 2) / (this.canvas.width - padding * 2)) {
         // Intersects left or right edge
-        edgeX = dx > 0 ? this.canvas.width - 20 : 20;
+        edgeX = dx > 0 ? this.canvas.width - padding : padding;
         edgeY = this.canvas.height / 2 + (edgeX - this.canvas.width / 2) * slope;
       } else {
         // Intersects top or bottom edge
-        edgeY = dy > 0 ? this.canvas.height - 20 : 20;
+        edgeY = dy > 0 ? this.canvas.height - padding : padding;
         edgeX = this.canvas.width / 2 + (edgeY - this.canvas.height / 2) / slope;
       }
 
@@ -712,20 +715,53 @@ export class CanvasRenderer {
       this.ctx.save();
       this.ctx.translate(edgeX, edgeY);
       
-      // Draw text
-      this.ctx.fillStyle = player.teamColor || 'white';
-      this.ctx.font = '12px Arial';
-      this.ctx.textAlign = 'center';
-      this.ctx.fillText(player.name, 0, dy > 0 ? -15 : 25);
+      const isCurrentPlayer = player === state.getCurrentPlayer();
+      const color = isCurrentPlayer ? '#00ff00' : (player.teamColor || 'white');
       
-      // Draw Triangle
+      // Draw text (Name)
+      this.ctx.font = 'bold 14px "Bangers", Courier New';
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      
+      // Text Shadow
+      this.ctx.fillStyle = 'black';
+      this.ctx.fillText(player.name, 2, dy > 0 ? -28 : 28);
+      
+      // Text Fill
+      this.ctx.fillStyle = color;
+      this.ctx.fillText(player.name, 0, dy > 0 ? -30 : 30);
+      
+      // Rotate for the arrow
       this.ctx.rotate(angle);
-      this.ctx.fillStyle = player.teamColor || 'white';
+      
+      // Pulsing effect for current player
+      let scale = 1;
+      if (isCurrentPlayer) {
+        scale = 1 + 0.2 * Math.sin(Date.now() / 150);
+        this.ctx.scale(scale, scale);
+      }
+
+      // Draw stylized comic arrow
       this.ctx.beginPath();
-      this.ctx.moveTo(10, 0);
-      this.ctx.lineTo(-5, 5);
-      this.ctx.lineTo(-5, -5);
+      this.ctx.moveTo(20, 0);
+      this.ctx.lineTo(-10, 15);
+      this.ctx.lineTo(-2, 0);
+      this.ctx.lineTo(-10, -15);
+      this.ctx.closePath();
+      
+      // Arrow shadow/stroke
+      this.ctx.shadowColor = 'black';
+      this.ctx.shadowBlur = 0;
+      this.ctx.shadowOffsetX = 2;
+      this.ctx.shadowOffsetY = 2;
+      
+      this.ctx.fillStyle = color;
       this.ctx.fill();
+      
+      this.ctx.lineWidth = 2;
+      this.ctx.strokeStyle = 'black';
+      this.ctx.shadowColor = 'transparent'; // turn off shadow for stroke
+      this.ctx.stroke();
       
       this.ctx.restore();
     }
