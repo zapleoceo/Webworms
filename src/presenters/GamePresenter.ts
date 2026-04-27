@@ -467,9 +467,8 @@ export class GamePresenter {
   }
 
   public postRender(): void {
-    if (this.isHost) {
-      this.state.landscape.newCraters = [];
-    }
+    this.state.landscape.newCraters = [];
+    this.state.landscape.newStamps = [];
   }
 
   public handleInput(action: string, isActive: boolean, isRemote: boolean = false, payload?: any): void {

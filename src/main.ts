@@ -554,7 +554,18 @@ let currentMatchToken: string | null = null;
     };
 
     syncModule.onPlayerAction = (action, active, payload) => {
-      window.presenter.handleInput(action, active, true, payload); // true = from network
+      if (action === 'analog') {
+        window.presenter.handleAnalogInput(payload.x, payload.y, true);
+      } else if (action === 'switchWorm') {
+        const index = payload;
+        if (index >= 0 && index < window.presenter.state.players.length) {
+          window.presenter.state.currentPlayerIndex = index;
+          const cp = window.presenter.state.getCurrentPlayer();
+          if (cp) window.presenter.updateMobileWeaponIcon(cp);
+        }
+      } else {
+        window.presenter.handleInput(action, active, true, payload); // true = from network
+      }
     };
 
     syncModule.onStateReceived = (stateData) => {
@@ -634,6 +645,7 @@ let currentMatchToken: string | null = null;
         
         // Exact turn time sync (client doesn't compute physics anyway)
         window.presenter.turnTimeLeft = stateData.turnTimeLeft;
+        window.presenter.state.turnTimeLeft = stateData.turnTimeLeft; // Update state for UI to read
         
         window.presenter.hasFiredThisTurn = stateData.hasFiredThisTurn;
         if (stateData.lastPlayedIndex) {
