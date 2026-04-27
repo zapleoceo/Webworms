@@ -20,7 +20,7 @@ export class MultiplayerSync {
 
   constructor() {}
 
-  public async createOrJoinRoom(roomId?: string): Promise<string> {
+  public async createOrJoinRoom(roomId: string | undefined, playerId: string, forceHost: boolean = false): Promise<string> {
     this.peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
@@ -32,11 +32,17 @@ export class MultiplayerSync {
       }
     };
 
+    if (roomId && forceHost) {
+      this.roomId = roomId;
+      this.isHost = true;
+      await this.hostRoom();
+      return this.roomId!;
+    }
+
     if (roomId) {
-      // First, try to claim the join slot on the server
-      const joinRes = await APIClient.joinRoomState(roomId);
+      const joinRes = await APIClient.joinRoomState(roomId, playerId);
       if (joinRes && joinRes.error) {
-        throw new Error(joinRes.error); // Will be caught in main.ts
+        throw new Error(joinRes.error);
       }
 
       this.roomId = roomId;
@@ -44,7 +50,7 @@ export class MultiplayerSync {
       await this.joinRoom();
     } else {
       this.isHost = true;
-      const res = await APIClient.createRoom();
+      const res = await APIClient.createRoom(playerId);
       this.roomId = res.roomId;
       await this.hostRoom();
     }

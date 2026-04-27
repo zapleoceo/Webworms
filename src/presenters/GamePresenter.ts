@@ -429,6 +429,11 @@ export class GamePresenter {
 
   public handleInput(action: string, isActive: boolean, isRemote: boolean = false, payload?: any): void {
     if (!this.isRunning) return;
+
+    if (action === 'spawnAirdrop' && isActive && !isRemote) {
+      this.spawnAirdrop();
+      return;
+    }
     
     if (!isRemote && this.localTeam !== null) {
       const currentPlayer = this.state.getCurrentPlayer();
@@ -455,11 +460,6 @@ export class GamePresenter {
 
     const player = this.state.getCurrentPlayer();
     if (!player) return;
-
-    if (action === 'spawnAirdrop' && isActive && !isRemote) {
-      this.spawnAirdrop();
-      return;
-    }
 
     if (isActive) {
       this.activeInputs.add(action);

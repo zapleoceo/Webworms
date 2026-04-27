@@ -568,9 +568,10 @@ let currentMatchToken: string | null = null;
     loaderText.innerText = 'CONNECTING TO SERVER...';
     syncModule = new MultiplayerSync();
     
-    // Check if we are joining a room via URL
-  const urlParams = new URLSearchParams(window.location.search);
-  const joinRoomId = urlParams.get('room') || undefined;
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinRoomId = urlParams.get('room') || undefined;
+    const savedHostRoomId = localStorage.getItem('friendHostRoomId') || undefined;
+    const isHostResume = !!(joinRoomId && savedHostRoomId && joinRoomId === savedHostRoomId);
 
   syncModule.onReady = () => {
       invitePanel.style.display = 'none';
@@ -590,9 +591,14 @@ let currentMatchToken: string | null = null;
     };
 
     try {
-      const roomId = await syncModule.createOrJoinRoom(joinRoomId);
-      
-      if (!joinRoomId) {
+      const roomId = await syncModule.createOrJoinRoom(
+        isHostResume ? joinRoomId : joinRoomId,
+        userSessionId,
+        isHostResume
+      );
+
+      const isJoining = !!(joinRoomId && !isHostResume);
+      if (!isJoining) {
         // We are the host, waiting for someone
         window.presenter.localTeam = 'team1';
         loaderText.innerText = 'WAITING FOR OPPONENT...';
@@ -600,6 +606,8 @@ let currentMatchToken: string | null = null;
 
         const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
         inviteInput.value = inviteUrl;
+        localStorage.setItem('friendHostRoomId', roomId);
+        window.history.replaceState({}, document.title, inviteUrl);
 
         // Make it clear the host shouldn't open this link
         const hostWarning = document.createElement('p');
@@ -622,6 +630,8 @@ let currentMatchToken: string | null = null;
           invitePanel.style.display = 'none';
           loaderScreen.classList.remove('active');
           menuScreen.classList.add('active');
+          localStorage.removeItem('friendHostRoomId');
+          window.history.replaceState({}, document.title, window.location.pathname);
         };
       } else {
         window.presenter.localTeam = 'team2';
@@ -921,4 +931,3 @@ if (import.meta.hot) {
     window.inputHandler.unbind();
   });
 }
-

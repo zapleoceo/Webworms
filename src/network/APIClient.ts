@@ -134,9 +134,13 @@ export class APIClient {
     }
   }
 
-  static async createRoom() {
+  static async createRoom(hostId: string) {
     try {
-      const response = await fetch(`${this.BASE_URL}/rooms`, { method: 'POST' });
+      const response = await fetch(`${this.BASE_URL}/rooms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostId })
+      });
       return await response.json();
     } catch (e) {
       console.warn('Backend not running locally, returning mock room');
@@ -144,9 +148,13 @@ export class APIClient {
     }
   }
 
-  static async joinRoomState(roomId: string) {
+  static async joinRoomState(roomId: string, playerId: string) {
     try {
-      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/join`, { method: 'POST' });
+      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId })
+      });
       const data = await response.json();
       if (!response.ok) {
         return { success: false, error: data.error };
@@ -154,6 +162,16 @@ export class APIClient {
       return data;
     } catch (e) {
       return { success: false, error: 'Network error joining room' };
+    }
+  }
+
+  static async getRoomState(roomId: string) {
+    try {
+      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/state`);
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (e) {
+      return null;
     }
   }
 

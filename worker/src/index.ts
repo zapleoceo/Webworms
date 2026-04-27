@@ -139,6 +139,9 @@ export default {
         response = await handleSignaling(request, env);
       }
       
+      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/state') && request.method === 'GET') {
+        response = await getRoomState(request, env);
+      }
       else if (url.pathname.startsWith('/api/rooms/') && request.method === 'GET') {
         response = await handleSignalingGet(request, env);
       } else {
@@ -789,8 +792,19 @@ async function handleDailyReset(request: Request, env: Env): Promise<Response> {
 async function createRoom(request: Request, env: Env): Promise<Response> {
   const roomId = 'room_' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
-  // Create a room with 5 minute TTL
-  await env.ROOMS.put(roomId, JSON.stringify({ status: 'waiting' }), { expirationTtl: 300 });
+  let hostId: string | null = null;
+  try {
+    const body = await request.json() as any;
+    hostId = body?.hostId || null;
+  } catch {}
+
+  await env.ROOMS.put(roomId, JSON.stringify({
+    status: 'waiting',
+    hostId,
+    clientId: null,
+    reservedAt: null,
+    activeAt: null
+  }), { expirationTtl: 3600 });
 
   return new Response(JSON.stringify({ roomId }), {
     headers: { 'Content-Type': 'application/json' }
@@ -804,21 +818,62 @@ async function joinRoomState(request: Request, env: Env): Promise<Response> {
 
   if (!roomId) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
 
+  let playerId: string | null = null;
+  try {
+    const body = await request.json() as any;
+    playerId = body?.playerId || null;
+  } catch {}
+  if (!playerId) return new Response(JSON.stringify({ error: 'playerId required' }), { status: 400 });
+
   const roomStr = await env.ROOMS.get(roomId);
   if (!roomStr) {
     return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404 });
   }
 
   const room = JSON.parse(roomStr);
-  if (room.status !== 'waiting') {
-    return new Response(JSON.stringify({ error: 'Room is already full or game has started' }), { status: 403 });
+  if (room.hostId && room.hostId === playerId) {
+    return new Response(JSON.stringify({ error: 'Host cannot join own room link' }), { status: 403 });
   }
 
-  // Mark room as full so no one else can join
-  room.status = 'full';
-  await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 }); // Keep alive longer if game starts
+  if (room.clientId && room.clientId === playerId) {
+    return new Response(JSON.stringify({ success: true, reconnect: true }));
+  }
+
+  if (room.clientId && room.clientId !== playerId) {
+    const now = Date.now();
+    const reservedAt = typeof room.reservedAt === 'number' ? room.reservedAt : 0;
+    if (room.status === 'reserved' && reservedAt > 0 && now - reservedAt > 90_000) {
+      room.clientId = playerId;
+      room.status = 'reserved';
+      room.reservedAt = now;
+      await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
+      return new Response(JSON.stringify({ success: true, takeover: true }));
+    }
+
+    return new Response(JSON.stringify({ error: 'Room is already full' }), { status: 403 });
+  }
+
+  room.clientId = playerId;
+  room.status = 'reserved';
+  room.reservedAt = Date.now();
+  await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
 
   return new Response(JSON.stringify({ success: true }));
+}
+
+async function getRoomState(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/');
+  const roomId = parts[3]; // /api/rooms/{id}/state
+
+  if (!roomId) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
+
+  const roomStr = await env.ROOMS.get(roomId);
+  if (!roomStr) {
+    return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404 });
+  }
+
+  return new Response(roomStr, { headers: { 'Content-Type': 'application/json' } });
 }
 
 async function handleSignaling(request: Request, env: Env): Promise<Response> {
@@ -847,6 +902,16 @@ async function handleSignaling(request: Request, env: Env): Promise<Response> {
   } else {
     // Store offer or answer directly
     await env.ROOMS.put(`${roomId}_${type}`, data, { expirationTtl: 300 });
+  }
+
+  if (type === 'answer') {
+    const roomStr = await env.ROOMS.get(roomId);
+    if (roomStr) {
+      const room = JSON.parse(roomStr);
+      room.status = 'active';
+      room.activeAt = Date.now();
+      await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
+    }
   }
 
   return new Response(JSON.stringify({ success: true }));
