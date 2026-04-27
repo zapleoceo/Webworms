@@ -847,6 +847,8 @@ function bindPresenterEvents() {
   const rewardText = document.getElementById('game-over-reward') || document.getElementById('game-over-stats')!;
   const statsText = document.getElementById('game-over-stats')!;
 
+  let lastTurnPlayerIndex = -1;
+
   window.presenter.onStateUpdate = (state: any) => {
     // Update local HP (team1)
     const localWorms = state.players.length > 0 ? [state.players[0]] : [];
@@ -885,7 +887,8 @@ function bindPresenterEvents() {
     // Update Worm Selection UI
     updateWormSelectionUI(state);
 
-    if (state.turnTimeLeft === window.presenter.maxTurnTime) {
+    if (lastTurnPlayerIndex !== state.currentPlayerIndex) {
+      lastTurnPlayerIndex = state.currentPlayerIndex;
       turnNotification.style.display = 'block';
       turnNotification.innerText = isMyTurn ? 'YOUR TURN!' : 'ENEMY TURN!';
       turnNotification.style.color = isMyTurn ? 'var(--color-primary)' : 'var(--color-danger)';
