@@ -909,7 +909,7 @@ async function joinRoomState(request: Request, env: Env): Promise<Response> {
   } catch {}
   if (!playerId) return new Response(JSON.stringify({ error: 'playerId required' }), { status: 400 });
 
-  const roomStr = await env.ROOMS.get(roomId, { cacheTtl: 0 });
+  const roomStr = await env.ROOMS.get(roomId);
   if (!roomStr) {
     return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404 });
   }
@@ -952,7 +952,7 @@ async function getRoomState(request: Request, env: Env): Promise<Response> {
 
   if (!roomId) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
 
-  const roomStr = await env.ROOMS.get(roomId, { cacheTtl: 0 });
+  const roomStr = await env.ROOMS.get(roomId);
   if (!roomStr) {
     return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404 });
   }
@@ -971,25 +971,34 @@ async function handleSignaling(request: Request, env: Env): Promise<Response> {
   const data = await request.text();
   
   if (type === 'ice-host' || type === 'ice-client') {
-    // Append ICE candidate to array
-    const existingStr = await env.ROOMS.get(`${roomId}_${type}`, { cacheTtl: 0 });
+    const existingRow = await env.DB.prepare('SELECT data FROM Signaling WHERE room_id = ? AND type = ?')
+      .bind(roomId, type).first<any>();
+
     let candidates: any[] = [];
-    if (existingStr) {
-      try { candidates = JSON.parse(existingStr); } catch (e) {}
+    if (existingRow?.data) {
+      try { candidates = JSON.parse(existingRow.data); } catch (e) {}
     }
-    
+
     let newCandidate;
     try { newCandidate = JSON.parse(data); } catch (e) { return new Response('Bad JSON', { status: 400 }); }
-    
+
     candidates.push(newCandidate);
-    await env.ROOMS.put(`${roomId}_${type}`, JSON.stringify(candidates), { expirationTtl: 300 });
+    await env.DB.prepare(`
+      INSERT INTO Signaling (room_id, type, data, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(room_id, type) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
+    `).bind(roomId, type, JSON.stringify(candidates)).run();
   } else {
     // Store offer or answer directly
-    await env.ROOMS.put(`${roomId}_${type}`, data, { expirationTtl: 300 });
+    await env.DB.prepare(`
+      INSERT INTO Signaling (room_id, type, data, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(room_id, type) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
+    `).bind(roomId, type, data).run();
   }
 
   if (type === 'answer') {
-    const roomStr = await env.ROOMS.get(roomId, { cacheTtl: 0 });
+    const roomStr = await env.ROOMS.get(roomId);
     if (roomStr) {
       const room = JSON.parse(roomStr);
       room.status = 'active';
@@ -1009,9 +1018,10 @@ async function handleSignalingGet(request: Request, env: Env): Promise<Response>
 
   if (!roomId || !type) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
 
-  const data = await env.ROOMS.get(`${roomId}_${type}`, { cacheTtl: 0 });
-  if (data) {
-    return new Response(data, { headers: { 'Content-Type': 'application/json' } });
+  const row = await env.DB.prepare('SELECT data FROM Signaling WHERE room_id = ? AND type = ?')
+    .bind(roomId, type).first<any>();
+  if (row?.data) {
+    return new Response(row.data, { headers: { 'Content-Type': 'application/json' } });
   }
 
   // To prevent 404 console spam during polling, return 200 OK with empty representation
