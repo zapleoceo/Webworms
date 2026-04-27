@@ -334,8 +334,8 @@ export class GamePresenter {
     const airControl = 0.3; // 30% control while in the air
 
     // --- Handle Aiming (Keyboard + Analog Joystick) ---
-    // Slower aim speed
-    const actualAimSpeed = Math.PI / 2; // rad/sec
+    // Slower aim speed (Decreased by 3x for desktop precision)
+    const actualAimSpeed = Math.PI / 6; // rad/sec
 
     if (Math.abs(this.analogY) > 0.1) {
       // Map Y (-1 to 1) to angle (-PI/2 to PI/2 rad)
@@ -611,7 +611,7 @@ export class GamePresenter {
       }
 
       const baseRad = globalAimAngle;
-    let speed = power * 6; // Adjust scalar for slower, realistic floaty arcs (Doubled power as requested)
+    let speed = power * 4.2; // Reduced by 30% from the previous 6x multiplier
 
     if (weapon.id === 'blaster') {
       speed = 750; // Laser goes fast but not infinite
