@@ -343,8 +343,8 @@ export class GamePresenter {
       // If Y is positive (stick pushed DOWN), angle should be positive (aiming DOWN)
       const targetAngle = this.analogY * (Math.PI / 2);
 
-      // Smoothly rotate towards target angle based on stick deflection
-      player.aimAngle += (targetAngle - player.aimAngle) * dt * 2.5;
+      // Smoothly rotate towards target angle based on stick deflection (Slower for mobile precision)
+      player.aimAngle += (targetAngle - player.aimAngle) * dt * 1.25;
 
       // Clamp angle
       if (player.aimAngle < -Math.PI / 2) player.aimAngle = -Math.PI / 2;
@@ -611,7 +611,7 @@ export class GamePresenter {
       }
 
       const baseRad = globalAimAngle;
-    let speed = power * 3; // Adjust scalar for slower, realistic floaty arcs
+    let speed = power * 6; // Adjust scalar for slower, realistic floaty arcs (Doubled power as requested)
 
     if (weapon.id === 'blaster') {
       speed = 750; // Laser goes fast but not infinite
