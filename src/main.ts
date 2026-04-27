@@ -770,20 +770,6 @@ document.getElementById('btn-play-friends')!.addEventListener('click', () => {
   startGame('friend');
 });
 
-document.getElementById('btn-share-clip')!.addEventListener('click', () => {
-  const btn = document.getElementById('btn-share-clip')!;
-  btn.innerText = '🎬 GENERATING...';
-  setTimeout(() => {
-    btn.innerText = '🎬 LINK COPIED!';
-    // Simulate share
-    const dummyLink = window.location.origin + '?replay=' + Math.random().toString(36).substring(7);
-    navigator.clipboard.writeText(dummyLink).catch(err => {
-      console.warn('Could not copy text: ', err);
-    });
-    setTimeout(() => btn.innerText = '🎬 SHARE CLIP', 2000);
-  }, 1000);
-});
-
 document.getElementById('btn-return-menu')!.addEventListener('click', () => {
   location.reload();
 });

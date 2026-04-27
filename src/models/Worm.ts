@@ -38,12 +38,12 @@ export class Worm {
 
   public damageDealt: number = 0;
 
-  constructor(x: number, y: number, isDummy: boolean = false, name: string = 'Player', unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier', selectedWeapons: string[] = ['bazooka', 'blaster']) {
+  constructor(x: number, y: number, isDummy: boolean = false, name: string = 'Player', unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier', selectedWeapons: string[] = ['bazooka', 'blaster'], forceTeam?: string) {
     this.x = x;
     this.y = y;
     this.name = name;
     this.unitClass = unitClass;
-    this.team = isDummy ? 'team2' : 'team1';
+    this.team = forceTeam ? forceTeam : (isDummy ? 'team2' : 'team1');
     
     // Everyone starts with 100 HP
     this.health = 100;

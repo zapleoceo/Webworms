@@ -171,7 +171,7 @@ export class GamePresenter {
     for (let i = 0; i < 3; i++) {
       const s = this.state.landscape.getSafeSpawn(spawnPoints, 150, this.state.mapSeed);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster']);
+      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team1');
       this.state.addPlayer(p);
     }
 
@@ -179,7 +179,7 @@ export class GamePresenter {
     for (let i = 0; i < 3; i++) {
       const s = this.state.landscape.getSafeSpawn(spawnPoints, 150, this.state.mapSeed);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, this.state.mode === 'training', `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster']);
+      const p = new Worm(s.x, s.y, this.state.mode === 'training', `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team2');
       this.state.addPlayer(p);
     }
 
