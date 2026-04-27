@@ -613,7 +613,7 @@ let currentMatchToken: string | null = null;
         window.presenter.state.wind = stateData.wind;
         
         // Sync turn time only if it's drifting significantly to avoid stuttering/overwriting client's local countdown
-        if (Math.abs(window.presenter.state.turnTimeLeft - stateData.turnTimeLeft) > 1.5) {
+        if (Math.abs(window.presenter.turnTimeLeft - stateData.turnTimeLeft) > 1.5) {
           window.presenter.turnTimeLeft = stateData.turnTimeLeft;
         }
         

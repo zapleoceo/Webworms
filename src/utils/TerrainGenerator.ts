@@ -16,12 +16,13 @@ export class TerrainGenerator {
     };
 
     // Use a simple seeded PRNG if a seed is provided
-    const random = seed !== undefined ? (() => {
-      let t = seed += 0x6D2B79F5;
+    let s = seed !== undefined ? seed : Math.random() * 1000000;
+    const random = () => {
+      let t = s += 0x6D2B79F5;
       t = Math.imul(t ^ t >>> 15, t | 1);
       t ^= t + Math.imul(t ^ t >>> 7, t | 61);
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    }) : Math.random;
+    };
 
     const baseHeight = height * 0.6; // Lower 40% is solid ground base
     const seed1 = random() * 1000;
@@ -33,9 +34,9 @@ export class TerrainGenerator {
     for (let x = 0; x < width; x++) {
       let h = baseHeight;
       // Combine multiple low-frequency sine waves for organic rolling hills
-      h -= Math.sin(x * 0.002 + seed1) * 250; // Main large hills
-      h -= Math.sin(x * 0.007 + seed2) * 100; // Medium bumps
-      h -= Math.sin(x * 0.025 + seed3) * 20;  // Small details
+      h -= Math.sin(x * 0.002 + (seed1 || 0)) * 250; // Main large hills
+      h -= Math.sin(x * 0.007 + (seed2 || 0)) * 100; // Medium bumps
+      h -= Math.sin(x * 0.025 + (seed3 || 0)) * 20;  // Small details
       surface[x] = h;
     }
 

@@ -1,5 +1,4 @@
 import type { Weapon } from './Weapon';
-import { WEAPONS } from './Weapon';
 
 export class Worm {
   public x: number;

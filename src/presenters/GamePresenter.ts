@@ -29,7 +29,7 @@ export class GamePresenter {
   private cameraFreeMode: boolean = false;
 
   private matchTime: number = 0;
-  private turnTimeLeft: number = 30;
+  public turnTimeLeft: number = 30;
   public maxTurnTime: number = 30;
   public hasFiredThisTurn: boolean = false;
   public brandAssets: string[] = ['apple', 'android', 'windows'];
@@ -130,7 +130,7 @@ export class GamePresenter {
     } else {
       // Set map seed for deterministic terrain generation in multiplayer
       this.state.mapSeed = settings.seed || Math.floor(Math.random() * 1000000);
-      Random.setSeed(this.state.mapSeed); // Initialize our deterministic PRNG
+      Random.setSeed(this.state.mapSeed!); // Initialize our deterministic PRNG
       this.state.landscape.generateTerrain(this.state.mapSeed);
     }
 
@@ -153,7 +153,6 @@ export class GamePresenter {
 
     // Add teams of 3 worms
     const spawnPoints: {x: number, y: number}[] = [];
-    const availableWeapons = ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'];
     const availableClasses: ('soldier'|'heavy'|'scout')[] = ['soldier', 'heavy', 'scout'];
 
     // Generate team classes deterministically from seed so both clients agree
