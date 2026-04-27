@@ -174,6 +174,9 @@ export default {
       else if (url.pathname === '/api/admin/maps' && request.method === 'POST') {
         response = await createMap(request, env);
       }
+      else if (url.pathname.startsWith('/api/admin/maps/') && request.method === 'PUT') {
+        response = await updateMap(request, env);
+      }
       else if (url.pathname.startsWith('/api/admin/maps/') && request.method === 'DELETE') {
         response = await deleteMap(request, env);
       }

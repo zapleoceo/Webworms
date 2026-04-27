@@ -607,6 +607,7 @@ export class AdminPanel {
         <td>${map.name}</td>
         <td>${map.width} x ${map.height}</td>
         <td style="white-space: nowrap;">
+          <button class="secondary-btn small-btn upscale-map-btn" data-id="${map.id}" style="margin-right: 5px;">Upscale 4K</button>
           <button class="secondary-btn small-btn delete-map-btn" data-id="${map.id}">Delete</button>
         </td>
       </tr>
@@ -615,6 +616,88 @@ export class AdminPanel {
     document.querySelectorAll('.delete-map-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.deleteMap(e));
     });
+    document.querySelectorAll('.upscale-map-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.upscaleMap(e));
+    });
+  }
+
+  private async upscaleMap(e: Event) {
+    const btn = e.target as HTMLButtonElement;
+    const id = btn.dataset.id;
+    if (!id) return;
+
+    if (!confirm('Are you sure you want to upscale this map to 4K? This will overwrite the current map data.')) return;
+
+    const originalText = btn.innerText;
+    btn.innerText = 'Processing...';
+    btn.disabled = true;
+
+    try {
+      // Fetch full map data
+      const res = await fetch(APIClient.BASE_URL + `/maps/${id}`);
+      if (!res.ok) throw new Error('Failed to fetch map data');
+      const mapObj = await res.json();
+      
+      const mapUrl = APIClient.BASE_URL.replace('/api', '') + mapObj.image_data;
+      
+      // Upscale via canvas
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = mapUrl;
+      });
+
+      const canvas = document.createElement('canvas');
+      // Set to 4K resolution (3840 x 2160)
+      const TARGET_WIDTH = 3840;
+      const TARGET_HEIGHT = 2160;
+      
+      canvas.width = TARGET_WIDTH;
+      canvas.height = TARGET_HEIGHT;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context not available');
+
+      // Use image smoothing for better upscaling (or disable for pixel art)
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      ctx.drawImage(img, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+
+      const newBase64 = canvas.toDataURL('image/png');
+
+      // Update map in database
+      const updateRes = await fetch(APIClient.BASE_URL + `/admin/maps/${id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        },
+        body: JSON.stringify({
+          image_data: newBase64,
+          width: TARGET_WIDTH,
+          height: TARGET_HEIGHT
+        })
+      });
+
+      if (updateRes.ok) {
+        alert('Map upscaled to 4K successfully!');
+        this.loadMapsData();
+      } else {
+        const err = await updateRes.json();
+        alert('Failed to update map: ' + (err.error || 'Unknown error'));
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert('Error upscaling map: ' + err.message);
+    } finally {
+      btn.innerText = originalText;
+      btn.disabled = false;
+    }
   }
 
   private async deleteMap(e: Event) {
