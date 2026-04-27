@@ -1,6 +1,3 @@
--- Drop the table for clean schema update since this is development
-DROP TABLE IF EXISTS Users;
-
 -- Create Users Table
 CREATE TABLE IF NOT EXISTS Users (
   id TEXT PRIMARY KEY,
