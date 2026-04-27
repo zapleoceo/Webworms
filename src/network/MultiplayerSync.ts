@@ -145,22 +145,43 @@ export class MultiplayerSync {
   private setupDataChannel() {
     if (!this.dataChannel) return;
     
+    let heartbeatInterval: number;
+    let lastHeartbeatReceived = Date.now();
+
     this.dataChannel.onopen = () => {
       console.log('WebRTC Data Channel Opened!');
       if (this.onReady) this.onReady();
+      
+      // Start heartbeat
+      heartbeatInterval = window.setInterval(() => {
+        if (this.dataChannel?.readyState === 'open') {
+          this.dataChannel.send(JSON.stringify({ type: 'ping' }));
+        }
+        
+        // If we haven't received a message in 5 seconds, assume disconnected
+        if (Date.now() - lastHeartbeatReceived > 5000) {
+          console.warn('Heartbeat timeout! Peer disconnected.');
+          clearInterval(heartbeatInterval);
+          if (this.onPeerDisconnected) this.onPeerDisconnected();
+        }
+      }, 1000);
     };
 
     this.dataChannel.onclose = () => {
+      clearInterval(heartbeatInterval);
       if (this.onPeerDisconnected) this.onPeerDisconnected();
     };
 
     this.dataChannel.onmessage = (event) => {
+      lastHeartbeatReceived = Date.now();
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'action' && this.onPlayerAction) {
           this.onPlayerAction(msg.action, msg.active, msg.payload);
         } else if (msg.type === 'sync' && this.onStateReceived) {
           this.onStateReceived(msg.state);
+        } else if (msg.type === 'ping') {
+          // Just update lastHeartbeatReceived
         }
       } catch (e) {}
     };

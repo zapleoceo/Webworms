@@ -1015,7 +1015,11 @@ async function handleDailyReset(request: Request, env: Env): Promise<Response> {
 }
 
 async function createRoom(request: Request, env: Env): Promise<Response> {
-  const roomId = 'room_' + Math.random().toString(36).substring(2, 8).toUpperCase();
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let roomId = '';
+  for (let i = 0; i < 4; i++) {
+    roomId += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
 
   let hostId: string | null = null;
   try {

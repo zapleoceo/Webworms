@@ -110,10 +110,12 @@
             
             <!-- Top Bar -->
             <div class="hud-top">
-              <button id="btn-leave-game" class="danger-btn leave-game-btn">LEAVE</button>
-              <div class="team-status left-team">
-                <div class="team-name">YOU</div>
-                <div class="hp-bar-container"><div class="hp-bar fill-green" id="hp-local"></div></div>
+              <div class="team-status left-team" style="display: flex; align-items: center;">
+                <button id="btn-leave-game" class="danger-btn leave-game-btn">LEAVE</button>
+                <div style="display: flex; flex-direction: column;">
+                  <div class="team-name">YOU</div>
+                  <div class="hp-bar-container"><div class="hp-bar fill-green" id="hp-local"></div></div>
+                </div>
               </div>
               
               <div class="match-info">

@@ -810,7 +810,7 @@ document.getElementById('btn-play-friends')!.addEventListener('click', () => {
 });
 
 document.getElementById('btn-return-menu')!.addEventListener('click', () => {
-  location.reload();
+  window.location.href = window.location.pathname;
 });
 
 document.getElementById('btn-leave-game')?.addEventListener('click', () => {
@@ -907,11 +907,22 @@ function bindPresenterEvents() {
 
     // Update Turn Timer & Wind
     if (turnTimer) {
-      const timeStr = state.turnTimeLeft === Infinity ? '∞' : Math.ceil(state.turnTimeLeft).toString();
+      let timeStr = '';
+      if (state.projectiles && state.projectiles.length > 0) {
+        timeStr = 'FLIGHT';
+        turnTimer.style.fontSize = '12px';
+      } else if (state.turnTimeLeft === Infinity) {
+        timeStr = '∞';
+        turnTimer.style.fontSize = '18px';
+      } else {
+        timeStr = Math.ceil(state.turnTimeLeft).toString();
+        turnTimer.style.fontSize = '18px';
+      }
+      
       turnTimer.innerText = timeStr;
       
       // Visual ticking at 5 seconds
-      if (state.turnTimeLeft <= 5 && state.turnTimeLeft !== Infinity && state.turnTimeLeft > 0) {
+      if (state.turnTimeLeft <= 5 && state.turnTimeLeft !== Infinity && state.turnTimeLeft > 0 && state.projectiles.length === 0) {
         turnTimer.classList.add('ticking');
       } else {
         turnTimer.classList.remove('ticking');
