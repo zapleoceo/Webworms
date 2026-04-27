@@ -664,9 +664,19 @@ async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
   }
   
   const hashedPassword = await hashPassword(password);
-  const user = await env.DB.prepare('SELECT id FROM Users WHERE LOWER(email) = LOWER(?) AND password_hash = ? AND is_admin = 1').bind(email, hashedPassword).first();
-  
-  return !!user;
+  const adminUser = await env.DB.prepare('SELECT id FROM Users WHERE LOWER(email) = LOWER(?) AND password_hash = ? AND is_admin = 1').bind(email, hashedPassword).first<any>();
+  if (adminUser) return true;
+
+  const adminsCountRow = await env.DB.prepare('SELECT COUNT(1) as cnt FROM Users WHERE is_admin = 1').first<any>();
+  const adminsCount = (adminsCountRow?.cnt as number) || 0;
+  if (adminsCount > 0) return false;
+
+  const bootstrapUser = await env.DB.prepare('SELECT id FROM Users WHERE LOWER(email) = LOWER(?) AND password_hash = ? AND is_active = 1 AND access_allowed = 1')
+    .bind(email, hashedPassword).first<any>();
+  if (!bootstrapUser?.id) return false;
+
+  await env.DB.prepare('UPDATE Users SET is_admin = 1 WHERE id = ?').bind(bootstrapUser.id).run();
+  return true;
 }
 
 async function getAdminUsers(request: Request, env: Env): Promise<Response> {
