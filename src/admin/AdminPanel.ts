@@ -307,7 +307,11 @@ export class AdminPanel {
           try {
             const res = await fetch(APIClient.BASE_URL + '/admin/maps', {
               method: 'POST',
-              headers: { ...Object.fromEntries(this.adminHeaders), 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+                'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+              },
               body: JSON.stringify({
                 name,
                 image_data: base64,
@@ -322,9 +326,11 @@ export class AdminPanel {
               mapFileInput.value = '';
               mapUploadBtn.disabled = true;
             } else {
-              alert('Failed to upload map');
+              const err = await res.json();
+              alert('Failed to upload map: ' + (err.error || 'Unknown error'));
             }
           } catch(e) {
+            console.error(e);
             alert('Error uploading map');
           }
         };
@@ -620,7 +626,10 @@ export class AdminPanel {
     try {
       const res = await fetch(APIClient.BASE_URL + `/admin/maps/${id}`, {
         method: 'DELETE',
-        headers: this.adminHeaders
+        headers: {
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        }
       });
       if (res.ok) {
         this.loadMapsData();
