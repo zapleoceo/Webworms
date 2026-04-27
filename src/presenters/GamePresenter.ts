@@ -668,7 +668,7 @@ export class GamePresenter {
       sprite = logos[Math.floor(Math.random() * logos.length)];
     }
 
-    const spawnX = Math.random() * (this.state.landscape.width - 200) + 100;
+    const spawnX = Math.max(100, Math.min(this.state.landscape.width - 100, this.state.cameraX + (this.initialWidth / this.state.zoom) / 2 + (Math.random() - 0.5) * 400));
     const spawnY = -100; // Above screen
     
     const vx = (Math.random() - 0.5) * 60; // -30 to +30
