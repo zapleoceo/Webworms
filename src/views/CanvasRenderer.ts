@@ -86,6 +86,11 @@ export class CanvasRenderer {
       this.ctx.translate(prop.x, prop.y);
       this.ctx.rotate(prop.rotation);
 
+      // Draw a subtle shadow under the prop so it grounds it
+      this.ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      this.ctx.shadowBlur = 5;
+      this.ctx.shadowOffsetY = 2;
+
       if ((prop as any).imageData) {
         // It's a custom logo from DB
         const imgKey = `custom_logo_${(prop as any).imageData.substring(0, 20)}`; // short hash for caching
@@ -118,6 +123,7 @@ export class CanvasRenderer {
           this.ctx.beginPath();
           this.ctx.arc(0, 0, prop.radius, 0, Math.PI * 2);
           this.ctx.fill();
+          this.ctx.shadowColor = 'transparent'; // reset for stroke
           this.ctx.fillStyle = '#000';
           this.ctx.stroke();
         }
@@ -132,11 +138,48 @@ export class CanvasRenderer {
   }
 
   private drawSky(state: GameState): void {
-    const gradient = this.ctx.createLinearGradient(0, 0, 0, state.height);
-    gradient.addColorStop(0, '#87CEEB'); // Sky blue
-    gradient.addColorStop(1, '#E0F6FF'); // Lighter blue
+    // Parallax background effect
+    const bgWidth = state.width;
+    const bgHeight = state.height;
+
+    // 1. Sky Gradient
+    const gradient = this.ctx.createLinearGradient(0, 0, 0, bgHeight);
+    gradient.addColorStop(0, '#1A1A2E'); // Dark deep blue/purple top
+    gradient.addColorStop(0.5, '#16213E'); 
+    gradient.addColorStop(1, '#0F3460'); // Darker bottom
     this.ctx.fillStyle = gradient;
-    this.ctx.fillRect(0, 0, state.width, state.height);
+    this.ctx.fillRect(0, 0, bgWidth, bgHeight);
+
+    // 2. Stars (static but pan slowly)
+    this.ctx.save();
+    // Move stars at 10% of camera speed
+    this.ctx.translate(state.cameraX * 0.9, state.cameraY * 0.9);
+    this.ctx.fillStyle = '#FFFFFF';
+    for (let i = 0; i < 200; i++) {
+      const x = (i * 137) % bgWidth;
+      const y = (i * 251) % bgHeight;
+      const size = (i % 3) + 1;
+      // Twinkle effect based on time
+      const opacity = 0.5 + Math.sin(Date.now() / 500 + i) * 0.5;
+      this.ctx.globalAlpha = opacity;
+      this.ctx.fillRect(x, y, size, size);
+    }
+    this.ctx.restore();
+
+    // 3. Distant Mountains (parallax)
+    this.ctx.save();
+    // Move mountains at 30% of camera speed
+    this.ctx.translate(state.cameraX * 0.7, state.cameraY * 0.7);
+    this.ctx.fillStyle = '#0a192f'; // Very dark, almost silhouette
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, bgHeight);
+    for (let x = 0; x <= bgWidth; x += 50) {
+      const y = bgHeight - 200 - Math.sin(x * 0.005) * 100 - Math.cos(x * 0.02) * 30;
+      this.ctx.lineTo(x, y);
+    }
+    this.ctx.lineTo(bgWidth, bgHeight);
+    this.ctx.fill();
+    this.ctx.restore();
   }
 
   private drawLandscape(state: GameState): void {
@@ -152,6 +195,7 @@ export class CanvasRenderer {
       const imgData = this.terrainCtx.createImageData(width, height);
       const data = imgData.data;
 
+      // Generate base terrain mask and texture
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const mat = state.landscape.getMaterial(x, y);
@@ -160,44 +204,80 @@ export class CanvasRenderer {
           const idx = (y * width + x) * 4;
           data[idx + 3] = 255; // Alpha
           
-          if (mat === 1) { // Lunar Dirt
-            data[idx] = 150; data[idx+1] = 150; data[idx+2] = 150;
-            // Add some deterministic noise texture to dirt to avoid flickering on redraws
-            if ((x * 31 + y * 17) % 100 > 80) { data[idx]-=10; data[idx+1]-=10; data[idx+2]-=10; }
-          } else if (mat === 2) { // Meteorite
-            data[idx] = 70; data[idx+1] = 70; data[idx+2] = 75;
+          if (mat === 1) { // Dirt / Ground
+            data[idx] = 101; data[idx+1] = 67; data[idx+2] = 33; // Brown
+            // Add some deterministic noise texture to dirt
+            if ((x * 31 + y * 17) % 100 > 80) { data[idx]-=15; data[idx+1]-=10; data[idx+2]-=5; }
+          } else if (mat === 2) { // Rock
+            data[idx] = 80; data[idx+1] = 80; data[idx+2] = 85;
             // Add deterministic noise to rock
-            if ((x * 13 + y * 37) % 100 > 75) { data[idx]-=8; data[idx+1]-=8; data[idx+2]-=8; }
+            if ((x * 13 + y * 37) % 100 > 75) { data[idx]-=15; data[idx+1]-=15; data[idx+2]-=15; }
           } else if (mat === 3) { // Ice
             data[idx] = 170; data[idx+1] = 221; data[idx+2] = 255;
-          } else if (mat === 4) { // Metal Platform (Destructible)
-            data[idx] = 100; data[idx+1] = 100; data[idx+2] = 110;
-            // Metal pattern
-            if ((x+y)%10 === 0) { data[idx] = 130; data[idx+1] = 130; data[idx+2] = 140; }
+          } else if (mat === 4) { // Metal Platform
+            data[idx] = 120; data[idx+1] = 120; data[idx+2] = 130;
+            if ((x+y)%10 === 0) { data[idx] = 90; data[idx+1] = 90; data[idx+2] = 100; }
           } else if (mat === 5) { // Snow
             data[idx] = 255; data[idx+1] = 255; data[idx+2] = 255;
           } else if (mat === 255) { // Alloy (Border)
-            data[idx] = 30; data[idx+1] = 30; data[idx+2] = 40;
-            // Metal pattern
-            if ((x+y)%10 === 0) { data[idx] = 50; data[idx+1] = 50; data[idx+2] = 60; }
+            data[idx] = 20; data[idx+1] = 20; data[idx+2] = 25;
+            if ((x+y)%10 === 0) { data[idx] = 40; data[idx+1] = 40; data[idx+2] = 50; }
           }
         }
       }
       
       this.terrainCtx.putImageData(imgData, 0, 0);
       
-      // Draw Grass on top of Lunar Dirt
-      this.terrainCtx.fillStyle = '#228B22'; // Forest green
+      // Draw Grass on top of Dirt
+      this.terrainCtx.fillStyle = '#4CAF50'; // Bright Green
       for (let x = 0; x < width; x++) {
         for (let y = 0; y < height; y++) {
           if (state.landscape.getMaterial(x, y) === 1) {
-            this.terrainCtx.fillRect(x, y, 1, 3); // 3 pixel grass
+            this.terrainCtx.fillRect(x, y, 1, 4 + (x % 3)); // varying grass length
             break;
           } else if (state.landscape.isSolid(x, y)) {
             break; // Found something else, no grass
           }
         }
       }
+
+      // Add Thick Dark Outline
+      // We do this by creating a copy of the current terrain, then stroking/shadowing it
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tCtx = tempCanvas.getContext('2d')!;
+      tCtx.drawImage(this.terrainCanvas, 0, 0);
+
+      this.terrainCtx.clearRect(0, 0, width, height);
+
+      // Draw shadow/outline by drawing the terrain multiple times offset in black
+      this.terrainCtx.fillStyle = 'black';
+      this.terrainCtx.shadowColor = '#111';
+      this.terrainCtx.shadowBlur = 0;
+      this.terrainCtx.shadowOffsetX = 0;
+      this.terrainCtx.shadowOffsetY = 2; // Bottom shadow
+      
+      // Draw outline offsets
+      const offsets = [[-2, 0], [2, 0], [0, -2], [0, 2], [-1, -1], [1, 1], [-1, 1], [1, -1]];
+      this.terrainCtx.globalCompositeOperation = 'source-over';
+      // Use a trick to colorize the silhouette: 
+      // tCtx has the colored image. We can use it as a mask to draw black blocks.
+      const maskCanvas = document.createElement('canvas');
+      maskCanvas.width = width;
+      maskCanvas.height = height;
+      const mCtx = maskCanvas.getContext('2d')!;
+      mCtx.drawImage(tempCanvas, 0, 0);
+      mCtx.globalCompositeOperation = 'source-in';
+      mCtx.fillStyle = '#111'; // Dark outline color
+      mCtx.fillRect(0, 0, width, height);
+
+      for (const [ox, oy] of offsets) {
+        this.terrainCtx.drawImage(maskCanvas, ox, oy);
+      }
+
+      // Draw the actual terrain on top
+      this.terrainCtx.drawImage(tempCanvas, 0, 0);
       
       state.landscape.needsUpdate = false;
     }

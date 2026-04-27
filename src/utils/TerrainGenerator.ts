@@ -15,24 +15,49 @@ export class TerrainGenerator {
       }
     };
 
-    const baseHeight = height * 0.7; // Lower 30% is solid ground
+    const baseHeight = height * 0.6; // Lower 40% is solid ground base
     const seed1 = Math.random() * 1000;
     const seed2 = Math.random() * 1000;
+    const seed3 = Math.random() * 1000;
     const surface = new Float32Array(width);
 
-    // Generate 1D surface profile
+    // Generate 1D surface profile with smoother Worms-like hills
     for (let x = 0; x < width; x++) {
       let h = baseHeight;
-      h -= Math.sin(x * 0.003 + seed1) * 200; // Big hills
-      h -= Math.sin(x * 0.015 + seed2) * 50;  // Small bumps
+      // Combine multiple low-frequency sine waves for organic rolling hills
+      h -= Math.sin(x * 0.002 + seed1) * 250; // Main large hills
+      h -= Math.sin(x * 0.007 + seed2) * 100; // Medium bumps
+      h -= Math.sin(x * 0.025 + seed3) * 20;  // Small details
       surface[x] = h;
+    }
+
+    // Generate noise map for caves and overhangs
+    const caveMap = new Uint8Array(width * height);
+    for (let y = 0; y < height; y += 4) {
+      for (let x = 0; x < width; x += 4) {
+        // 2D Perlin-like noise using sine interference
+        const nx = x * 0.015;
+        const ny = y * 0.015;
+        const noise = Math.sin(nx + seed1) * Math.cos(ny + seed2) + Math.sin(nx * 0.7 - ny * 0.8 + seed3);
+        
+        // Scale noise block to 4x4 pixels to save generation time
+        const isCave = noise > 0.8;
+        for (let dy = 0; dy < 4; dy++) {
+          for (let dx = 0; dx < 4; dx++) {
+            if (y + dy < height && x + dx < width) {
+              caveMap[(y + dy) * width + (x + dx)] = isCave ? 1 : 0;
+            }
+          }
+        }
+      }
     }
 
     // Fill grid
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         // 1. Unbreakable Borders (Sides and Bottom)
-        if (x < 30 || x >= width - 30 || y >= height - 30) {
+        // Make the border thinner so it doesn't look ugly
+        if (x < 10 || x >= width - 10 || y >= height - 15) {
           setPixel(x, y, 255);
           continue;
         }
@@ -41,9 +66,14 @@ export class TerrainGenerator {
 
         // 2. Main Ground
         if (y >= surfY) {
-          // Top layer is Lunar Dirt (1), deeper is Meteorite (2)
+          // Check for caves (hollow out the ground)
+          if (caveMap[y * width + x] === 1 && y < height - 100) {
+            continue; // Leave empty
+          }
+
+          // Top layer is Dirt (1), deeper is Rock (2)
           const depth = y - surfY;
-          const rockTransition = 30 + Math.sin(x * 0.05) * 15;
+          const rockTransition = 40 + Math.sin(x * 0.05) * 20;
           if (depth > rockTransition) {
             setPixel(x, y, 2);
           } else {
@@ -51,17 +81,17 @@ export class TerrainGenerator {
           }
         } else {
           // 3. Floating Islands in the sky (fake 2D noise using trig)
-          // Only generate islands in the top 50% of the map
-          if (y < height * 0.5 && y > 50) {
-            const nx = x * 0.02;
-            const ny = y * 0.03;
+          // Only generate islands in the top 40% of the map
+          if (y < height * 0.4 && y > 50) {
+            const nx = x * 0.015;
+            const ny = y * 0.02;
             // Interference pattern
-            const noise = Math.sin(nx) * Math.cos(ny) + Math.sin(nx * 0.5 + ny * 0.8);
-            if (noise > 1.3) {
-              setPixel(x, y, 1); // Lunar Dirt islands
-            } else if (noise > 1.1) {
+            const noise = Math.sin(nx + seed2) * Math.cos(ny + seed1) + Math.sin(nx * 0.5 + ny * 0.8 + seed3);
+            if (noise > 1.4) {
+              setPixel(x, y, 1); // Dirt islands
+            } else if (noise > 1.2) {
               // Occasional small meteorite chunks floating
-              if (Math.random() < 0.05) {
+              if (Math.random() < 0.02) {
                 setPixel(x, y, 2);
               }
             }
