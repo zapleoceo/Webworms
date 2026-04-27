@@ -400,7 +400,7 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
         document.getElementById('auth-toggle-text')!.click();
       } else {
         // Login success
-        userSessionId = res.user.id;
+        userSessionId = res.token;
         userSessionName = res.user.username;
         userBalanceSeconds = res.user.play_time_balance || 3600;
         

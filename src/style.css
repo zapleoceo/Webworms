@@ -108,8 +108,8 @@ button {
   border: var(--border-thick);
   border-radius: var(--border-radius);
   font-family: var(--font-comic);
-  font-size: 1.5rem;
-  padding: 15px 30px;
+  font-size: 1.8rem;
+  padding: 18px 36px;
   transition: transform 0.1s ease, filter 0.1s ease;
   box-shadow: 0 6px 0 #000;
   color: #fff;
@@ -228,9 +228,9 @@ button:hover {
 .menu-actions {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 20px;
   width: 100%;
-  max-width: 350px;
+  max-width: 450px;
   margin-bottom: 30px;
 }
 
@@ -243,9 +243,9 @@ button:hover {
 
 .menu-footer {
   width: 100%;
-  max-width: 350px;
+  max-width: 450px;
   background: var(--color-hud-bg);
-  padding: 15px;
+  padding: 20px;
   border-radius: var(--border-radius);
   border: 2px solid #555;
 }
@@ -906,6 +906,11 @@ canvas {
 
 /* === RESPONSIVE === */
 @media (max-width: 768px) {
+  button {
+    font-size: 1.2rem;
+    padding: 12px 24px;
+  }
+  
   .huge-text { font-size: 3rem; }
   .main-logo { width: 300px; }
 

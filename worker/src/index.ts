@@ -636,12 +636,18 @@ async function handleUpdateProfile(request: Request, env: Env): Promise<Response
     }
 
     const sessionId = authHeader.split(' ')[1];
+    
+    // Find user by session_id
+    const user = await env.DB.prepare('SELECT id FROM Users WHERE session_id = ?').bind(sessionId).first<any>();
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
+    }
 
     if (!username) {
       return new Response(JSON.stringify({ error: 'Username is required' }), { status: 400 });
     }
 
-    await env.DB.prepare('UPDATE Users SET username = ? WHERE id = ?').bind(username, sessionId).run();
+    await env.DB.prepare('UPDATE Users SET username = ? WHERE id = ?').bind(username, user.id).run();
 
     return new Response(JSON.stringify({ success: true, username }), { status: 200 });
   } catch (e: any) {
@@ -660,12 +666,17 @@ async function handleUpdatePassword(request: Request, env: Env): Promise<Respons
 
     const sessionId = authHeader.split(' ')[1];
 
+    const user = await env.DB.prepare('SELECT id FROM Users WHERE session_id = ?').bind(sessionId).first<any>();
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401 });
+    }
+
     if (!password) {
       return new Response(JSON.stringify({ error: 'Password is required' }), { status: 400 });
     }
 
     const hashedPassword = await hashPassword(password);
-    await env.DB.prepare('UPDATE Users SET password_hash = ? WHERE id = ?').bind(hashedPassword, sessionId).run();
+    await env.DB.prepare('UPDATE Users SET password_hash = ? WHERE id = ?').bind(hashedPassword, user.id).run();
 
     return new Response(JSON.stringify({ success: true, message: 'Password updated successfully' }), { status: 200 });
   } catch (e: any) {
