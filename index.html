@@ -28,8 +28,8 @@
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
             <button class="icon-btn auth-toggle-btn" id="btn-user-profile" style="display: none;"></button>
             <div style="display: flex; gap: 10px; align-items: center;">
-              <div id="play-time-display" class="time-balance-box" style="display: none;">Time: 60m 00s</div>
-              <button id="btn-buy-premium" class="premium-btn pulse-anim" style="display: none; animation-delay: 0.25s;">+ $1</button>
+              <div id="play-time-display" class="time-balance-box" style="display: none;">Time: 01:00</div>
+              <button id="btn-add-time" class="time-add-btn pulse-anim" style="display: none; animation-delay: 0.25s;">+ $1</button>
             </div>
           </div>
         </div>
@@ -110,13 +110,13 @@
         </div>
       </div>
 
-      <!-- PAYPAL MODAL -->
-      <div id="paypal-modal" class="modal-overlay" style="display: none;">
+      <!-- PAYMENT MODAL -->
+      <div id="payment-modal" class="modal-overlay" style="display: none;">
         <div class="modal-box">
-          <button class="close-modal" id="btn-close-paypal">&times;</button>
+          <button class="close-modal" id="btn-close-payment">&times;</button>
           <h2 class="comic-text">PREMIUM</h2>
           <p class="stats-text" style="margin-bottom: 20px;">Get 7 Days of UNLIMITED Play Time for just $1.00 USD.</p>
-          <div id="paypal-button-container" style="min-height: 150px; background: #fff; padding: 10px; border-radius: 8px;"></div>
+          <div id="payment-container" style="min-height: 150px; background: #fff; padding: 10px; border-radius: 8px;"></div>
         </div>
       </div>
 

@@ -98,7 +98,7 @@ let syncModule: MultiplayerSync | null = null;
 function updateTimeBalanceDisplay() {
   const display = document.getElementById('play-time-display');
   const timeBalanceEl = document.getElementById('profile-stats-balance');
-  const btnBuyPremium = document.getElementById('btn-buy-premium');
+  const btnAddTime = document.getElementById('btn-add-time');
   
   const balanceStr = localStorage.getItem('playTimeBalance');
   const premiumStr = localStorage.getItem('premiumUntil');
@@ -116,15 +116,15 @@ function updateTimeBalanceDisplay() {
       if (timeBalanceEl) {
         timeBalanceEl.innerText = 'Play Time: ∞ (Premium)';
       }
-      if (btnBuyPremium) btnBuyPremium.style.display = 'none';
+      if (btnAddTime) btnAddTime.style.display = 'none';
     }
   }
 
   if (!hasPremium) {
-    if (btnBuyPremium && localStorage.getItem('sessionId')) {
-      btnBuyPremium.style.display = 'block';
-    } else if (btnBuyPremium) {
-      btnBuyPremium.style.display = 'none';
+    if (btnAddTime && localStorage.getItem('sessionId')) {
+      btnAddTime.style.display = 'block';
+    } else if (btnAddTime) {
+      btnAddTime.style.display = 'none';
     }
 
     if (balanceStr) {
@@ -132,18 +132,17 @@ function updateTimeBalanceDisplay() {
       const hrs = Math.floor(Math.max(0, seconds) / 3600);
       const mins = Math.floor((Math.max(0, seconds) % 3600) / 60);
       
+      const hh = hrs.toString().padStart(2, '0');
+      const mm = mins.toString().padStart(2, '0');
+      
       if (display) {
         display.style.display = 'block';
-        if (hrs > 0) {
-          display.innerText = `Time: ${hrs}h ${mins}m`;
-        } else {
-          display.innerText = `Time: ${mins}m`;
-        }
+        display.innerText = `Time: ${hh}:${mm}`;
         display.style.color = 'white';
       }
       
       if (timeBalanceEl) {
-        timeBalanceEl.innerText = `Play Time Balance: ${hrs}h ${mins}m`;
+        timeBalanceEl.innerText = `Play Time Balance: ${hh}:${mm}`;
       }
     } else if (display) {
       display.style.display = 'none';
@@ -153,8 +152,21 @@ function updateTimeBalanceDisplay() {
 
 // Add PayPal Button Rendering
 function renderPayPalButton() {
-  const buttonContainer = document.getElementById('paypal-button-container');
+  const buttonContainer = document.getElementById('payment-container');
   if (!buttonContainer) return;
+
+  // AdBlock Fallback
+  // @ts-ignore
+  if (typeof paypal === 'undefined') {
+    buttonContainer.innerHTML = `
+      <div style="text-align: center; color: #ff3333; padding: 20px;">
+        <h3 class="comic-text">Payment Gateway Blocked</h3>
+        <p>Your browser or AdBlocker is blocking the secure payment window.</p>
+        <p style="margin-top: 10px; color: #000;">Please temporarily pause your AdBlocker on this site and reload the page to purchase extra time.</p>
+      </div>
+    `;
+    return;
+  }
 
   // Render PayPal button only if it hasn't been rendered yet
   if (buttonContainer.innerHTML === '') {
@@ -185,27 +197,27 @@ function renderPayPalButton() {
                 alert('Payment successful! You now have 7 Days of Unlimited Play Time.');
                 localStorage.setItem('premiumUntil', res.premium_until.toString());
                 updateTimeBalanceDisplay();
-                document.getElementById('paypal-modal')!.style.display = 'none';
+                document.getElementById('payment-modal')!.style.display = 'none';
               } else {
                 alert('Verification failed: ' + res.error);
               }
             });
           });
         }
-      }).render('#paypal-button-container');
+      }).render('#payment-container');
     } catch(e) {
       console.error("PayPal failed to load", e);
     }
   }
 }
 
-document.getElementById('btn-buy-premium')?.addEventListener('click', () => {
-  document.getElementById('paypal-modal')!.style.display = 'flex';
+document.getElementById('btn-add-time')?.addEventListener('click', () => {
+  document.getElementById('payment-modal')!.style.display = 'flex';
   renderPayPalButton();
 });
 
-document.getElementById('btn-close-paypal')?.addEventListener('click', () => {
-  document.getElementById('paypal-modal')!.style.display = 'none';
+document.getElementById('btn-close-payment')?.addEventListener('click', () => {
+  document.getElementById('payment-modal')!.style.display = 'none';
 });
 
 const sessionId = localStorage.getItem('sessionId');

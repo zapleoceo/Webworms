@@ -186,7 +186,7 @@ button:hover {
   min-width: 120px;
 }
 
-.premium-btn {
+.time-add-btn {
   background: linear-gradient(180deg, #ffcc00, #ff9900);
   border: 2px solid #fff;
   color: #000;
@@ -201,7 +201,7 @@ button:hover {
   transition: transform 0.1s ease;
 }
 
-.premium-btn:active {
+.time-add-btn:active {
   transform: scale(0.95);
 }
 
