@@ -242,14 +242,18 @@ async function sendResendEmail(env: Env, to: string, token: string, host: string
 
 async function handleRegister(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   try {
-    const { email, username, password, referred_by } = await request.json() as { email: string, username: string, password?: string, referred_by?: string };
-    
+    const body = await request.json() as any;
+    const email = body.email?.trim();
+    const username = body.username?.trim();
+    const password = body.password;
+    const referred_by = body.referred_by;
+
     if (!email || !username || !password) {
       return new Response(JSON.stringify({ error: 'Email, username, and password are required' }), { status: 400 });
     }
 
     // Check if user exists
-    const existingUser = await env.DB.prepare('SELECT * FROM Users WHERE email = ? OR username = ?').bind(email, username).first<any>();
+    const existingUser = await env.DB.prepare('SELECT * FROM Users WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)').bind(email, username).first<any>();
 
     if (existingUser) {
       return new Response(JSON.stringify({ error: 'User with this email or username already exists' }), { status: 409 });
@@ -286,7 +290,7 @@ async function handleRegister(request: Request, env: Env, ctx: ExecutionContext)
     // OPTIMIZED REFERRAL PYRAMID (Batch Transaction)
     // Find parent and grandparent
     const parentRow = await env.DB.prepare(
-      `SELECT id, referred_by FROM Users WHERE id = ? OR username = ?`
+      `SELECT id, referred_by FROM Users WHERE id = ? OR LOWER(username) = LOWER(?)`
     ).bind(referred_by, referred_by).first<{id: string, referred_by: string | null}>();
 
     const stmts: D1PreparedStatement[] = [];
@@ -332,13 +336,15 @@ async function handleRegister(request: Request, env: Env, ctx: ExecutionContext)
 
 async function handleLogin(request: Request, env: Env): Promise<Response> {
   try {
-    const { email, password } = await request.json() as { email?: string, password?: string };
-    
+    const body = await request.json() as any;
+    const email = body.email?.trim();
+    const password = body.password;
+
     if (!email || !password) {
       return new Response(JSON.stringify({ error: 'Email and password are required' }), { status: 400 });
     }
 
-    const user = await env.DB.prepare('SELECT * FROM Users WHERE email = ?').bind(email).first<any>();
+    const user = await env.DB.prepare('SELECT * FROM Users WHERE LOWER(email) = LOWER(?)').bind(email).first<any>();
 
     if (!user) {
       return new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401 });
@@ -565,7 +571,7 @@ async function deleteLogo(request: Request, env: Env): Promise<Response> {
 async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
   if (request.method === 'OPTIONS') return true;
 
-  const email = request.headers.get('X-Admin-Email');
+  const email = request.headers.get('X-Admin-Email')?.trim();
   const passwordEncoded = request.headers.get('X-Admin-Password');
   
   if (!email || !passwordEncoded) return false;
@@ -578,7 +584,7 @@ async function checkAdminAuth(request: Request, env: Env): Promise<boolean> {
   }
   
   const hashedPassword = await hashPassword(password);
-  const user = await env.DB.prepare('SELECT id FROM Users WHERE email = ? AND password_hash = ? AND is_admin = 1').bind(email, hashedPassword).first();
+  const user = await env.DB.prepare('SELECT id FROM Users WHERE LOWER(email) = LOWER(?) AND password_hash = ? AND is_admin = 1').bind(email, hashedPassword).first();
   
   return !!user;
 }
