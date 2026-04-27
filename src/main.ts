@@ -871,10 +871,22 @@ let lastTime = performance.now();
 // Auto-join logic if room URL param exists
 const initUrlParams = new URLSearchParams(window.location.search);
 if (initUrlParams.get('room')) {
-  setTimeout(() => {
-    alert("You have been invited to a game! Please login to join.");
-    document.getElementById('btn-open-auth')!.click();
-  }, 500);
+  // Use localStorage directly to check if user is logged in
+  const savedSession = localStorage.getItem('userSessionId');
+  if (savedSession) {
+    // User is already logged in, join the game directly
+    // Call startGame which is available in the global scope or wait for it
+    setTimeout(() => {
+      const btnPlayFriends = document.getElementById('btn-play-friends');
+      if (btnPlayFriends) btnPlayFriends.click();
+    }, 500);
+  } else {
+    // User needs to login
+    setTimeout(() => {
+      alert("You have been invited to a game! Please login to join.");
+      document.getElementById('btn-open-auth')!.click();
+    }, 500);
+  }
 }
 
 // Override render method to connect View layer
