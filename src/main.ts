@@ -601,6 +601,14 @@ let currentMatchToken: string | null = null;
         const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
         inviteInput.value = inviteUrl;
 
+        // Make it clear the host shouldn't open this link
+        const hostWarning = document.createElement('p');
+        hostWarning.innerText = "Don't open this link yourself! Just send it to your friend.";
+        hostWarning.style.color = '#ffeb3b';
+        hostWarning.style.fontSize = '12px';
+        hostWarning.style.marginTop = '10px';
+        invitePanel.appendChild(hostWarning);
+
         document.getElementById('btn-copy-invite')!.onclick = () => {
           navigator.clipboard.writeText(inviteUrl);
           document.getElementById('btn-copy-invite')!.innerText = 'COPIED!';
@@ -619,10 +627,15 @@ let currentMatchToken: string | null = null;
         window.presenter.localTeam = 'team2';
         loaderText.innerText = 'JOINING ROOM...';
       }
-    } catch (e) {
-      alert('Failed to connect: ' + e);
+    } catch (e: any) {
+      alert('Failed to connect: ' + e.message);
       loaderScreen.classList.remove('active');
       menuScreen.classList.add('active');
+
+      // Clear the room from URL so we don't get stuck in a loop if the user clicks play again
+      if (joinRoomId) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
       return;
     }
   } else {

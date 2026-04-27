@@ -144,6 +144,19 @@ export class APIClient {
     }
   }
 
+  static async joinRoomState(roomId: string) {
+    try {
+      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/join`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) {
+        return { success: false, error: data.error };
+      }
+      return data;
+    } catch (e) {
+      return { success: false, error: 'Network error joining room' };
+    }
+  }
+
   // WebRTC Signaling
   static async sendSignal(roomId: string, type: string, payload: any) {
     try {

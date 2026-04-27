@@ -33,6 +33,12 @@ export class MultiplayerSync {
     };
 
     if (roomId) {
+      // First, try to claim the join slot on the server
+      const joinRes = await APIClient.joinRoomState(roomId);
+      if (joinRes && joinRes.error) {
+        throw new Error(joinRes.error); // Will be caught in main.ts
+      }
+
       this.roomId = roomId;
       this.isHost = false;
       await this.joinRoom();
