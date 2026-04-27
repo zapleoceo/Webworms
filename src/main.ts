@@ -44,8 +44,20 @@ if (!isAdminPage) {
 // Load custom maps into dropdown
 APIClient.getMaps().then(maps => {
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
+  const mapSizeDisplay = document.getElementById('map-size-display') as HTMLDivElement;
+  
   if (mapTypeSelect && maps && maps.length > 0) {
     mapTypeSelect.innerHTML = ''; // Clear "Loading maps..."
+    
+    const updateSizeDisplay = () => {
+      const selectedId = mapTypeSelect.value;
+      const selectedMap = maps.find((m: any) => m.id === selectedId);
+      if (selectedMap && mapSizeDisplay) {
+        mapSizeDisplay.style.display = 'inline-block';
+        mapSizeDisplay.innerText = `${selectedMap.width} x ${selectedMap.height}`;
+      }
+    };
+
     maps.forEach((m: any) => {
       const opt = document.createElement('option');
       opt.value = m.id;
@@ -54,6 +66,11 @@ APIClient.getMaps().then(maps => {
       opt.innerText = cleanName;
       mapTypeSelect.appendChild(opt);
     });
+    
+    // Initial display and listen for changes
+    updateSizeDisplay();
+    mapTypeSelect.addEventListener('change', updateSizeDisplay);
+    
   } else if (mapTypeSelect) {
     mapTypeSelect.innerHTML = '<option disabled>No custom maps found</option>';
   }
