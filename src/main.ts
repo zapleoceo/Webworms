@@ -798,41 +798,34 @@ function bindPresenterEvents() {
 
 bindPresenterEvents();
 
-} // End of else block for game init
-
 let lastTime = performance.now();
-  function gameLoop(time: number) {
-    try {
-      const dt = (time - lastTime) / 1000;
-      lastTime = time;
+function gameLoop(time: number) {
+  try {
+    const dt = (time - lastTime) / 1000;
+    lastTime = time;
 
-      window.presenter.update(dt);
-      window.renderer.render(window.presenter.state);
+    window.presenter.update(dt);
+    window.renderer.render(window.presenter.state);
 
-      requestAnimationFrame(gameLoop);
-    } catch (e) {
-      console.error('Game Loop Error:', e);
-      requestAnimationFrame(gameLoop); // Try to recover
-    }
+    requestAnimationFrame(gameLoop);
+  } catch (e) {
+    console.error('Game Loop Error:', e);
+    requestAnimationFrame(gameLoop);
   }
+}
 
-  requestAnimationFrame(gameLoop);
-  // Add orientation check if needed.
+requestAnimationFrame(gameLoop);
 
 // Auto-join logic if room URL param exists
 const initUrlParams = new URLSearchParams(window.location.search);
 if (initUrlParams.get('room')) {
-  // Use localStorage directly to check if user is logged in
   const savedSession = localStorage.getItem('userSessionId');
   if (savedSession) {
-    // User is already logged in, join the game directly
-    // Call startGame which is available in the global scope or wait for it
     setTimeout(() => {
       const btnPlayFriends = document.getElementById('btn-play-friends');
       if (btnPlayFriends) btnPlayFriends.click();
     }, 500);
   } else {
-    // User needs to login
     setTimeout(() => {
       alert("You have been invited to a game! Please login to join.");
       document.getElementById('btn-open-auth')!.click();
@@ -858,4 +851,5 @@ if (import.meta.hot) {
     window.presenter.stop();
     window.inputHandler.unbind();
   });
+}
 }
