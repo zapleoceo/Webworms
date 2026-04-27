@@ -126,6 +126,9 @@ export default {
       else if (url.pathname === '/api/admin/logos' && request.method === 'POST') {
         response = await createLogo(request, env);
       }
+      else if (url.pathname === '/api/admin/logos' && request.method === 'PUT') {
+        response = await updateLogo(request, env);
+      }
       else if (url.pathname === '/api/admin/logos' && request.method === 'DELETE') {
         response = await deleteLogo(request, env);
       }
@@ -581,6 +584,46 @@ async function createLogo(request: Request, env: Env): Promise<Response> {
       .bind(id, image_data, width, height, hardness).run();
 
     return new Response(JSON.stringify({ success: true, id }), { status: 201, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+async function updateLogo(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (!id) return new Response(JSON.stringify({ error: 'Missing ID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    const body = await request.json() as any;
+    const hasAnyField =
+      body.image_data !== undefined ||
+      body.width !== undefined ||
+      body.height !== undefined ||
+      body.hardness !== undefined;
+
+    if (!hasAnyField) {
+      return new Response(JSON.stringify({ error: 'No fields to update' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    const existing = await env.DB.prepare('SELECT * FROM Logos WHERE id = ?').bind(id).first<any>();
+    if (!existing) {
+      return new Response(JSON.stringify({ error: 'Logo not found' }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    const image_data = body.image_data !== undefined ? body.image_data : existing.image_data;
+    const width = body.width !== undefined ? body.width : existing.width;
+    const height = body.height !== undefined ? body.height : existing.height;
+    const hardness = body.hardness !== undefined ? body.hardness : existing.hardness;
+
+    await env.DB.prepare('UPDATE Logos SET image_data = ?, width = ?, height = ?, hardness = ? WHERE id = ?')
+      .bind(image_data, width, height, hardness, id).run();
+
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }

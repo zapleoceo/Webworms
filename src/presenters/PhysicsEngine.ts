@@ -682,5 +682,22 @@ export class PhysicsEngine {
         prop.isSettled = false;
       }
     }
+
+    if (state.brandLogos && state.brandLogos.length > 0) {
+      for (const logo of state.brandLogos) {
+        if (!logo.isSolid || logo.health <= 0) continue;
+
+        const effectiveRadius = Math.max(logo.width, logo.height) / 2;
+        const dist = MathUtils.distance(proj.x, proj.y, logo.x, logo.y);
+        if (dist <= finalRadius + effectiveRadius) {
+          const damageRatio = 1 - (dist / (finalRadius + effectiveRadius));
+          const damage = Math.max(5, proj.damage * damageRatio);
+          logo.takeDamage(damage);
+          logo.takeHit(proj.x, proj.y, finalRadius);
+        }
+      }
+
+      state.brandLogos = state.brandLogos.filter(l => l.health > 0);
+    }
   }
 }

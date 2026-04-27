@@ -7,6 +7,7 @@ export class AdminPanel {
   private adminHeaders = new Headers();
 
   private cropper: Cropper | null = null;
+  private editingLogoId: string | null = null;
 
   constructor() {
     this.renderInitialUI();
@@ -393,6 +394,14 @@ export class AdminPanel {
       btn.addEventListener('click', (e) => this.deleteLogo(e));
     });
 
+    document.querySelectorAll('.save-logo-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.saveLogo(e));
+    });
+
+    document.querySelectorAll('.edit-logo-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.startEditLogo(e));
+    });
+
     // Bind spriteset delete buttons
     document.querySelectorAll('.delete-spriteset-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.deleteSpriteSet(e));
@@ -490,10 +499,18 @@ export class AdminPanel {
     tbody.innerHTML = logos.map(logo => `
       <tr>
         <td><img src="${logo.image_data}" alt="Logo" style="max-width: 60px; max-height: 60px; object-fit: contain; background: rgba(255,255,255,0.1); border-radius: 4px; padding: 2px;"></td>
-        <td>${logo.width}x${logo.height} px</td>
-        <td>${logo.hardness}</td>
+        <td style="white-space: nowrap;">
+          <input type="number" class="retro-input logo-width-input" data-id="${logo.id}" value="${logo.width}" style="width: 70px; padding: 5px; margin-bottom: 0;">
+          x
+          <input type="number" class="retro-input logo-height-input" data-id="${logo.id}" value="${logo.height}" style="width: 70px; padding: 5px; margin-bottom: 0;">
+        </td>
         <td>
-          <button class="danger-btn small-btn delete-logo-btn" data-id="${logo.id}">Delete</button>
+          <input type="number" class="retro-input logo-hardness-input" data-id="${logo.id}" value="${logo.hardness}" style="width: 70px; padding: 5px; margin-bottom: 0;">
+        </td>
+        <td style="white-space: nowrap;">
+          <button class="secondary-btn small-btn save-logo-btn" data-id="${logo.id}">Save</button>
+          <button class="secondary-btn small-btn edit-logo-btn" data-id="${logo.id}" style="margin-left: 5px;">Edit Image</button>
+          <button class="danger-btn small-btn delete-logo-btn" data-id="${logo.id}" style="margin-left: 5px;">Delete</button>
         </td>
       </tr>
     `).join('');
@@ -672,8 +689,13 @@ export class AdminPanel {
     confirmBtn.disabled = true;
 
     try {
-      const res = await fetch(APIClient.BASE_URL + '/admin/logos', {
-        method: 'POST',
+      const isEditing = !!this.editingLogoId;
+      const endpoint = isEditing
+        ? (APIClient.BASE_URL + `/admin/logos?id=${this.editingLogoId}`)
+        : (APIClient.BASE_URL + '/admin/logos');
+
+      const res = await fetch(endpoint, {
+        method: isEditing ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
@@ -688,11 +710,12 @@ export class AdminPanel {
       });
 
       if (res.ok) {
-        alert('Logo cropped and uploaded successfully!');
+        alert(isEditing ? 'Logo updated successfully!' : 'Logo cropped and uploaded successfully!');
         const fileInput = document.getElementById('logo-file') as HTMLInputElement;
         fileInput.value = ''; // clear
         (document.getElementById('upload-logo-btn') as HTMLButtonElement).disabled = true;
         this.closeCropper();
+        this.editingLogoId = null;
         this.loadLogosData();
       } else {
         const err = await res.json();
@@ -725,6 +748,68 @@ export class AdminPanel {
         this.loadLogosData();
       } else {
         alert('Failed to delete logo');
+      }
+    } catch (err) {
+      alert('Network error');
+    }
+  }
+
+  private startEditLogo(e: Event) {
+    const id = (e.target as HTMLButtonElement).dataset.id;
+    if (!id) return;
+
+    const widthEl = document.querySelector(`.logo-width-input[data-id="${id}"]`) as HTMLInputElement | null;
+    const heightEl = document.querySelector(`.logo-height-input[data-id="${id}"]`) as HTMLInputElement | null;
+    const hardnessEl = document.querySelector(`.logo-hardness-input[data-id="${id}"]`) as HTMLInputElement | null;
+
+    const widthInput = document.getElementById('logo-width') as HTMLInputElement;
+    const heightInput = document.getElementById('logo-height') as HTMLInputElement;
+    const hardnessInput = document.getElementById('logo-hardness') as HTMLInputElement;
+
+    if (widthEl) widthInput.value = widthEl.value;
+    if (heightEl) heightInput.value = heightEl.value;
+    if (hardnessEl) hardnessInput.value = hardnessEl.value;
+
+    this.editingLogoId = id;
+
+    const fileInput = document.getElementById('logo-file');
+    if (fileInput) fileInput.scrollIntoView({ behavior: 'smooth' });
+    alert('Select a file, crop it, then press Confirm & Upload to update the image for this logo.');
+  }
+
+  private async saveLogo(e: Event) {
+    const id = (e.target as HTMLButtonElement).dataset.id;
+    if (!id) return;
+
+    const widthEl = document.querySelector(`.logo-width-input[data-id="${id}"]`) as HTMLInputElement | null;
+    const heightEl = document.querySelector(`.logo-height-input[data-id="${id}"]`) as HTMLInputElement | null;
+    const hardnessEl = document.querySelector(`.logo-hardness-input[data-id="${id}"]`) as HTMLInputElement | null;
+
+    const width = widthEl ? parseInt(widthEl.value) : NaN;
+    const height = heightEl ? parseInt(heightEl.value) : NaN;
+    const hardness = hardnessEl ? parseInt(hardnessEl.value) : NaN;
+
+    if (!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(hardness)) {
+      alert('Invalid values');
+      return;
+    }
+
+    try {
+      const res = await fetch(APIClient.BASE_URL + `/admin/logos?id=${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        },
+        body: JSON.stringify({ width, height, hardness })
+      });
+
+      if (res.ok) {
+        this.loadLogosData();
+      } else {
+        const err = await res.json();
+        alert('Failed to save: ' + (err.error || 'Unknown error'));
       }
     } catch (err) {
       alert('Network error');

@@ -206,11 +206,8 @@ export class InputHandler {
 
   private handleWheel(event: WheelEvent): void {
     event.preventDefault();
-    const zoomDelta = event.deltaY > 0 ? 0.9 : 1.1;
-
     const local = this.getLocalCoordinates(event.clientX, event.clientY);
-
-    this.presenter.changeZoom(zoomDelta, local.x, local.y, this.canvas.width, this.canvas.height);
+    const delta = event.deltaY > 0 ? 1 : -1;
+    this.presenter.changeZoom(delta, this.canvas.width, this.canvas.height, local.x, local.y);
   }
 }
-

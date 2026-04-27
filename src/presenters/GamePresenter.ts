@@ -650,6 +650,7 @@ export class GamePresenter {
     let sprite = '';
     let width = 100;
     let height = 60;
+    let hardness = 10;
     
     // Check if custom logos from DB are available
     if (this.state.availableLogos && this.state.availableLogos.length > 0) {
@@ -657,6 +658,7 @@ export class GamePresenter {
       sprite = logo.image_data; // This contains the base64
       width = logo.width || 100;
       height = logo.height || 60;
+      hardness = logo.hardness || 10;
     } else {
       // Fallback to local files
       const logos = [
@@ -680,6 +682,9 @@ export class GamePresenter {
     // Increase the visual and physical size by 1.5x as requested
     brandLogo.width = width * 1.5;
     brandLogo.height = height * 1.5;
+    brandLogo.hardness = hardness;
+    brandLogo.maxHealth = Math.max(10, hardness * 10);
+    brandLogo.health = brandLogo.maxHealth;
     
     if (!this.state.brandLogos) this.state.brandLogos = [];
     this.state.brandLogos.push(brandLogo);

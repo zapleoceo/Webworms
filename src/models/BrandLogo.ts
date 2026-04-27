@@ -12,6 +12,9 @@ export class BrandLogo {
   public height: number;
   public isDynamic: boolean = true;
   public isSolid: boolean = true;
+  public hardness: number = 10;
+  public health: number = 200;
+  public maxHealth: number = 200;
   
   public hitShake: number = 0; // Visual shake
   public bounceTime: number = 0; // Bounce animation
@@ -27,6 +30,11 @@ export class BrandLogo {
     // Sizes based on ~2-3 worms width (worm is 30px)
     this.width = 100;
     this.height = 50;
+  }
+
+  public takeDamage(amount: number): void {
+    this.health -= amount;
+    if (this.health < 0) this.health = 0;
   }
 
   public update(dt: number, gravity: number, landscape: Landscape, otherLogos: BrandLogo[]): void {
