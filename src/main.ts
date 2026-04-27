@@ -391,7 +391,8 @@ if (joystickMove) {
 
 const touchActions = [
   { id: 'btn-jump', action: 'jump' },
-  { id: 'btn-fire', action: 'fire' }
+  { id: 'btn-fire', action: 'fire' },
+  { id: 'btn-switch', action: 'switch' }
 ];
 
 touchActions.forEach(({ id, action }) => {
@@ -855,6 +856,11 @@ function bindPresenterEvents() {
   let lastTurnPlayerIndex = -1;
 
   window.presenter.onStateUpdate = (state: any) => {
+    // Sync state to client if host
+    if (window.presenter.isHost && syncModule && currentMode === 'friend') {
+      syncModule.sendStateSync(state);
+    }
+
     // Update local HP (team1)
     const localWorms = state.players.length > 0 ? [state.players[0]] : [];
     const localHp = localWorms.reduce((sum: number, w: any) => sum + w.health, 0);

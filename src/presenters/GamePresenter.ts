@@ -222,8 +222,13 @@ export class GamePresenter {
     const dt = (time - this.lastTime) / 1000;
     this.lastTime = time;
 
-    this.update(Math.min(dt, 0.1)); // cap dt
-    this.render();
+    try {
+      this.update(Math.min(dt, 0.1)); // cap dt
+      this.render();
+      this.postRender();
+    } catch (e) {
+      console.error('Game Loop Error in Presenter:', e);
+    }
 
     requestAnimationFrame(this.loop.bind(this));
   }

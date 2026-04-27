@@ -7,8 +7,8 @@ import { Random } from '../utils/Random';
 import { AudioManager } from '../utils/AudioManager';
 
 export class PhysicsEngine {
-  public gravity: number = 150; // pixels per second squared (Slowed down for realism)
-  public safeFallSpeed: number = 200; // Safe landing speed
+  public gravity: number = 195; // pixels per second squared (Increased by 30% from 150)
+  public safeFallSpeed: number = 260; // Safe landing speed (also increased to match gravity)
   public fallDamageMultiplier: number = 0.075; // Half fall damage
   public onExplode?: (x: number, y: number) => void;
   public onJump?: () => void;

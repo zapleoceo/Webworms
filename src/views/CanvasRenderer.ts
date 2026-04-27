@@ -459,7 +459,16 @@ export class CanvasRenderer {
         frameIndex = Math.floor((Date.now() / 100) % this.animCtrl.getAnimLength(animKey));
       } else if (isMoving) {
         animKey = 'walk';
-        frameIndex = Math.floor((Date.now() / 50) % this.animCtrl.getAnimLength(animKey));
+        const numFrames = this.animCtrl.getAnimLength(animKey);
+        // Ping-pong animation (0 1 2 3 4 3 2 1 0)
+        // Total steps in a full cycle is (numFrames * 2) - 2
+        if (numFrames > 0) {
+          const totalSteps = (numFrames * 2) - 2;
+          const step = Math.floor(Date.now() / 50) % totalSteps;
+          frameIndex = step < numFrames ? step : totalSteps - step;
+        } else {
+          frameIndex = 0;
+        }
       } else if (isActive && weapon) {
         // Aiming state
         const weaponMap: any = {
