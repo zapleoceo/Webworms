@@ -909,7 +909,7 @@ async function joinRoomState(request: Request, env: Env): Promise<Response> {
   } catch {}
   if (!playerId) return new Response(JSON.stringify({ error: 'playerId required' }), { status: 400 });
 
-  const roomStr = await env.ROOMS.get(roomId);
+  const roomStr = await env.ROOMS.get(roomId, { cacheTtl: 0 });
   if (!roomStr) {
     return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404 });
   }
@@ -952,7 +952,7 @@ async function getRoomState(request: Request, env: Env): Promise<Response> {
 
   if (!roomId) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
 
-  const roomStr = await env.ROOMS.get(roomId);
+  const roomStr = await env.ROOMS.get(roomId, { cacheTtl: 0 });
   if (!roomStr) {
     return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404 });
   }
@@ -972,7 +972,7 @@ async function handleSignaling(request: Request, env: Env): Promise<Response> {
   
   if (type === 'ice-host' || type === 'ice-client') {
     // Append ICE candidate to array
-    const existingStr = await env.ROOMS.get(`${roomId}_${type}`);
+    const existingStr = await env.ROOMS.get(`${roomId}_${type}`, { cacheTtl: 0 });
     let candidates: any[] = [];
     if (existingStr) {
       try { candidates = JSON.parse(existingStr); } catch (e) {}
@@ -989,7 +989,7 @@ async function handleSignaling(request: Request, env: Env): Promise<Response> {
   }
 
   if (type === 'answer') {
-    const roomStr = await env.ROOMS.get(roomId);
+    const roomStr = await env.ROOMS.get(roomId, { cacheTtl: 0 });
     if (roomStr) {
       const room = JSON.parse(roomStr);
       room.status = 'active';
@@ -1009,7 +1009,7 @@ async function handleSignalingGet(request: Request, env: Env): Promise<Response>
 
   if (!roomId || !type) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
 
-  const data = await env.ROOMS.get(`${roomId}_${type}`);
+  const data = await env.ROOMS.get(`${roomId}_${type}`, { cacheTtl: 0 });
   if (data) {
     return new Response(data, { headers: { 'Content-Type': 'application/json' } });
   }
