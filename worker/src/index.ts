@@ -698,6 +698,50 @@ async function createMap(request: Request, env: Env): Promise<Response> {
   }
 }
 
+async function updateMap(request: Request, env: Env): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  try {
+    const id = new URL(request.url).pathname.split('/').pop();
+    if (!id) {
+      return new Response(JSON.stringify({ error: 'Missing ID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    const { image_data, width, height } = await request.json() as any;
+    
+    if (!image_data) {
+      return new Response(JSON.stringify({ error: 'Missing image_data' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    const newWidth = Math.round(width || 3840);
+    const newHeight = Math.round(height || 2160);
+
+    // Get old map to check if it exists
+    const existing = await env.DB.prepare('SELECT id FROM Maps WHERE id = ?').bind(id).first();
+    if (!existing) {
+       return new Response(JSON.stringify({ error: 'Map not found' }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    // Check payload size
+    if (image_data.length > 25 * 1024 * 1024) {
+      return new Response(JSON.stringify({ error: 'Image data too large (max 25MB)' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    // Update actual base64 data in KV
+    await env.ROOMS.put('map_img_' + id, image_data);
+
+    // Update dimensions in DB (ensure they are integers)
+    await env.DB.prepare('UPDATE Maps SET width = ?, height = ? WHERE id = ?')
+      .bind(newWidth, newHeight, id).run();
+
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
 async function deleteMap(request: Request, env: Env): Promise<Response> {
   if (!(await checkAdminAuth(request, env))) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });

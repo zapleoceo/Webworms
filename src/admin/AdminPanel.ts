@@ -667,7 +667,10 @@ export class AdminPanel {
 
       ctx.drawImage(img, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
 
-      const newBase64 = canvas.toDataURL('image/png');
+      // Use WebP with 0.5 quality to ensure it fits within limits. 
+      // Cloudflare Workers have a 100MB body limit, but KV values are max 25MB.
+      // D1 also has limits. 0.5 WebP is usually < 1MB even for 4K.
+      const newBase64 = canvas.toDataURL('image/webp', 0.5);
 
       // Update map in database
       const updateRes = await fetch(APIClient.BASE_URL + `/admin/maps/${id}`, {
