@@ -1066,28 +1066,39 @@ function getTransparentSprite(url: string, fw: number, fh: number, callback: (ne
 // Update HUD elements
 const hpLocalEl = document.getElementById('hp-local')!;
 const hpEnemyEl = document.getElementById('hp-enemy')!;
+
+let lastWormUIStateStr = '';
+
 function updateWormSelectionUI(state: any) {
   const panel = document.getElementById('worm-selection-panel');
   if (!panel) return;
 
   const currentPlayer = state.getCurrentPlayer();
   const currentTeam = currentPlayer ? currentPlayer.team : 'team1';
-  
+
   // Show only if it's local team's turn (or player 1 in local multiplayer)
   const isMyTurn = window.presenter.localTeam === 'training' || window.presenter.localTeam === currentTeam;
-  
+
   if (!isMyTurn) {
-    panel.style.display = 'none';
+    if (lastWormUIStateStr !== 'none') {
+      panel.style.display = 'none';
+      lastWormUIStateStr = 'none';
+    }
     return;
   }
-  
-  panel.style.display = 'flex';
-  
+
   // Find all worms of the current team
   const teamWorms = state.players
     .map((p: any, index: number) => ({ p, index }))
     .filter((item: any) => item.p.team === currentTeam);
 
+  const currentStateStr = teamWorms.map((item: any) => `${item.index}:${item.p.health}:${state.currentPlayerIndex}`).join(',');
+  if (lastWormUIStateStr === currentStateStr) {
+    return; // No need to re-render DOM if nothing changed
+  }
+  lastWormUIStateStr = currentStateStr;
+
+  panel.style.display = 'flex';
   panel.innerHTML = ''; // Clear existing buttons
   
   teamWorms.forEach((item: any, i: number) => {
