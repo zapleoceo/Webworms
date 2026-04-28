@@ -89,6 +89,9 @@ export class CanvasRenderer {
 
     ctx.clearRect(0, 0, size, size);
 
+    const scale = 2.0;
+    const offsetUp = size * 0.2;
+
     let animKey = 'idle';
     let frameIndex = 0;
     let flipX = !!player?.facingRight;
@@ -112,7 +115,7 @@ export class CanvasRenderer {
       offsetY = 24;
     }
 
-    this.animCtrl.drawFrame(ctx, animKey, frameIndex, size / 2, size * 0.85, 1.0, flipX, offsetY);
+    this.animCtrl.drawFrame(ctx, animKey, frameIndex, size / 2, size - offsetY - offsetUp, scale, flipX, offsetY);
     return canvas.toDataURL('image/png');
   }
 

@@ -743,7 +743,7 @@ function updateWormSelectionUI(state: any) {
     btn.dataset.index = item.index.toString();
     
     const hpStr = Math.ceil(Math.max(0, item.p.health)).toString();
-    const thumb = (window.renderer as any)?.getWormThumbnail?.(item.p, 60) || '/sprites/Worms/wbrth1.png';
+    const thumb = (window.renderer as any)?.getWormThumbnail?.(item.p, 160) || '/sprites/Worms/wbrth1.png';
     btn.innerHTML = `<img src="${thumb}" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
 
   // Use both touchstart and click to ensure it works on mobile
