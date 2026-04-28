@@ -109,7 +109,14 @@ export class PhysicsEngine {
     const stamped: BrandLogo[] = [];
     for (const logo of state.brandLogos) {
       const wasDynamic = logo.isDynamic;
+      const touchedBefore = logo.touchedGround;
       logo.update(dt, this.gravity, state.landscape, state.brandLogos);
+
+      if (!touchedBefore && logo.touchedGround) {
+        if (this.onHeavyImpact) {
+          this.onHeavyImpact();
+        }
+      }
 
       // Effect: Landed this frame
       if (wasDynamic && !logo.isDynamic) {
@@ -175,6 +182,7 @@ export class PhysicsEngine {
         if (!(prop as any).touchedGround) {
           (prop as any).touchedGround = true;
           AudioManager.playLand();
+          if (this.onHeavyImpact) this.onHeavyImpact();
         }
 
         // High speed impact (dig into terrain)
@@ -207,6 +215,25 @@ export class PhysicsEngine {
         }
         prop.vx *= prop.friction;
 
+        const halfW = Math.max(8, prop.width ? prop.width / 2 : prop.radius);
+        const sample = (sx: number) => {
+          const ix = Math.floor(sx);
+          let y = bottomY;
+          let steps = 0;
+          while (state.landscape.isSolid(ix, y) && y > 0 && steps < 40) {
+            y--;
+            steps++;
+          }
+          return y;
+        };
+        const yL = sample(prop.x - halfW);
+        const yC = sample(prop.x);
+        const yR = sample(prop.x + halfW);
+        const dx = Math.max(1, halfW * 2);
+        const slope = (((yR - yC) / (dx / 2)) + ((yC - yL) / (dx / 2))) * 0.5;
+        const targetAngle = Math.max(-0.8, Math.min(0.8, Math.atan(slope)));
+
+        prop.angularVelocity += (targetAngle - prop.rotation) * 10 * dt;
         prop.angularVelocity += (-prop.rotation) * 4 * dt;
         prop.angularVelocity *= 0.92;
 
