@@ -1011,10 +1011,18 @@ document.getElementById('btn-confirm-leave')?.addEventListener('click', () => {
 
 // Helper to process sprites for UI (remove background)
 const transparentSprites: Record<string, string> = {};
+const loadingSprites: Record<string, boolean> = {};
+
 function getTransparentSprite(url: string, fw: number, fh: number, callback: (newUrl: string) => void) {
   if (transparentSprites[url]) {
     return callback(transparentSprites[url]);
   }
+  if (loadingSprites[url]) {
+    // Just wait for next tick to render, it will use transparentSprites when done
+    return;
+  }
+  loadingSprites[url] = true;
+
   const img = new Image();
   img.crossOrigin = "Anonymous";
   img.src = url;
@@ -1023,7 +1031,10 @@ function getTransparentSprite(url: string, fw: number, fh: number, callback: (ne
     canvas.width = img.width;
     canvas.height = img.height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return callback(url);
+    if (!ctx) {
+      delete loadingSprites[url];
+      return callback(url);
+    }
     ctx.drawImage(img, 0, 0);
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imgData.data;
@@ -1043,9 +1054,13 @@ function getTransparentSprite(url: string, fw: number, fh: number, callback: (ne
     
     const newUrl = cropCanvas.toDataURL('image/png');
     transparentSprites[url] = newUrl;
+    delete loadingSprites[url];
     callback(newUrl);
   };
-  img.onerror = () => callback(url);
+  img.onerror = () => {
+    delete loadingSprites[url];
+    callback(url);
+  };
 }
 
 // Update HUD elements
@@ -1082,15 +1097,20 @@ function updateWormSelectionUI(state: any) {
     
     const spriteUrl = item.p.health > 0 ? '/sprites/Worms/wbrth1.png' : '/sprites/Misc/grave1.png';
     const hpStr = Math.ceil(Math.max(0, item.p.health)).toString();
-    
+
     // We create a temporary placeholder, and load the transparent sprite asynchronously
     const imgId = `worm-img-${item.p.id || i}`;
-    btn.innerHTML = `<img id="${imgId}" src="" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
     
-    getTransparentSprite(spriteUrl, item.p.health > 0 ? 60 : 24, item.p.health > 0 ? 60 : 32, (newUrl) => {
-      const imgEl = document.getElementById(imgId) as HTMLImageElement;
-      if (imgEl) imgEl.src = newUrl;
-    });
+    // Check if it's already cached to avoid flickering
+    if (transparentSprites[spriteUrl]) {
+      btn.innerHTML = `<img id="${imgId}" src="${transparentSprites[spriteUrl]}" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
+    } else {
+      btn.innerHTML = `<img id="${imgId}" src="" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
+      getTransparentSprite(spriteUrl, 60, 60, (newUrl) => {
+        const imgEl = btn.querySelector('img') as HTMLImageElement;
+        if (imgEl) imgEl.src = newUrl;
+      });
+    }
     
     btn.addEventListener('click', () => {
       if (item.p.health > 0 && !window.presenter.hasFiredThisTurn) {
