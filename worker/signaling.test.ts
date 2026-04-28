@@ -8,13 +8,17 @@ describe('signaling', () => {
     const roomId = 'TEST';
 
     const snapRes = await worker.fetch(new Request(`http://example.com/api/rooms/${roomId}/snapshot`, { method: 'GET' }), env as any, ctx as any);
-    await snapRes.text();
+    const snap = await snapRes.json<any>();
     await waitOnExecutionContext(ctx);
     expect(snapRes.status).toBe(200);
+    expect(snap).toHaveProperty('offer');
+    expect(snap).toHaveProperty('answer');
+    expect(snap).toHaveProperty('iceHost');
+    expect(snap).toHaveProperty('iceClient');
 
     const ctx2 = createExecutionContext();
     const wsRes: any = await worker.fetch(new Request(`http://example.com/api/rooms/${roomId}/ws`, { method: 'GET' }), env as any, ctx2 as any);
     await waitOnExecutionContext(ctx2);
-    expect(wsRes.status).toBe(400);
+    expect(wsRes.status).toBe(501);
   });
 });

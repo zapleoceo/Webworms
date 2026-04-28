@@ -18,6 +18,8 @@ export class MultiplayerSync {
   private usePollingSignaling: boolean = false;
   private pollingTimer: number | null = null;
   private lastSnapshot: string = '';
+  private lastIceHostLen: number = 0;
+  private lastIceClientLen: number = 0;
   private lastSentIceIndex = 0;
   private pendingRemoteIce: any[] = [];
   
@@ -200,8 +202,14 @@ export class MultiplayerSync {
         this.lastSnapshot = str;
         this.applySignal('offer', data?.offer);
         this.applySignal('answer', data?.answer);
-        this.applySignal('ice-host', data?.iceHost);
-        this.applySignal('ice-client', data?.iceClient);
+        const iceHost = Array.isArray(data?.iceHost) ? data.iceHost : [];
+        const iceClient = Array.isArray(data?.iceClient) ? data.iceClient : [];
+        const newHost = iceHost.slice(this.lastIceHostLen);
+        const newClient = iceClient.slice(this.lastIceClientLen);
+        this.lastIceHostLen = iceHost.length;
+        this.lastIceClientLen = iceClient.length;
+        newHost.forEach((c: any) => this.applySignal('ice-host', c));
+        newClient.forEach((c: any) => this.applySignal('ice-client', c));
       } catch {}
     };
     this.pollingTimer = window.setInterval(poll, 500);
