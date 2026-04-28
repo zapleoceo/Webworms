@@ -356,8 +356,12 @@ export class PhysicsEngine {
     // Ground check
     const isGrounded = this.isBoxSolid(state.landscape, worm.x, worm.y + 1, hw, hh);
 
+    const gravityScale = 1.35;
+    const mass = typeof worm.mass === 'number' ? worm.mass : 1;
+    const wormGravity = this.gravity * gravityScale * Math.max(0.6, Math.min(1.6, Math.sqrt(mass)));
+
     if (!isGrounded || worm.isJumping) {
-      worm.vy += this.gravity * dt;
+      worm.vy += wormGravity * dt;
     } else {
       worm.vy = 0; // Prevent gravity accumulation when resting on the ground
     }
@@ -448,9 +452,9 @@ export class PhysicsEngine {
         }
 
         // Heavy impact damage
-        if (oldVy > this.safeFallSpeed) {
+        if (oldVy > this.safeFallSpeed * gravityScale) {
           if (this.onHeavyImpact) this.onHeavyImpact();
-          const fallDamage = (oldVy - this.safeFallSpeed) * this.fallDamageMultiplier;
+          const fallDamage = (oldVy - this.safeFallSpeed * gravityScale) * this.fallDamageMultiplier;
           worm.takeDamage(fallDamage);
           this.addFloatingText(state, worm.x, worm.y - 20, `-${Math.round(fallDamage)}`, '#FF0000');
           if (this.onHurt) this.onHurt();

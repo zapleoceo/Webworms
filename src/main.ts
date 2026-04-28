@@ -337,43 +337,58 @@ let currentMatchToken: string | null = null;
   // Re-bind events for the new presenter
   bindPresenterEvents();
 
-  const turnTime = await APIClient.getTurnTime();
-  const logos = await APIClient.getLogos();
-  const maps = await APIClient.getMaps();
+  let gameInitPromise: Promise<void> | null = null;
 
-  // Use the first uploaded custom map if available
-  let mapData = null;
-  if (maps && maps.length > 0) {
-    // If a specific map is selected, try to use it. Otherwise use the first one.
-    const selectedMapId = mapTypeSelect.value;
-    let mapObj = maps.find((m: any) => m.id === selectedMapId);
-    if (!mapObj) {
-      mapObj = maps[0];
-    }
-    
-    if (mapObj) {
-      const fullMap = await APIClient.getMapById(mapObj.id);
-      if (fullMap) {
-        mapData = APIClient.BASE_URL.replace('/api', '') + fullMap.image_data + '?t=' + Date.now();
+  if (mode === 'friend' || mode === 'random') {
+    gameInitPromise = (async () => {
+      const turnTimePromise = APIClient.getTurnTime();
+      const logosPromise = APIClient.getLogos();
+      const turnTime = await turnTimePromise;
+      const logos = await logosPromise;
+      await window.presenter.startGame({
+        width: 1500,
+        height: 800,
+        mapType: mapType,
+        mode: mode,
+        turnTime: turnTime,
+        logos: logos,
+        mapData: null
+      });
+      window.presenter.localTeam = 'team1';
+    })();
+  } else {
+    const turnTime = await APIClient.getTurnTime();
+    const logos = await APIClient.getLogos();
+    const maps = await APIClient.getMaps();
+
+    // Use the first uploaded custom map if available
+    let mapData = null;
+    if (maps && maps.length > 0) {
+      // If a specific map is selected, try to use it. Otherwise use the first one.
+      const selectedMapId = mapTypeSelect.value;
+      let mapObj = maps.find((m: any) => m.id === selectedMapId);
+      if (!mapObj) {
+        mapObj = maps[0];
+      }
+      
+      if (mapObj) {
+        const fullMap = await APIClient.getMapById(mapObj.id);
+        if (fullMap) {
+          mapData = APIClient.BASE_URL.replace('/api', '') + fullMap.image_data + '?t=' + Date.now();
+        }
       }
     }
-  }
 
-  await window.presenter.startGame({
-    width: 1500,
-    height: 800,
-    mapType: mapType,
-    mode: mode,
-    turnTime: turnTime,
-    logos: logos,
-    mapData: mapData
-  });
-  window.presenter.localTeam = mode === 'training' ? 'training' : 'team1';
-  
-  // Do NOT start the presenter loop here if we are playing with a friend and waiting!
-  // It will be started in onReady.
-  if (mode === 'training') {
-    window.presenter.start();
+    await window.presenter.startGame({
+      width: 1500,
+      height: 800,
+      mapType: mapType,
+      mode: mode,
+      turnTime: turnTime,
+      logos: logos,
+      mapData: mapData
+    });
+    window.presenter.localTeam = 'training';
   }
 
   function resizeCanvas() {
@@ -421,13 +436,16 @@ let currentMatchToken: string | null = null;
     const isHostResume = !!(joinRoomId && savedHostRoomId && joinRoomId === savedHostRoomId);
 
     syncModule.onReady = () => {
-      document.getElementById('cancel-search-container')!.style.display = 'none';
-      invitePanel.style.display = 'none';
-      loaderScreen.classList.remove('active');
-      gameScreen.classList.add('active');
-      resizeCanvas();
-      showControls();
-      window.presenter.start();
+      const ready = gameInitPromise || Promise.resolve();
+      ready.then(() => {
+        document.getElementById('cancel-search-container')!.style.display = 'none';
+        invitePanel.style.display = 'none';
+        loaderScreen.classList.remove('active');
+        gameScreen.classList.add('active');
+        resizeCanvas();
+        showControls();
+        window.presenter.start();
+      });
     };
 
     syncModule.onPeerDisconnected = () => {

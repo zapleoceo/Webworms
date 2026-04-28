@@ -586,9 +586,9 @@ export class GamePresenter {
             Math.abs(this.analogX) > 0.1;
 
           if (hasHorizontalInput) {
-            player.vy = -120; // Lower forward jump (was -180)
+            player.vy = player.jumpForce * 1.1;
           } else {
-            player.vy = -160; // Lower backflip (was -220)
+            player.vy = player.jumpForce * 1.3;
             player.vx = 0;
           }
           // Play jump sound
