@@ -15,6 +15,9 @@ export class MultiplayerSync {
   private seenIceTypes = new Set<string>();
   private signalingSocket: WebSocket | null = null;
   private signalingReady: boolean = false;
+  private usePollingSignaling: boolean = false;
+  private pollingTimer: number | null = null;
+  private lastSnapshot: string = '';
   private lastSentIceIndex = 0;
   private pendingRemoteIce: any[] = [];
   
@@ -40,7 +43,7 @@ export class MultiplayerSync {
 
   private async initSignalingSocket(): Promise<void> {
     if (!this.roomId) return;
-    if (this.signalingSocket) return;
+    if (this.signalingSocket || this.usePollingSignaling) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const url = `${proto}://${location.host}/api/rooms/${this.roomId}/ws`;
 
@@ -54,6 +57,11 @@ export class MultiplayerSync {
       const fail = () => {
         if (settled) return;
         settled = true;
+        try {
+          this.signalingSocket?.close();
+        } catch {}
+        this.signalingSocket = null;
+        this.signalingReady = false;
         reject(new Error('Signaling WS failed'));
       };
       try {
@@ -96,7 +104,7 @@ export class MultiplayerSync {
           this.applySignal(t, payload);
         };
 
-        window.setTimeout(fail, 2000);
+        window.setTimeout(fail, 3000);
       } catch {
         fail();
       }
@@ -104,7 +112,18 @@ export class MultiplayerSync {
   }
 
   private async sendSignal(type: string, payload: any): Promise<void> {
-    if (!this.signalingReady || !this.signalingSocket || this.signalingSocket.readyState !== WebSocket.OPEN || !this.roomId) {
+    if (!this.roomId) throw new Error('Room is not set');
+
+    if (this.usePollingSignaling) {
+      const res = await fetch(`/api/rooms/${this.roomId}/signal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, payload })
+      });
+      if (!res.ok) throw new Error('Signaling HTTP failed');
+      return;
+    }
+    if (!this.signalingReady || !this.signalingSocket || this.signalingSocket.readyState !== WebSocket.OPEN) {
       throw new Error('Signaling socket is not ready');
     }
     this.signalingSocket.send(JSON.stringify({ type, payload }));
@@ -166,6 +185,31 @@ export class MultiplayerSync {
     });
   }
 
+  private startPollingSignaling() {
+    if (!this.roomId) return;
+    if (this.pollingTimer) return;
+    this.usePollingSignaling = true;
+    const poll = async () => {
+      if (!this.roomId || !this.peerConnection) return;
+      try {
+        const res = await fetch(`/api/rooms/${this.roomId}/snapshot?t=${Date.now()}`, { method: 'GET' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const str = JSON.stringify(data || {});
+        if (str === this.lastSnapshot) return;
+        this.lastSnapshot = str;
+        this.applySignal('offer', data?.offer);
+        this.applySignal('answer', data?.answer);
+        this.applySignal('ice-host', data?.iceHost);
+        this.applySignal('ice-client', data?.iceClient);
+      } catch {}
+    };
+    this.pollingTimer = window.setInterval(poll, 500);
+    poll();
+    this.signalingReady = true;
+    this.flushLocalIce();
+  }
+
   public async createOrJoinRoom(roomId: string | undefined, playerId: string, forceHost: boolean = false, isRandom: boolean = false): Promise<string> {
     this.localPlayerId = playerId;
     this.isRandomMatchmaking = isRandom;
@@ -224,7 +268,11 @@ export class MultiplayerSync {
       this.roomId = res.roomId;
       this.isHost = res.isHost;
       this.log('matchmaking.random.assigned', { roomId: this.roomId, isHost: this.isHost });
-      await this.initSignalingSocket();
+      try {
+        await this.initSignalingSocket();
+      } catch {
+        this.startPollingSignaling();
+      }
       if (this.isHost) {
         await this.hostRoom();
       }
@@ -238,7 +286,11 @@ export class MultiplayerSync {
       this.roomId = roomId;
       this.isHost = true;
       this.log('matchmaking.friend.host', { roomId: this.roomId });
-      await this.initSignalingSocket();
+      try {
+        await this.initSignalingSocket();
+      } catch {
+        this.startPollingSignaling();
+      }
       await this.hostRoom();
       return this.roomId!;
     }
@@ -252,14 +304,22 @@ export class MultiplayerSync {
       this.roomId = roomId;
       this.isHost = false;
       this.log('matchmaking.friend.join', { roomId: this.roomId });
-      await this.initSignalingSocket();
+      try {
+        await this.initSignalingSocket();
+      } catch {
+        this.startPollingSignaling();
+      }
       await this.joinRoom();
     } else {
       this.isHost = true;
       const res = await APIClient.createRoom(playerId);
       this.roomId = res.roomId;
       this.log('matchmaking.friend.created', { roomId: this.roomId });
-      await this.initSignalingSocket();
+      try {
+        await this.initSignalingSocket();
+      } catch {
+        this.startPollingSignaling();
+      }
       await this.hostRoom();
     }
     return this.roomId!;

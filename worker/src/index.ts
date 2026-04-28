@@ -2,7 +2,7 @@ import { getSpriteSets, createSpriteSet, updateSpriteSet, deleteSpriteSet } from
 import { getWeapons, createWeapon, updateWeapon, deleteWeapon } from './controllers/weapons';
 import { capturePayPalOrder } from './controllers/payments';
 import { getTurnIceServers } from './controllers/turn';
-import { handleSignalingWS } from './controllers/signaling';
+import { handleSignalingSignal, handleSignalingSnapshot, handleSignalingWS } from './controllers/signaling';
 import { SignalingDO as SignalingDOImpl } from './durable/SignalingDO';
 import { createRoom, joinRandomRoom, heartbeatRoom, joinRoomState, getRoomState } from './controllers/rooms';
 import { handleRegister, handleLogin, handleVerify, handleSession, handleDailyReset, handleUpdateProfile, getProfile, handleUpdatePassword } from './controllers/auth';
@@ -343,6 +343,12 @@ export default {
       }
       else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/ws') && request.method === 'GET') {
         response = await handleSignalingWS(request, env, corsHeaders);
+      }
+      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/snapshot') && request.method === 'GET') {
+        response = await handleSignalingSnapshot(request, env, corsHeaders);
+      }
+      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/signal') && request.method === 'POST') {
+        response = await handleSignalingSignal(request, env, corsHeaders);
       }
       else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/heartbeat') && request.method === 'POST') {
         response = await heartbeatRoom(request, env, corsHeaders, logEvent, maskId);

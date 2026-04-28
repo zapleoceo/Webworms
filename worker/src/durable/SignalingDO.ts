@@ -10,6 +10,28 @@ export class SignalingDO {
 
     if (!type) return new Response('Bad Request', { status: 400 });
 
+    if (type === 'snapshot') {
+      const offer = await this.getJson('offer');
+      const answer = await this.getJson('answer');
+      const iceHost = await this.getJson('ice-host');
+      const iceClient = await this.getJson('ice-client');
+      return new Response(JSON.stringify({ offer, answer, iceHost, iceClient }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (type === 'signal' && request.method === 'POST') {
+      let msg: any = null;
+      try {
+        msg = await request.json();
+      } catch {
+        return new Response('Bad Request', { status: 400 });
+      }
+      const msgType = typeof msg?.type === 'string' ? msg.type : null;
+      if (!msgType) return new Response('Bad Request', { status: 400 });
+      const payload = msg?.payload;
+      await this.handleSignal(roomId, msgType, payload);
+      return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
     if (type !== 'ws') return new Response('Not Found', { status: 404 });
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('Expected websocket', { status: 400 });
 
@@ -38,13 +60,13 @@ export class SignalingDO {
       const msgType = typeof msg?.type === 'string' ? msg.type : null;
       if (!msgType) return;
       const payload = msg?.payload;
-      this.state.waitUntil(this.handleWsSignal(server, roomId, msgType, payload));
+      this.state.waitUntil(this.handleSignal(roomId, msgType, payload, server));
     });
 
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private async handleWsSignal(sender: WebSocket, roomId: string | null, msgType: string, payload: any) {
+  private async handleSignal(roomId: string | null, msgType: string, payload: any, sender?: WebSocket) {
     if (msgType !== 'offer' && msgType !== 'answer' && msgType !== 'ice-host' && msgType !== 'ice-client') return;
 
     if (msgType === 'ice-host' || msgType === 'ice-client') {
@@ -80,15 +102,17 @@ export class SignalingDO {
 
     const out = JSON.stringify({ type: msgType, payload });
     for (const ws of this.sockets) {
-      if (ws === sender) continue;
+      if (sender && ws === sender) continue;
       try {
         ws.send(out);
       } catch {}
     }
 
-    try {
-      sender.send(JSON.stringify({ type: 'ack', payload: { type: msgType } }));
-    } catch {}
+    if (sender) {
+      try {
+        sender.send(JSON.stringify({ type: 'ack', payload: { type: msgType } }));
+      } catch {}
+    }
   }
 
   private async sendSnapshot(ws: WebSocket) {
@@ -111,4 +135,3 @@ export class SignalingDO {
     }
   }
 }
-

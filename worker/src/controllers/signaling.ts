@@ -11,3 +11,26 @@ export async function handleSignalingWS(request: Request, env: any, corsHeaders:
   return stub.fetch(new Request(`https://signaling/${roomId}/ws`, request));
 }
 
+export async function handleSignalingSnapshot(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/');
+  const roomId = parts[3];
+  const type = parts[4];
+  if (!roomId || type !== 'snapshot') return new Response('Bad Request', { status: 400, headers: corsHeaders });
+
+  const id = env.SIGNALING.idFromName(roomId);
+  const stub = env.SIGNALING.get(id);
+  return stub.fetch(new Request(`https://signaling/${roomId}/snapshot`, request));
+}
+
+export async function handleSignalingSignal(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/');
+  const roomId = parts[3];
+  const type = parts[4];
+  if (!roomId || type !== 'signal') return new Response('Bad Request', { status: 400, headers: corsHeaders });
+
+  const id = env.SIGNALING.idFromName(roomId);
+  const stub = env.SIGNALING.get(id);
+  return stub.fetch(new Request(`https://signaling/${roomId}/signal`, request));
+}

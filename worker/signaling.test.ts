@@ -3,13 +3,14 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import worker from './src/index';
 
 describe('signaling', () => {
-  it('exposes only websocket endpoint', async () => {
+  it('supports websocket and http snapshot', async () => {
     const ctx = createExecutionContext();
     const roomId = 'TEST';
 
-    const offerRes = await worker.fetch(new Request(`http://example.com/api/rooms/${roomId}/offer`, { method: 'GET' }), env as any, ctx as any);
+    const snapRes = await worker.fetch(new Request(`http://example.com/api/rooms/${roomId}/snapshot`, { method: 'GET' }), env as any, ctx as any);
+    await snapRes.text();
     await waitOnExecutionContext(ctx);
-    expect(offerRes.status).toBe(404);
+    expect(snapRes.status).toBe(200);
 
     const ctx2 = createExecutionContext();
     const wsRes: any = await worker.fetch(new Request(`http://example.com/api/rooms/${roomId}/ws`, { method: 'GET' }), env as any, ctx2 as any);
