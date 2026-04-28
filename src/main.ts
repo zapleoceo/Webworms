@@ -434,14 +434,15 @@ document.getElementById('btn-submit-auth')!.addEventListener('click', async () =
         userSessionId = res.token;
         userSessionName = res.user.username;
         userBalanceSeconds = res.user.play_time_balance || 3600;
-        
+
         localStorage.setItem('userSessionId', userSessionId || '');
         localStorage.setItem('userSessionName', userSessionName || '');
+        localStorage.setItem('playTimeBalance', userBalanceSeconds.toString());
         localStorage.setItem('userBalanceSeconds', userBalanceSeconds.toString());
         localStorage.setItem('premiumUntil', res.user.premium_until?.toString() || '0');
-        
+
         authScreen.style.display = 'none';
-        
+
         btnOpenAuth.style.display = 'none';
         btnUserProfile.style.display = 'block';
         btnUserProfile.innerText = userSessionName || 'USER';
