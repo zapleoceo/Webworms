@@ -557,14 +557,16 @@ export class GamePresenter {
       case 'jump':
         if (isActive && !player.isJumping) {
           player.isJumping = true;
-          // Normal jump or Backflip (Slower, floatier)
-          if (this.activeInputs.has('left') || this.activeInputs.has('right')) {
+          const hasHorizontalInput =
+            this.activeInputs.has('left') ||
+            this.activeInputs.has('right') ||
+            Math.abs(this.analogX) > 0.1;
+
+          if (hasHorizontalInput) {
             player.vy = -120; // Lower forward jump (was -180)
           } else {
-            // Backflip
             player.vy = -160; // Lower backflip (was -220)
-            player.vx = player.facingRight ? -60 : 60; // Less horizontal push
-            player.facingRight = !player.facingRight; // Flip mid-air
+            player.vx = 0;
           }
           // Play jump sound
           if (this.physics.onJump) this.physics.onJump();
