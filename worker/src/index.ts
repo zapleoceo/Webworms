@@ -377,7 +377,7 @@ async function handleContactEmail(request: Request, env: Env): Promise<Response>
         body: JSON.stringify({
           from: 'WebWorms Feedback <noreply@zapleo.com>', // Verified domain
           to: ['demoniwwwe@gmail.com'],
-          subject: \`WebWorms Feedback from \${senderName}\`,
+          subject: `WebWorms Feedback from ${senderName}`,
           html: htmlContent
         })
       });
@@ -395,7 +395,7 @@ async function handleContactEmail(request: Request, env: Env): Promise<Response>
         body: JSON.stringify({
           personalizations: [{ to: [{ email: 'demoniwwwe@gmail.com', name: 'Author' }] }],
           from: { email: 'noreply@webworms.pages.dev', name: 'WebWorms Game' },
-          subject: \`WebWorms Feedback from \${senderName}\`,
+          subject: `WebWorms Feedback from ${senderName}`,
           content: [{ type: 'text/html', value: htmlContent }]
         })
       });
