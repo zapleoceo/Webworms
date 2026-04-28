@@ -21,7 +21,7 @@ export async function getTurnIceServers(request: Request, env: any, corsHeaders:
   const body = await resp.text();
   if (!resp.ok) {
     if (logEvent) logEvent('turn.error', { status: resp.status, bodyLen: body.length });
-    return new Response(JSON.stringify({ error: 'TURN provider error' }), { status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    return new Response(JSON.stringify({ error: 'TURN provider error', status: resp.status }), { status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
   let parsed: any = null;
@@ -40,4 +40,3 @@ export async function getTurnIceServers(request: Request, env: any, corsHeaders:
 
   return new Response(JSON.stringify({ iceServers: cleaned }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } });
 }
-
