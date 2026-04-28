@@ -104,20 +104,22 @@ export class BrandLogo {
       } else {
         this.vy = 0;
       }
-      this.vx *= 0.6;
+      this.vx *= 0.7;
       this.y = collisionY;
       
       // Reduce angular velocity smoothly
-      this.angularVelocity *= 0.9;
+      this.angularVelocity += (-this.angle) * 2.5 * dt;
+      this.angularVelocity *= 0.97;
 
-      const shouldForceSettle = this.touchedGround && this.age >= 5;
-      const isSlow = Math.abs(this.vx) < 5 && Math.abs(this.vy) < 5 && Math.abs(this.angularVelocity) < 0.1;
+      const shouldForceSettle = this.touchedGround && this.age >= 8;
+      const isSlow = Math.abs(this.vx) < 3 && Math.abs(this.vy) < 3 && Math.abs(this.angularVelocity) < 0.05 && Math.abs(this.angle) < 0.15;
 
       if (shouldForceSettle || isSlow) {
         this.isDynamic = false;
         this.vx = 0;
         this.vy = 0;
         this.angularVelocity = 0;
+        this.angle = 0;
         this.bounceTime = 1.0; // Trigger small bounce effect when settling
         
         // Trigger dust and camera shake (handled in GamePresenter or PhysicsEngine via callbacks)

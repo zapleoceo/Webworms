@@ -391,7 +391,7 @@ export class GamePresenter {
     const chargeSpeed = 100; // max power per second
     // Halved speeds as per user request + floaty worms physics
     const moveForce = 100 * player.speedMultiplier; // pixels per second squared (acceleration)
-    const maxSpeed = 17.5 * player.speedMultiplier; // pixels per second (2x slower)
+    const maxSpeed = (17.5 * 1.3) * player.speedMultiplier;
     const airControl = 0.3; // 30% control while in the air
 
     // --- Handle Aiming (Keyboard + Analog Joystick) ---
@@ -586,14 +586,10 @@ export class GamePresenter {
             Math.abs(this.analogX) > 0.1;
 
           if (hasHorizontalInput) {
-            player.vy = player.jumpForce * 1.1;
+            player.vy = player.jumpForce * 0.8 * 1.7;
           } else {
-            player.vy = player.jumpForce * 1.3;
+            player.vy = player.jumpForce * 1.07 * 1.7;
             player.vx = 0;
-          }
-          const dir = player.facingRight ? 1 : -1;
-          if (Math.abs(player.vx) < 10) {
-            player.vx = dir * 40 * (player.speedMultiplier || 1);
           }
           // Play jump sound
           if (this.physics.onJump) this.physics.onJump();

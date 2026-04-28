@@ -152,12 +152,16 @@ export class PhysicsEngine {
 
       prop.x += prop.vx * dt;
       prop.y += prop.vy * dt;
+      prop.rotation += prop.angularVelocity * dt;
 
       // Ground collision
       const cx = Math.floor(prop.x);
       const bottomY = Math.floor(prop.y + prop.radius);
 
       if (state.landscape.isSolid(cx, bottomY)) {
+        if ((prop as any).settleAge === undefined) (prop as any).settleAge = 0;
+        (prop as any).settleAge += dt;
+
         // Find exact surface
         let searchY = bottomY;
         let embedded = 0;
@@ -167,11 +171,15 @@ export class PhysicsEngine {
         }
         
         prop.y = searchY - prop.radius;
-        
-        AudioManager.playLand();
-        
+
+        if (!(prop as any).touchedGround) {
+          (prop as any).touchedGround = true;
+          AudioManager.playLand();
+        }
+
         // High speed impact (dig into terrain)
-        if (oldVy > 250) {
+        if (oldVy > 250 && !(prop as any).didDig) {
+          (prop as any).didDig = true;
           // Prop damages terrain based on its hardness
           const digRadius = prop.radius * 0.8;
           for (let dy = -digRadius; dy <= digRadius; dy++) {
@@ -191,14 +199,31 @@ export class PhysicsEngine {
           }
           state.landscape.needsUpdate = true;
         }
-        
-        // STAMP into terrain and remove the physical prop
-        const imgKey = prop.brandImage?.split('/').pop()?.split('.')[0] || 'brand_apple';
-        state.landscape.stampImage(imgKey, prop.x, prop.y, prop.radius * 2, prop.radius * 2, prop.rotation);
-        prop.health = 0; // kill it
+
+        if (Math.abs(prop.vy) > 20) {
+          prop.vy = -prop.vy * prop.bounce;
+        } else {
+          prop.vy = 0;
+        }
+        prop.vx *= prop.friction;
+
+        prop.angularVelocity += (-prop.rotation) * 4 * dt;
+        prop.angularVelocity *= 0.92;
+
+        const shouldSettle =
+          (prop as any).settleAge > 1.2 &&
+          Math.abs(prop.vx) < 8 &&
+          Math.abs(prop.vy) < 8 &&
+          Math.abs(prop.angularVelocity) < 0.4;
+
+        if (shouldSettle) {
+          const imgKey = prop.brandImage?.split('/').pop()?.split('.')[0] || 'brand_apple';
+          state.landscape.stampImage(imgKey, prop.x, prop.y, prop.radius * 2, prop.radius * 2, prop.rotation);
+          prop.health = 0;
+        }
       } else {
-        // Free falling rotation
-        prop.rotation += prop.vx * dt * 0.01;
+        if ((prop as any).settleAge !== undefined) (prop as any).settleAge = 0;
+        prop.angularVelocity += (prop.vx * 0.02 - prop.angularVelocity) * dt * 2;
       }
 
       // Bounds
@@ -356,12 +381,8 @@ export class PhysicsEngine {
     // Ground check
     const isGrounded = this.isBoxSolid(state.landscape, worm.x, worm.y + 1, hw, hh);
 
-    const gravityScale = 1.35;
-    const mass = typeof worm.mass === 'number' ? worm.mass : 1;
-    const wormGravity = this.gravity * gravityScale * Math.max(0.6, Math.min(1.6, Math.sqrt(mass)));
-
     if (!isGrounded || worm.isJumping) {
-      worm.vy += wormGravity * dt;
+      worm.vy += this.gravity * dt;
     } else {
       worm.vy = 0; // Prevent gravity accumulation when resting on the ground
     }
@@ -452,9 +473,9 @@ export class PhysicsEngine {
         }
 
         // Heavy impact damage
-        if (oldVy > this.safeFallSpeed * gravityScale) {
+        if (oldVy > this.safeFallSpeed) {
           if (this.onHeavyImpact) this.onHeavyImpact();
-          const fallDamage = (oldVy - this.safeFallSpeed * gravityScale) * this.fallDamageMultiplier;
+          const fallDamage = (oldVy - this.safeFallSpeed) * this.fallDamageMultiplier;
           worm.takeDamage(fallDamage);
           this.addFloatingText(state, worm.x, worm.y - 20, `-${Math.round(fallDamage)}`, '#FF0000');
           if (this.onHurt) this.onHurt();
@@ -528,7 +549,7 @@ export class PhysicsEngine {
       // 1. Check Players
       for (const player of state.players) {
         if (player.health <= 0) continue;
-        const playerRadius = player.width / 2;
+        const playerRadius = Math.max(player.width || 0, player.height || 0) * 0.8 + 4;
         
         // Prevent immediate self-collision when shooting
         if (player === (proj as any).owner && (proj as any).framesAlive !== undefined && (proj as any).framesAlive < 5) {
