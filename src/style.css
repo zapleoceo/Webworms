@@ -165,11 +165,22 @@ button:hover {
   overflow-y: auto;
 }
 
-.menu-header {
-  width: 100%;
+.user-info-corner {
+  position: absolute;
+  top: 15px;
+  right: 15px;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  z-index: 100;
+}
+
+.menu-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
 }
 
 .time-balance-box {
@@ -293,9 +304,20 @@ button:hover {
   margin: 0 auto;
 }
 
+.map-selection-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.map-title {
+  margin-bottom: 0 !important;
+  line-height: 1;
+}
+
 .map-size-badge {
-  display: inline-block;
-  margin-top: 10px;
   background: rgba(0, 0, 0, 0.6);
   border: 2px dashed var(--color-secondary);
   color: #fff;
@@ -307,6 +329,15 @@ button:hover {
   letter-spacing: 1px;
   text-shadow: 1px 1px 0 #000;
   box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+  white-space: nowrap;
+}
+
+.footer-contact {
+  text-align: center;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  width: 100%;
 }
 
 /* === MODALS === */

@@ -38,15 +38,13 @@
         </div>
       <!-- MAIN MENU -->
       <div id="main-menu" class="screen active">
-        <div class="menu-header">
+        <div class="user-info-corner">
           <button class="icon-btn auth-toggle-btn" id="btn-open-auth">👤 LOGIN</button>
-          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <button class="icon-btn auth-toggle-btn worm-wiggle-anim" id="btn-user-profile" style="display: none;"></button>
-            <div style="display: flex; gap: 10px; align-items: center;">
-              <div id="play-time-display" class="time-balance-box" style="display: none;">Time: 01:00</div>
-              <button id="btn-add-time" class="time-add-btn pulse-anim" style="display: none; animation-delay: 0.25s;">+ $1</button>
-            </div>
-          </div>
+          <button class="icon-btn auth-toggle-btn worm-wiggle-anim" id="btn-user-profile" style="display: none;"></button>
+          <div id="play-time-display" class="time-balance-box" style="display: none;">Time: 01:00</div>
+          <button id="btn-add-time" class="time-add-btn pulse-anim" style="display: none; animation-delay: 0.25s;">+ $1</button>
+        </div>
+        <div class="menu-header">
         </div>
 
         <div class="logo-container">
@@ -66,8 +64,8 @@
         <div class="menu-footer">
           <div class="game-settings">
           <!-- Map Selection Only -->
-          <div class="mb-10 text-center">
-            <h3 class="mb-5 comic-text" style="font-size: 1.2rem;">MAP</h3>
+          <div class="mb-10 text-center map-selection-container">
+            <h3 class="mb-5 comic-text map-title" style="font-size: 1.2rem;">MAP</h3>
             <div class="select-wrapper">
               <select id="map-type-select" class="retro-select retro-input">
                 <option value="" disabled selected>Loading maps...</option>
@@ -75,13 +73,12 @@
             </div>
             <div id="map-size-display" class="map-size-badge" style="display: none;"></div>
           </div>
-          
-          <div style="text-align: center; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
-            <button id="btn-contact-author" class="secondary-btn w-full" style="font-size: 1rem; padding: 10px;">✉️ CONTACT AUTHOR</button>
-          </div>
-          </div>
         </div>
       </div>
+      <div class="footer-contact">
+        <button id="btn-contact-author" class="secondary-btn w-full" style="font-size: 1rem; padding: 10px;">✉️ CONTACT AUTHOR</button>
+      </div>
+    </div>
 
       <!-- LOADER / INVITE SCREEN -->
       <div id="loader-screen" class="screen">

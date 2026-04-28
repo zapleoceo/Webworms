@@ -714,10 +714,16 @@ export class CanvasRenderer {
       // Draw pointer
       this.ctx.save();
       this.ctx.translate(edgeX, edgeY);
-      
+
       const isCurrentPlayer = player === state.getCurrentPlayer();
-      const color = isCurrentPlayer ? '#00ff00' : (player.teamColor || 'white');
+      const isMyTeam = player.team === window.presenter.localTeam || window.presenter.localTeam === 'training';
       
+      // Colors:
+      // Current acting player = yellow
+      // My team = green
+      // Enemy team = red
+      const color = isCurrentPlayer ? '#ffff00' : (isMyTeam ? '#00ff00' : '#ff0000');
+
       // Draw text (Name)
       this.ctx.font = 'bold 14px "Bangers", Courier New';
       this.ctx.textAlign = 'center';
