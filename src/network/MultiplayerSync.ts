@@ -413,6 +413,10 @@ export class MultiplayerSync {
     APIClient.heartbeatRoom(this.roomId, this.localPlayerId);
     this.heartbeatInterval = window.setInterval(() => {
       APIClient.heartbeatRoom(this.roomId!, this.localPlayerId!).then((res: any) => {
+        if (res && res.matched) {
+          this.stopHeartbeat();
+          return;
+        }
         if (res && res.expired) {
           this.stopHeartbeat();
           if (this.onMatchmakingExpired) this.onMatchmakingExpired();

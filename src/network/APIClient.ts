@@ -252,6 +252,8 @@ export class APIClient {
         const data = await res.json();
         if (data?.expired) {
           console.warn('[APIClient] heartbeat expired', { roomId, hostId: this.maskId(hostId) });
+        } else if (data?.matched) {
+          if (this.isDebugEnabled()) console.log('[APIClient] heartbeat matched', { roomId, hostId: this.maskId(hostId) });
         } else if (this.isDebugEnabled()) {
           console.log('[APIClient] heartbeat ok', { roomId, hostId: this.maskId(hostId), inQueue: data?.inQueue });
         }

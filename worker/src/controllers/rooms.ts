@@ -72,8 +72,6 @@ export async function joinRandomRoom(request: Request, env: any, corsHeaders: Re
       continue;
     }
 
-    await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE room_id = ?`).bind(roomId).run();
-
     const reservedRoom = {
       status: 'reserved',
       hostId: row.host_id,
@@ -82,6 +80,7 @@ export async function joinRandomRoom(request: Request, env: any, corsHeaders: Re
       activeAt: null
     };
     await env.ROOMS.put(roomId, JSON.stringify(reservedRoom), { expirationTtl: 3600 });
+    await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE room_id = ? AND host_id = ?`).bind(roomId, row.host_id).run();
 
     logEvent('mm.match.found', { roomId, hostId: maskId(row.host_id), clientId: maskId(playerId) });
 
@@ -135,10 +134,23 @@ export async function heartbeatRoom(request: Request, env: any, corsHeaders: Rec
     .bind(roomId, hostId).first<{ one: number }>();
 
   if (!exists) {
+    const roomStr = await env.ROOMS.get(roomId);
+    if (roomStr) {
+      try {
+        const room = JSON.parse(roomStr);
+        const matched = room?.status === 'reserved' && !!room?.clientId && room?.hostId === hostId;
+        if (matched) {
+          logEvent('mm.heartbeat.matched', { roomId, hostId: maskId(hostId), clientId: maskId(room?.clientId ?? null) });
+          return new Response(JSON.stringify({ success: true, inQueue: false, expired: false, matched: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        }
+      } catch {}
+    }
+
     logEvent('mm.heartbeat.expired', { roomId, hostId: maskId(hostId) });
+    return new Response(JSON.stringify({ success: true, inQueue: false, expired: true, matched: false }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
-  return new Response(JSON.stringify({ success: true, inQueue: !!exists, expired: !exists }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  return new Response(JSON.stringify({ success: true, inQueue: true, expired: false, matched: false }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }
 
 export async function joinRoomState(request: Request, env: any, corsHeaders: Record<string, string>, logEvent: (event: string, data: Record<string, unknown>) => void, maskId: (id: string | null | undefined) => string | null): Promise<Response> {
@@ -212,4 +224,3 @@ export async function getRoomState(request: Request, env: any, corsHeaders: Reco
 
   return new Response(roomStr, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } });
 }
-
