@@ -232,39 +232,6 @@ export class APIClient {
     }
   }
 
-  // WebRTC Signaling
-  static async sendSignal(roomId: string, type: string, payload: any) {
-    try {
-      if (this.isDebugEnabled()) {
-        const size = JSON.stringify(payload)?.length ?? 0;
-        const candidateCount = Array.isArray(payload) ? payload.length : null;
-        const sdpLen = payload && typeof payload === 'object' && typeof payload.sdp === 'string' ? payload.sdp.length : null;
-        console.log('[APIClient] sendSignal', { roomId, type, size, candidateCount, sdpLen });
-      }
-      const res = await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        console.error('[APIClient] sendSignal error', { roomId, type, status: res.status, body: await res.text() });
-      }
-    } catch (e) {
-      console.error('[APIClient] sendSignal exception', { roomId, type, e });
-    }
-  }
-
-  static async getSignal(roomId: string, type: string) {
-    try {
-      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}?t=${Date.now()}`);
-      if (response.ok) return await response.json();
-      console.error('[APIClient] getSignal error', { roomId, type, status: response.status, body: await response.text() });
-    } catch (e) {
-      console.error('[APIClient] getSignal exception', { roomId, type, e });
-    }
-    return null;
-  }
-
   static async heartbeatRoom(roomId: string, hostId: string) {
     try {
       const res = await fetch(`${this.BASE_URL}/rooms/${roomId}/heartbeat`, {
@@ -283,6 +250,25 @@ export class APIClient {
       }
     } catch {}
     return null;
+  }
+
+  static async getTurnIceServers(ttlSeconds: number = 3600): Promise<any[] | null> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/turn/ice-servers?ttl=${ttlSeconds}&t=${Date.now()}`);
+      if (!res.ok) {
+        if (this.isDebugEnabled()) {
+          console.warn('[APIClient] getTurnIceServers error', { status: res.status, body: await res.text() });
+        }
+        return null;
+      }
+      const data = await res.json();
+      const iceServers = Array.isArray(data?.iceServers) ? data.iceServers : null;
+      if (this.isDebugEnabled()) console.log('[APIClient] getTurnIceServers ok', { count: iceServers?.length ?? 0 });
+      return iceServers;
+    } catch (e) {
+      if (this.isDebugEnabled()) console.warn('[APIClient] getTurnIceServers exception', e);
+      return null;
+    }
   }
 
   // Maps endpoints

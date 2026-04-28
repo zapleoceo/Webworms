@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS Users (
   matches_won INTEGER DEFAULT 0,
   total_damage_dealt INTEGER DEFAULT 0,
   total_kills INTEGER DEFAULT 0,
+  premium_until INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

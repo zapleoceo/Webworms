@@ -13,9 +13,11 @@ export class MultiplayerSync {
   private isRandomMatchmaking: boolean = false;
   private heartbeatInterval: number | null = null;
   private seenIceTypes = new Set<string>();
+  private signalingSocket: WebSocket | null = null;
+  private signalingReady: boolean = false;
+  private lastSentIceIndex = 0;
+  private pendingRemoteIce: any[] = [];
   
-  // Polling intervals
-  private pollInterval: number | null = null;
   private localIceCandidates: any[] = [];
   private iceDebounce: number | null = null;
 
@@ -36,15 +38,145 @@ export class MultiplayerSync {
     else console.log('[MP]', event);
   }
 
+  private async initSignalingSocket(): Promise<void> {
+    if (!this.roomId) return;
+    if (this.signalingSocket) return;
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const url = `${proto}://${location.host}/api/rooms/${this.roomId}/ws`;
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const ok = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Signaling WS failed'));
+      };
+      try {
+        const ws = new WebSocket(url);
+        this.signalingSocket = ws;
+        ws.onopen = () => {
+          this.signalingReady = true;
+          this.log('sig.ws.open', { roomId: this.roomId });
+          this.flushLocalIce();
+          ok();
+        };
+        ws.onerror = () => {
+          this.log('sig.ws.error', { roomId: this.roomId });
+          fail();
+        };
+        ws.onclose = () => {
+          this.signalingReady = false;
+          this.signalingSocket = null;
+          this.log('sig.ws.close', { roomId: this.roomId });
+        };
+        ws.onmessage = (evt) => {
+          let msg: any;
+          try {
+            msg = JSON.parse(evt.data);
+          } catch {
+            return;
+          }
+          const t = msg?.type;
+          const payload = msg?.payload;
+          if (!this.peerConnection || !this.roomId) return;
+
+          if (t === 'snapshot' && payload && typeof payload === 'object') {
+            this.applySignal('offer', (payload as any).offer);
+            this.applySignal('answer', (payload as any).answer);
+            this.applySignal('ice-host', (payload as any).iceHost);
+            this.applySignal('ice-client', (payload as any).iceClient);
+            return;
+          }
+
+          this.applySignal(t, payload);
+        };
+
+        window.setTimeout(fail, 2000);
+      } catch {
+        fail();
+      }
+    });
+  }
+
+  private async sendSignal(type: string, payload: any): Promise<void> {
+    if (!this.signalingReady || !this.signalingSocket || this.signalingSocket.readyState !== WebSocket.OPEN || !this.roomId) {
+      throw new Error('Signaling socket is not ready');
+    }
+    this.signalingSocket.send(JSON.stringify({ type, payload }));
+  }
+
+  private applySignal(type: any, payload: any) {
+    if (!this.peerConnection) return;
+    if (type === 'offer' && !this.isHost && payload && this.peerConnection.signalingState === 'stable') {
+      this.peerConnection.setRemoteDescription(new RTCSessionDescription(payload)).then(async () => {
+        const answer = await this.peerConnection!.createAnswer();
+        await this.peerConnection!.setLocalDescription(answer);
+        await this.sendSignal('answer', answer);
+        this.log('sdp.answer.sent', { roomId: this.roomId });
+        await this.flushPendingRemoteIce();
+      }).catch((e) => console.error('Failed to handle offer', e));
+      return;
+    }
+
+    if (type === 'answer' && this.isHost && payload && this.peerConnection.signalingState === 'have-local-offer') {
+      this.peerConnection.setRemoteDescription(new RTCSessionDescription(payload)).then(async () => {
+        this.log('sdp.answer.applied', { roomId: this.roomId });
+        await this.flushPendingRemoteIce();
+      }).catch((e) => console.error('Failed to set remote description', e));
+      return;
+    }
+
+    if (type === 'ice-host' || type === 'ice-client') {
+      const list = Array.isArray(payload) ? payload : payload ? [payload] : [];
+      if (!this.peerConnection.remoteDescription) {
+        this.pendingRemoteIce.push(...list);
+        return;
+      }
+      list.forEach((c: any) => {
+        this.peerConnection!.addIceCandidate(new RTCIceCandidate(c)).catch((e) => console.error('Failed to add ICE candidate', e));
+      });
+    }
+  }
+
+  private async flushPendingRemoteIce() {
+    if (!this.peerConnection?.remoteDescription) return;
+    const pending = this.pendingRemoteIce;
+    this.pendingRemoteIce = [];
+    for (const c of pending) {
+      try {
+        await this.peerConnection.addIceCandidate(new RTCIceCandidate(c));
+      } catch (e) {
+        console.error('Failed to add ICE candidate', e);
+      }
+    }
+  }
+
+  private flushLocalIce() {
+    if (!this.signalingReady) return;
+    const type = this.isHost ? 'ice-host' : 'ice-client';
+    const batch = this.localIceCandidates.slice(this.lastSentIceIndex);
+    this.lastSentIceIndex = this.localIceCandidates.length;
+    batch.forEach((c) => {
+      this.sendSignal(type, c);
+    });
+  }
+
   public async createOrJoinRoom(roomId: string | undefined, playerId: string, forceHost: boolean = false, isRandom: boolean = false): Promise<string> {
     this.localPlayerId = playerId;
     this.isRandomMatchmaking = isRandom;
+    const turnIce = await APIClient.getTurnIceServers(3600);
+    const iceServers = (turnIce && turnIce.length > 0) ? turnIce : [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' }
+    ];
     this.peerConnection = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun.cloudflare.com:3478' }
-      ]
+      iceServers
     });
 
     this.peerConnection.onicecandidate = (event) => {
@@ -61,8 +193,7 @@ export class MultiplayerSync {
         this.localIceCandidates.push(event.candidate);
         if (this.iceDebounce) clearTimeout(this.iceDebounce);
         this.iceDebounce = window.setTimeout(() => {
-          const type = this.isHost ? 'ice-host' : 'ice-client';
-          APIClient.sendSignal(this.roomId!, type, this.localIceCandidates);
+          this.flushLocalIce();
         }, 200);
       }
     };
@@ -93,6 +224,7 @@ export class MultiplayerSync {
       this.roomId = res.roomId;
       this.isHost = res.isHost;
       this.log('matchmaking.random.assigned', { roomId: this.roomId, isHost: this.isHost });
+      await this.initSignalingSocket();
       if (this.isHost) {
         await this.hostRoom();
       }
@@ -106,6 +238,7 @@ export class MultiplayerSync {
       this.roomId = roomId;
       this.isHost = true;
       this.log('matchmaking.friend.host', { roomId: this.roomId });
+      await this.initSignalingSocket();
       await this.hostRoom();
       return this.roomId!;
     }
@@ -119,12 +252,14 @@ export class MultiplayerSync {
       this.roomId = roomId;
       this.isHost = false;
       this.log('matchmaking.friend.join', { roomId: this.roomId });
+      await this.initSignalingSocket();
       await this.joinRoom();
     } else {
       this.isHost = true;
       const res = await APIClient.createRoom(playerId);
       this.roomId = res.roomId;
       this.log('matchmaking.friend.created', { roomId: this.roomId });
+      await this.initSignalingSocket();
       await this.hostRoom();
     }
     return this.roomId!;
@@ -141,28 +276,12 @@ export class MultiplayerSync {
     this.log('sdp.offer.created', { roomId: this.roomId });
     
     // Post offer to KV
-    await APIClient.sendSignal(this.roomId, 'offer', offer);
+    await this.sendSignal('offer', offer);
     this.log('sdp.offer.sent', { roomId: this.roomId });
 
     if (this.isRandomMatchmaking) {
       this.startHeartbeat();
     }
-    
-    // Poll for answer
-    if (this.debugEnabled()) this.log('sdp.answer.poll.start', { roomId: this.roomId });
-    this.pollInterval = window.setInterval(async () => {
-      const answer = await APIClient.getSignal(this.roomId!, 'answer');
-      if (answer && this.peerConnection!.signalingState === 'have-local-offer') {
-        try {
-          await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(answer));
-          if (this.pollInterval) clearInterval(this.pollInterval);
-          this.log('sdp.answer.applied', { roomId: this.roomId });
-          this.pollForIceCandidates('ice-client');
-        } catch (e) {
-          console.error("Failed to set remote description", e);
-        }
-      }
-    }, 1000);
   }
 
   private async joinRoom(): Promise<void> {
@@ -172,56 +291,6 @@ export class MultiplayerSync {
       this.dataChannel = event.channel;
       this.setupDataChannel();
     };
-
-    // Poll for offer
-    if (this.debugEnabled()) this.log('sdp.offer.poll.start', { roomId: this.roomId });
-    this.pollInterval = window.setInterval(async () => {
-      const offer = await APIClient.getSignal(this.roomId!, 'offer');
-      if (offer && this.peerConnection!.signalingState === 'stable') {
-        if (this.pollInterval) clearInterval(this.pollInterval);
-        
-        try {
-          await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await this.peerConnection!.createAnswer();
-          await this.peerConnection!.setLocalDescription(answer);
-          this.log('sdp.offer.applied', { roomId: this.roomId });
-          
-          await APIClient.sendSignal(this.roomId!, 'answer', answer);
-          this.log('sdp.answer.sent', { roomId: this.roomId });
-          this.pollForIceCandidates('ice-host');
-        } catch (e) {
-          console.error("Failed to handle offer", e);
-        }
-      }
-    }, 1000);
-  }
-
-  private pollForIceCandidates(targetType: string) {
-    let lastProcessedIndex = 0;
-    let lastCount = 0;
-    const iceInterval = window.setInterval(async () => {
-      if (this.peerConnection!.connectionState === 'connected') {
-        clearInterval(iceInterval);
-        return;
-      }
-      const candidates = await APIClient.getSignal(this.roomId!, targetType);
-      if (Array.isArray(candidates)) {
-        if (this.debugEnabled() && candidates.length !== lastCount) {
-          lastCount = candidates.length;
-          this.log('ice.remote.count', { roomId: this.roomId, targetType, count: candidates.length });
-        }
-        for (let i = lastProcessedIndex; i < candidates.length; i++) {
-          try {
-            if (candidates[i] && this.peerConnection!.remoteDescription) {
-              await this.peerConnection!.addIceCandidate(new RTCIceCandidate(candidates[i]));
-            }
-          } catch (e) {
-            console.error('Failed to add ICE candidate', e);
-          }
-        }
-        lastProcessedIndex = candidates.length;
-      }
-    }, 1000);
   }
 
   private setupDataChannel() {

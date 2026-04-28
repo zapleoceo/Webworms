@@ -6,10 +6,11 @@ import { InputHandler } from './views/InputHandler';
 import { APIClient } from './network/APIClient';
 import { MultiplayerSync } from './network/MultiplayerSync';
 import { AudioManager } from './utils/AudioManager';
-import { Random } from './utils/Random';
-import { Worm } from './models/Worm';
-import { Projectile } from './models/Projectile';
-import { WEAPONS } from './models/Weapon';
+import { PaymentController } from './controllers/PaymentController';
+import { MultiplayerController } from './controllers/MultiplayerController';
+import { ContactController } from './controllers/ContactController';
+import { TimeBalanceController } from './controllers/TimeBalanceController';
+import { AuthController } from './controllers/AuthController';
 
 declare global {
   interface Window {
@@ -99,381 +100,59 @@ weaponSlots.forEach((slot, index) => {
 });
 
 let userSessionId: string | null = localStorage.getItem('userSessionId');
-let userSessionName: string | null = localStorage.getItem('userSessionName');
-let userBalanceSeconds = parseInt(localStorage.getItem('userBalanceSeconds') || '3600');
 let deductInterval: number | null = null;
 let syncModule: MultiplayerSync | null = null;
+let multiplayerController: MultiplayerController | null = null;
 
-// Function to fetch the latest profile and update UI
-async function fetchAndUpdateProfile() {
-  if (userSessionId) {
-    const res = await APIClient.getProfile(userSessionId);
-    if (res.success && res.user) {
-      localStorage.setItem('userSessionName', res.user.username || res.user.email.split('@')[0]);
-      localStorage.setItem('userBalanceSeconds', res.user.play_time_balance.toString());
-      if (res.user.premium_until) {
-        localStorage.setItem('premiumUntil', res.user.premium_until.toString());
-      } else {
-        localStorage.removeItem('premiumUntil');
-      }
-      userSessionName = localStorage.getItem('userSessionName');
-      userBalanceSeconds = parseInt(localStorage.getItem('userBalanceSeconds') || '3600');
-      updateTimeBalanceDisplay();
-      
-      const btnProfile = document.getElementById('btn-user-profile');
-      if (btnProfile) {
-        btnProfile.innerText = userSessionName!.toUpperCase();
-        btnProfile.style.display = 'block';
-      }
-      const btnOpenAuth = document.getElementById('btn-open-auth');
-      if (btnOpenAuth) btnOpenAuth.style.display = 'none';
-    }
-  }
-}
-
-function updateTimeBalanceDisplay() {
-  const display = document.getElementById('play-time-display');
-  const timeBalanceEl = document.getElementById('profile-stats-balance');
-  const btnAddTime = document.getElementById('btn-add-time');
-  
-  const balanceStr = localStorage.getItem('playTimeBalance') || localStorage.getItem('userBalanceSeconds');
-  const premiumStr = localStorage.getItem('premiumUntil');
-  
-  let hasPremium = false;
-  if (premiumStr) {
-    const premiumUntil = parseInt(premiumStr);
-    if (premiumUntil > Date.now()) {
-      hasPremium = true;
-      if (display) {
-        display.style.display = 'block';
-        display.innerText = 'Time: ∞ (Premium)';
-        display.style.color = '#ffeb3b';
-      }
-      if (timeBalanceEl) {
-        timeBalanceEl.innerText = 'Play Time: ∞ (Premium)';
-      }
-      if (btnAddTime) btnAddTime.style.display = 'none';
-    }
-  }
-
-  if (!hasPremium) {
-    if (btnAddTime && localStorage.getItem('userSessionId')) {
-      btnAddTime.style.display = 'block';
-    } else if (btnAddTime) {
-      btnAddTime.style.display = 'none';
-    }
-
-    if (balanceStr) {
-      const seconds = parseInt(balanceStr);
-      const hrs = Math.floor(Math.max(0, seconds) / 3600);
-      const mins = Math.floor((Math.max(0, seconds) % 3600) / 60);
-      
-      const hh = hrs.toString().padStart(2, '0');
-      const mm = mins.toString().padStart(2, '0');
-      
-      if (display) {
-        display.style.display = 'block';
-        display.innerText = `Time: ${hh}:${mm}`;
-        display.style.color = 'white';
-      }
-      
-      if (timeBalanceEl) {
-        timeBalanceEl.innerText = `Play Time Balance: ${hh}:${mm}`;
-      }
-    } else if (display) {
-      display.style.display = 'none';
-    }
-  }
-}
-
-// Add PayPal Button Rendering
-function renderPayPalButton() {
-  const buttonContainer = document.getElementById('payment-container');
-  if (!buttonContainer) return;
-
-  // AdBlock Fallback
-  // @ts-ignore
-  if (typeof paypal === 'undefined') {
-    buttonContainer.innerHTML = `
-      <div style="text-align: center; color: #ff3333; padding: 20px;">
-        <h3 class="comic-text">Payment Gateway Blocked</h3>
-        <p>Your browser or AdBlocker is blocking the secure payment window.</p>
-        <p style="margin-top: 10px; color: #000;">Please temporarily pause your AdBlocker on this site and reload the page to purchase extra time.</p>
-      </div>
-    `;
-    return;
-  }
-
-  // Render PayPal button only if it hasn't been rendered yet
-  if (buttonContainer.innerHTML === '') {
-    try {
-      // @ts-ignore
-      paypal.Buttons({
-        createOrder: function(_data: any, actions: any) {
-          return actions.order.create({
-            purchase_units: [{
-              amount: { value: '1.00', currency_code: 'USD' },
-              description: '7 Days Unlimited Play Time'
-            }]
-          });
-        },
-        onApprove: function(data: any, actions: any) {
-          return actions.order.capture().then(function(_details: any) {
-            // Verify with our backend
-            const sessionId = localStorage.getItem('userSessionId');
-            fetch(APIClient.BASE_URL + '/payment/paypal/capture', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${sessionId}`
-              },
-              body: JSON.stringify({ orderID: data.orderID })
-            }).then(res => res.json()).then((res: any) => {
-              if (res.success) {
-                alert('Payment successful! You now have 7 Days of Unlimited Play Time.');
-                localStorage.setItem('premiumUntil', res.premium_until.toString());
-                updateTimeBalanceDisplay();
-                document.getElementById('payment-modal')!.style.display = 'none';
-              } else {
-                alert('Verification failed: ' + res.error);
-              }
-            });
-          });
-        }
-      }).render('#payment-container');
-    } catch(e) {
-      console.error("PayPal failed to load", e);
-    }
-  }
-}
-
-document.getElementById('btn-add-time')?.addEventListener('click', () => {
-  document.getElementById('payment-modal')!.style.display = 'flex';
-  renderPayPalButton();
+const timeBalanceController = new TimeBalanceController({
+  displayEl: document.getElementById('play-time-display'),
+  profileBalanceEl: document.getElementById('profile-stats-balance'),
+  btnAddTimeEl: document.getElementById('btn-add-time'),
+  storage: localStorage
 });
 
-document.getElementById('btn-close-payment')?.addEventListener('click', () => {
-  document.getElementById('payment-modal')!.style.display = 'none';
+const authController = new AuthController({
+  authScreen,
+  profileScreen,
+  btnOpenAuth,
+  btnUserProfile,
+  btnCloseAuth: document.getElementById('btn-close-auth')!,
+  btnCloseProfile: document.getElementById('btn-close-profile')!,
+  btnLogout: document.getElementById('btn-logout')!,
+  btnSaveProfile: document.getElementById('btn-save-profile')!,
+  profileUsernameInput: document.getElementById('profile-username') as HTMLInputElement,
+  profilePasswordInput: document.getElementById('profile-password') as HTMLInputElement,
+  authEmailInput: document.getElementById('auth-email') as HTMLInputElement,
+  authUsernameInput: document.getElementById('auth-username') as HTMLInputElement,
+  authPasswordInput: document.getElementById('auth-password') as HTMLInputElement,
+  authToggleText: document.getElementById('auth-toggle-text')!,
+  authTitle: document.getElementById('auth-title')!,
+  btnSubmitAuth: document.getElementById('btn-submit-auth') as HTMLButtonElement,
+  timeBalance: timeBalanceController,
+  storage: localStorage,
+  getRef: () => new URLSearchParams(window.location.search).get('ref') || undefined,
+  onSessionChanged: (sid) => {
+    userSessionId = sid;
+  }
 });
+authController.init();
 
-const savedSessionId = localStorage.getItem('userSessionId');
-if (savedSessionId) {
-  APIClient.getProfile(savedSessionId).then((res: any) => {
-    if (res.success && res.user) {
-      localStorage.setItem('playTimeBalance', res.user.play_time_balance.toString());
-      localStorage.setItem('userBalanceSeconds', res.user.play_time_balance.toString());
-      localStorage.setItem('premiumUntil', res.user.premium_until?.toString() || '0');
-      userBalanceSeconds = res.user.play_time_balance;
-      updateTimeBalanceDisplay();
-    }
-  });
-}
-
-// Auto-login check
-if (userSessionId && userSessionName) {
-  btnOpenAuth.style.display = 'none';
-  btnUserProfile.style.display = 'block';
-  btnUserProfile.innerText = userSessionName.toUpperCase();
-  updateTimeBalanceDisplay();
-  
-  // Fetch latest profile state from server in background
-  fetchAndUpdateProfile();
-}
+const paymentController = new PaymentController(() => timeBalanceController.update());
+document.getElementById('btn-add-time')?.addEventListener('click', () => paymentController.openPaymentModal());
+document.getElementById('btn-close-payment')?.addEventListener('click', () => paymentController.closePaymentModal());
 
 // Contact Author Modal
 const contactModal = document.getElementById('contact-modal')!;
 const contactMessage = document.getElementById('contact-message') as HTMLTextAreaElement;
+new ContactController(
+  contactModal,
+  contactMessage,
+  document.getElementById('btn-contact-author'),
+  document.getElementById('btn-close-contact'),
+  document.getElementById('btn-send-message') as HTMLButtonElement,
+  () => localStorage.getItem('userSessionId')
+).init();
 
-document.getElementById('btn-contact-author')?.addEventListener('click', () => {
-  contactModal.style.display = 'flex';
-});
-
-document.getElementById('btn-close-contact')?.addEventListener('click', () => {
-  contactModal.style.display = 'none';
-});
-
-document.getElementById('btn-send-message')?.addEventListener('click', async () => {
-  const msg = contactMessage.value.trim();
-  if (!msg) {
-    alert('Please enter a message first!');
-    return;
-  }
-  
-  const btn = document.getElementById('btn-send-message') as HTMLButtonElement;
-  const originalText = btn.innerText;
-  btn.innerText = 'SENDING...';
-  btn.disabled = true;
-
-  try {
-    const token = localStorage.getItem('userSessionId');
-    const res = await APIClient.sendContactMessage(msg, token);
-    
-    if (res.success) {
-      alert('Message sent successfully! Thank you for your feedback.');
-      contactModal.style.display = 'none';
-      contactMessage.value = '';
-    } else {
-      alert('Failed to send message: ' + (res.error || 'Unknown error'));
-    }
-  } catch (e: any) {
-    alert('Error sending message: ' + e.message);
-  } finally {
-    btn.innerText = originalText;
-    btn.disabled = false;
-  }
-});
-
-// Close modals manually if needed (already handled by ID-based listeners, but let's be safe)
-const btnCloseAuth = document.getElementById('btn-close-auth')!;
-btnCloseAuth.addEventListener('click', () => {
-  authScreen.classList.remove('active');
-  authScreen.style.display = 'none'; // Fallback
-});
-
-const btnCloseProfile = document.getElementById('btn-close-profile')!;
-btnCloseProfile.addEventListener('click', () => {
-  profileScreen.classList.remove('active');
-  profileScreen.style.display = 'none'; // Fallback
-});
-
-btnOpenAuth.addEventListener('click', () => {
-  authScreen.style.display = ''; // Reset display inline
-  authScreen.classList.add('active');
-});
-
-btnUserProfile.addEventListener('click', () => {
-  profileScreen.style.display = ''; 
-  profileScreen.classList.add('active');
-  (document.getElementById('profile-username') as HTMLInputElement).value = userSessionName || '';
-  updateTimeBalanceDisplay();
-});
-
-document.getElementById('btn-logout')!.addEventListener('click', () => {
-  userSessionId = null;
-  userSessionName = null;
-  userBalanceSeconds = 0;
-  localStorage.removeItem('userSessionId');
-  localStorage.removeItem('userSessionName');
-  localStorage.removeItem('userBalanceSeconds');
-  btnUserProfile.style.display = 'none';
-  btnOpenAuth.style.display = 'block';
-  profileScreen.style.display = 'none';
-});
-
-const profilePasswordInput = document.getElementById('profile-password') as HTMLInputElement;
-
-document.getElementById('btn-save-profile')!.addEventListener('click', async () => {
-  const newName = (document.getElementById('profile-username') as HTMLInputElement).value.trim();
-  const newPassword = profilePasswordInput ? profilePasswordInput.value : '';
-
-  if (!newName && !newPassword) {
-    profileScreen.classList.remove('active');
-    return;
-  }
-
-  if (userSessionId) {
-      if (newName) {
-        const res = await APIClient.updateProfile(userSessionId, newName);
-        if (res.success) {
-          userSessionName = res.username;
-          localStorage.setItem('userSessionName', userSessionName || '');
-          btnUserProfile.innerText = userSessionName || 'USER';
-        } else {
-          alert(res.error || 'Failed to update username');
-        }
-      }
-      
-      if (newPassword) {
-        const res = await APIClient.updatePassword(userSessionId, newPassword);
-        if (res.success) {
-          alert('Password updated successfully.');
-        } else {
-          alert(res.error || 'Failed to update password');
-        }
-        profilePasswordInput.value = '';
-      }
-      
-      profileScreen.classList.remove('active');
-  }
-});
-
-let isLoginMode = true;
-
-document.getElementById('auth-toggle-text')!.addEventListener('click', () => {
-  isLoginMode = !isLoginMode;
-  document.getElementById('auth-title')!.innerText = isLoginMode ? 'LOGIN' : 'REGISTER';
-  document.getElementById('auth-username')!.style.display = isLoginMode ? 'none' : 'block';
-  document.getElementById('btn-submit-auth')!.innerText = isLoginMode ? 'ENTER THE ARENA' : 'REGISTER NOW';
-  document.getElementById('auth-toggle-text')!.innerText = isLoginMode 
-    ? 'Need an account? Register here.' 
-    : 'Already have an account? Login here.';
-});
-
-document.getElementById('btn-submit-auth')!.addEventListener('click', async () => {
-  const email = (document.getElementById('auth-email') as HTMLInputElement).value;
-  const username = (document.getElementById('auth-username') as HTMLInputElement).value;
-  const password = (document.getElementById('auth-password') as HTMLInputElement).value;
-  
-  if (!email || !password || (!isLoginMode && !username)) {
-    alert('Please fill in all required fields!');
-    return;
-  }
-  
-  const btn = document.getElementById('btn-submit-auth') as HTMLButtonElement;
-  btn.innerText = 'CONNECTING...';
-  btn.disabled = true;
-
-  // Check URL for referral
-  const urlParams = new URLSearchParams(window.location.search);
-  const ref = urlParams.get('ref') || undefined;
-
-  try {
-    let res;
-    if (isLoginMode) {
-      res = await APIClient.login(email, password);
-    } else {
-      res = await APIClient.register(email, username, password, ref);
-    }
-
-    if (res.success) {
-      if (!isLoginMode) {
-        alert('Registration successful! Please login.');
-        document.getElementById('auth-toggle-text')!.click();
-      } else {
-        // Login success
-        userSessionId = res.token;
-        userSessionName = res.user.username;
-        userBalanceSeconds = res.user.play_time_balance || 3600;
-
-        localStorage.setItem('userSessionId', userSessionId || '');
-        localStorage.setItem('userSessionName', userSessionName || '');
-        localStorage.setItem('playTimeBalance', userBalanceSeconds.toString());
-        localStorage.setItem('userBalanceSeconds', userBalanceSeconds.toString());
-        localStorage.setItem('premiumUntil', res.user.premium_until?.toString() || '0');
-
-        authScreen.style.display = 'none';
-
-        btnOpenAuth.style.display = 'none';
-        btnUserProfile.style.display = 'block';
-        btnUserProfile.innerText = userSessionName || 'USER';
-
-        updateTimeBalanceDisplay();
-
-        const joinRoomId = new URLSearchParams(window.location.search).get('room');
-        if (joinRoomId) {
-          startGame('friend');
-        }
-      }
-    } else {
-      alert('Authentication failed: ' + (res.error || 'Unknown error'));
-    }
-  } catch (e) {
-    alert('Network error during authentication');
-  } finally {
-    btn.innerText = isLoginMode ? 'ENTER THE ARENA' : 'REGISTER NOW';
-    btn.disabled = false;
-  }
-});
 
 // Weapon Selection Logic
 const weaponCheckboxes = document.querySelectorAll('.weapon-cb') as NodeListOf<HTMLInputElement>;
@@ -733,14 +412,15 @@ let currentMatchToken: string | null = null;
     const inviteInput = document.getElementById('invite-link') as HTMLInputElement;
     
     loaderText.innerText = 'CONNECTING TO SERVER...';
-    syncModule = new MultiplayerSync();
+    multiplayerController = new MultiplayerController(window.presenter, userSessionId);
+    syncModule = multiplayerController.sync;
     
     const urlParams = new URLSearchParams(window.location.search);
     const joinRoomId = urlParams.get('room') || undefined;
     const savedHostRoomId = localStorage.getItem('friendHostRoomId') || undefined;
     const isHostResume = !!(joinRoomId && savedHostRoomId && joinRoomId === savedHostRoomId);
 
-  syncModule.onReady = () => {
+    syncModule.onReady = () => {
       document.getElementById('cancel-search-container')!.style.display = 'none';
       invitePanel.style.display = 'none';
       loaderScreen.classList.remove('active');
@@ -748,21 +428,6 @@ let currentMatchToken: string | null = null;
       resizeCanvas();
       showControls();
       window.presenter.start();
-    };
-
-    syncModule.onPlayerAction = (action, active, payload) => {
-      if (action === 'analog') {
-        window.presenter.handleAnalogInput(payload.x, payload.y, true);
-      } else if (action === 'switchWorm') {
-        const index = payload;
-        if (index >= 0 && index < window.presenter.state.players.length) {
-          window.presenter.state.currentPlayerIndex = index;
-          const cp = window.presenter.state.getCurrentPlayer();
-          if (cp) window.presenter.updateMobileWeaponIcon(cp);
-        }
-      } else {
-        window.presenter.handleInput(action, active, true, payload); // true = from network
-      }
     };
 
     syncModule.onPeerDisconnected = () => {
@@ -773,156 +438,17 @@ let currentMatchToken: string | null = null;
     };
 
     syncModule.onMatchmakingExpired = () => {
-      if (syncModule) {
-        syncModule.peerConnection?.close();
-        syncModule = null;
-      }
+      multiplayerController?.dispose();
+      multiplayerController = null;
+      syncModule = null;
       document.getElementById('cancel-search-container')!.style.display = 'none';
       loaderScreen.classList.remove('active');
       menuScreen.classList.add('active');
       alert('No opponent found. Please try again.');
     };
 
-    syncModule.onStateReceived = (stateData) => {
-      if (window.presenter.localTeam === 'team2') {
-        // We are the client, update our state to match the host
-        
-        // Sync map seed if we haven't generated terrain with it yet
-        if (window.presenter.state.mapSeed !== stateData.mapSeed || (stateData.mapData && window.presenter.state.mapData !== stateData.mapData)) {
-          window.presenter.state.mapSeed = stateData.mapSeed;
-          window.presenter.state.mapData = stateData.mapData;
-          Random.setSeed(stateData.mapSeed);
-          
-          if (stateData.mapData) {
-            // Ensure URL is absolute
-            const fullUrl = stateData.mapData.startsWith('http') ? stateData.mapData : APIClient.BASE_URL.replace('/api', '') + stateData.mapData;
-            
-            // Pause the game until map is loaded to prevent worms from falling
-            window.presenter.isPaused = true;
-            
-            window.presenter.state.landscape.generateFromImage(fullUrl).then(() => {
-              window.presenter.state.width = window.presenter.state.landscape.width;
-              window.presenter.state.height = window.presenter.state.landscape.height;
-              rebuildWorms();
-              window.presenter.isPaused = false;
-            }).catch(e => {
-              console.error('Failed to load map on client:', e);
-              window.presenter.isPaused = false;
-            });
-          } else {
-            console.error('Client received no mapData. Cannot generate procedural map.');
-            alert('Host sent an invalid map. Refresh to reconnect.');
-          }
-          
-          function rebuildWorms() {
-            // Force regenerate worms with new seed
-            window.presenter.state.players = [];
-            
-            // Use the exact same generation logic as host
-            const spawnPoints: {x: number, y: number}[] = [];
-            const availableClasses = ['soldier', 'heavy', 'scout'];
-            
-            const t1Classes = [
-              availableClasses[Random.nextInt(0, availableClasses.length - 1)],
-              availableClasses[Random.nextInt(0, availableClasses.length - 1)],
-              availableClasses[Random.nextInt(0, availableClasses.length - 1)]
-            ];
-            const t2Classes = [
-              availableClasses[Random.nextInt(0, availableClasses.length - 1)],
-              availableClasses[Random.nextInt(0, availableClasses.length - 1)],
-              availableClasses[Random.nextInt(0, availableClasses.length - 1)]
-            ];
-
-            for (let i = 0; i < 3; i++) {
-              const s = window.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, stateData.mapSeed);
-              spawnPoints.push(s);
-              const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team1');
-              window.presenter.state.addPlayer(p);
-            }
-            for (let i = 0; i < 3; i++) {
-              const s = window.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, stateData.mapSeed);
-              spawnPoints.push(s);
-              const p = new Worm(s.x, s.y, false, `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team2');
-              window.presenter.state.addPlayer(p);
-            }
-          }
-        }
-
-        const oldCurrentPlayerIndex = window.presenter.state.currentPlayerIndex;
-        window.presenter.state.currentPlayerIndex = stateData.currentPlayerIndex;
-        
-        if (oldCurrentPlayerIndex !== stateData.currentPlayerIndex) {
-          const cp = window.presenter.state.getCurrentPlayer();
-          if (cp) window.presenter.updateMobileWeaponIcon(cp);
-        }
-
-        window.presenter.state.wind = stateData.wind;
-        
-        // Exact turn time sync (client doesn't compute physics anyway)
-        window.presenter.turnTimeLeft = stateData.turnTimeLeft;
-        window.presenter.state.turnTimeLeft = stateData.turnTimeLeft; // Update state for UI to read
-        
-        window.presenter.hasFiredThisTurn = stateData.hasFiredThisTurn;
-        if (stateData.lastPlayedIndex) {
-          window.presenter.state.lastPlayedIndex = stateData.lastPlayedIndex;
-        }
-        
-        // Sync players
-        stateData.players.forEach((pData: any, i: number) => {
-          if (window.presenter.state.players[i]) {
-            const p = window.presenter.state.players[i];
-            
-            // DUMB CLIENT: Apply exact positions from host for perfect sync
-            // Interpolation can be added later for smoothness, but exact coordinates are safe.
-            p.x = pData.x;
-            p.y = pData.y;
-            p.vx = pData.vx;
-            p.vy = pData.vy;
-            p.health = pData.health;
-            p.aimAngle = pData.aimAngle;
-            p.facingRight = pData.facingRight;
-            
-            if (pData.currentWeaponIndex !== undefined) {
-              p.currentWeaponIndex = pData.currentWeaponIndex;
-            }
-            
-            p.team = pData.team;
-            
-            if (pData.unitClass && p.unitClass !== pData.unitClass) {
-              p.unitClass = pData.unitClass;
-            }
-          }
-        });
-
-        // Sync projectiles exactly
-        window.presenter.state.projectiles = stateData.projectiles.map((projData: any) => {
-          const weapon = WEAPONS[projData.weaponId] || WEAPONS['bazooka'];
-          const p = new Projectile(projData.x, projData.y, projData.vx, projData.vy, weapon);
-          return p;
-        });
-        
-        // Process new craters exactly
-        if (stateData.craters && stateData.craters.length > 0) {
-          stateData.craters.forEach((crater: any) => {
-            window.presenter.state.landscape.createCrater(crater.x, crater.y, crater.r);
-          });
-        }
-      }
-    };
-
-    window.presenter.onLocalAction = (action: string, active: boolean, payload?: any) => {
-      syncModule?.sendAction(action, active, payload);
-    };
-
     try {
-      const roomId = await syncModule.createOrJoinRoom(
-        isHostResume ? joinRoomId : joinRoomId,
-        userSessionId,
-        isHostResume,
-        mode === 'random'
-      );
-
-      const isJoining = mode === 'random' ? !syncModule.isHost : !!(joinRoomId && !isHostResume);
+      const { roomId, isJoining } = await multiplayerController.connect(mode, joinRoomId, isHostResume);
       if (!isJoining) {
         // We are the host, waiting for someone
         window.presenter.localTeam = 'team1';
@@ -956,10 +482,9 @@ let currentMatchToken: string | null = null;
           document.getElementById('cancel-search-container')!.style.display = 'block';
           
           document.getElementById('btn-cancel-search')!.onclick = () => {
-            if (syncModule) {
-              syncModule.peerConnection?.close();
-              syncModule = null;
-            }
+            multiplayerController?.dispose();
+            multiplayerController = null;
+            syncModule = null;
             document.getElementById('cancel-search-container')!.style.display = 'none';
             loaderScreen.classList.remove('active');
             menuScreen.classList.add('active');
@@ -967,10 +492,9 @@ let currentMatchToken: string | null = null;
         }
 
         document.getElementById('btn-cancel-invite')!.onclick = () => {
-          if (syncModule) {
-            syncModule.peerConnection?.close();
-            syncModule = null;
-          }
+          multiplayerController?.dispose();
+          multiplayerController = null;
+          syncModule = null;
           invitePanel.style.display = 'none';
           loaderScreen.classList.remove('active');
           menuScreen.classList.add('active');
@@ -986,10 +510,9 @@ let currentMatchToken: string | null = null;
         
         document.getElementById('cancel-search-container')!.style.display = 'block';
         document.getElementById('btn-cancel-search')!.onclick = () => {
-            if (syncModule) {
-              syncModule.peerConnection?.close();
-              syncModule = null;
-            }
+            multiplayerController?.dispose();
+            multiplayerController = null;
+            syncModule = null;
             document.getElementById('cancel-search-container')!.style.display = 'none';
             loaderScreen.classList.remove('active');
             menuScreen.classList.add('active');
@@ -1028,7 +551,7 @@ let currentMatchToken: string | null = null;
       let balance = parseInt(localStorage.getItem('playTimeBalance') || '0');
       balance -= 60;
       localStorage.setItem('playTimeBalance', balance.toString());
-      updateTimeBalanceDisplay();
+      timeBalanceController.update();
       
       if (balance <= 0) {
         console.warn('Time limit reached! Grace period active.');
@@ -1211,7 +734,7 @@ function bindPresenterEvents() {
 
   window.presenter.onStateUpdate = (state: any) => {
     // Sync state to client if host
-    if (window.presenter.isHost && syncModule && currentMode === 'friend') {
+    if (window.presenter.isHost && syncModule && currentMode !== 'training') {
       syncModule.sendStateSync(state);
     }
 
