@@ -191,7 +191,7 @@ window.inputHandler = new InputHandler(window.presenter, canvas, [
   { id: 'btn-down', action: 'down' },
   { id: 'btn-jump', action: 'jump' },
   { id: 'btn-fire', action: 'fire' },
-  { id: 'btn-switch', action: 'switch' }
+  { id: 'btn-switch', action: 'switchWormCycle' }
 ]);
 
 // Hook input to canvas for zooming and moving
@@ -267,7 +267,7 @@ if (joystickMove) {
 const touchActions = [
   { id: 'btn-jump', action: 'jump' },
   { id: 'btn-fire', action: 'fire' },
-  { id: 'btn-switch', action: 'switch' }
+  { id: 'btn-switch', action: 'switchWormCycle' }
 ];
 
 touchActions.forEach(({ id, action }) => {
@@ -331,7 +331,7 @@ let currentMatchToken: string | null = null;
     { id: 'btn-down', action: 'down' },
     { id: 'btn-jump', action: 'jump' },
     { id: 'btn-fire', action: 'fire' },
-    { id: 'btn-switch', action: 'switch' }
+    { id: 'btn-switch', action: 'switchWormCycle' }
   ]);
 
   // Re-bind events for the new presenter

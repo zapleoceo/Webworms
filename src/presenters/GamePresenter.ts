@@ -554,6 +554,29 @@ export class GamePresenter {
     }
 
     switch (action) {
+      case 'switchWormCycle':
+        if (isActive) {
+          const allowAfterFire = this.state.mode === 'training';
+          if (this.hasFiredThisTurn && !allowAfterFire) break;
+
+          const team = player.team;
+          const aliveTeamIndices = this.state.players
+            .map((p, idx) => ({ p, idx }))
+            .filter(({ p }) => p.team === team && p.health > 0)
+            .map(({ idx }) => idx);
+
+          if (aliveTeamIndices.length <= 1) break;
+
+          const curIdx = this.state.currentPlayerIndex;
+          const pos = aliveTeamIndices.indexOf(curIdx);
+          const next = aliveTeamIndices[(pos >= 0 ? pos + 1 : 0) % aliveTeamIndices.length];
+          if (next === curIdx) break;
+
+          this.state.currentPlayerIndex = next;
+          const nextWorm = this.state.players[next];
+          this.updateMobileWeaponIcon(nextWorm);
+        }
+        break;
       case 'jump':
         if (isActive && !player.isJumping) {
           player.isJumping = true;
@@ -598,7 +621,8 @@ export class GamePresenter {
         break;
       case 'switchWorm':
         if (isActive && typeof payload === 'number') {
-          if (this.hasFiredThisTurn) break;
+          const allowAfterFire = this.state.mode === 'training';
+          if (this.hasFiredThisTurn && !allowAfterFire) break;
           const targetWorm = this.state.players[payload];
           if (!targetWorm) break;
           if (targetWorm.health <= 0) break;
