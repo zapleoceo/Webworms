@@ -1,21 +1,6 @@
+import { d1Retry } from '../services/d1';
 import { hashPassword } from '../services/password';
-
-async function d1Retry<T>(fn: () => Promise<T>): Promise<T> {
-  const delays = [0, 75, 250];
-  let lastErr: any;
-  for (const delay of delays) {
-    if (delay) await new Promise((r) => setTimeout(r, delay));
-    try {
-      return await fn();
-    } catch (e: any) {
-      lastErr = e;
-      const msg = String(e?.message || e);
-      const retryable = msg.includes('D1_ERROR') || msg.toLowerCase().includes('timeout');
-      if (!retryable) break;
-    }
-  }
-  throw lastErr;
-}
+import { requireSessionUser } from '../services/userAuth';
 
 async function sendResendEmail(env: any, to: string, token: string, host: string): Promise<string | null> {
   if (!env.RESEND_API_KEY) {
@@ -235,17 +220,7 @@ export async function handleVerify(request: Request, env: any): Promise<Response
 
 export async function handleSession(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
   try {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
-
-    const sessionId = authHeader.split(' ')[1];
-    const user = await env.DB.prepare(`SELECT id, email, username, is_active, play_time_balance, premium_until FROM Users WHERE id = ?`).bind(sessionId).first<any>();
-
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
+    const user = await requireSessionUser(request, env);
 
     return new Response(JSON.stringify({
       success: true,
@@ -258,81 +233,62 @@ export async function handleSession(request: Request, env: any, corsHeaders: Rec
       }
     }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    const msg = String(e?.message || e);
+    const status = msg === 'Unauthorized' || msg === 'Invalid session' ? 401 : 500;
+    return new Response(JSON.stringify({ error: msg }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
 
 export async function getProfile(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
   try {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-
-    const sessionId = authHeader.replace('Bearer ', '');
-    const user = await env.DB.prepare('SELECT id, email, username, play_time_balance, is_admin, premium_until FROM Users WHERE id = ?').bind(sessionId).first<any>();
-
-    if (!user) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    const user = await requireSessionUser(request, env);
 
     return new Response(JSON.stringify({ success: true, user }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    const msg = String(e?.message || e);
+    const status = msg === 'Unauthorized' || msg === 'Invalid session' ? 401 : 500;
+    return new Response(JSON.stringify({ error: msg }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
 
 export async function handleUpdateProfile(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
   try {
     const { username } = await request.json() as { username: string };
-    const authHeader = request.headers.get('Authorization');
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
-
-    const sessionId = authHeader.split(' ')[1];
-    const user = await env.DB.prepare('SELECT id FROM Users WHERE id = ?').bind(sessionId).first<any>();
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
+    const user = await requireSessionUser(request, env);
 
     if (!username) {
       return new Response(JSON.stringify({ error: 'Username is required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    await env.DB.prepare('UPDATE Users SET username = ? WHERE id = ?').bind(username, user.id).run();
+    await d1Retry(() => env.DB.prepare('UPDATE Users SET username = ? WHERE id = ?').bind(username, user.id).run());
 
     return new Response(JSON.stringify({ success: true, username }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    const msg = String(e?.message || e);
+    const status = msg === 'Unauthorized' || msg === 'Invalid session' ? 401 : 500;
+    return new Response(JSON.stringify({ error: msg }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
 
 export async function handleUpdatePassword(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
   try {
     const { password } = await request.json() as { password: string };
-    const authHeader = request.headers.get('Authorization');
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
-
-    const sessionId = authHeader.split(' ')[1];
-
-    const user = await env.DB.prepare('SELECT id FROM Users WHERE id = ?').bind(sessionId).first<any>();
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Invalid session' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
+    const user = await requireSessionUser(request, env);
 
     if (!password) {
       return new Response(JSON.stringify({ error: 'Password is required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
     const hashedPassword = await hashPassword(password);
-    await env.DB.prepare('UPDATE Users SET password_hash = ? WHERE id = ?').bind(hashedPassword, user.id).run();
+    await d1Retry(() => env.DB.prepare('UPDATE Users SET password_hash = ? WHERE id = ?').bind(hashedPassword, user.id).run());
 
     return new Response(JSON.stringify({ success: true, message: 'Password updated successfully' }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    const msg = String(e?.message || e);
+    const status = msg === 'Unauthorized' || msg === 'Invalid session' ? 401 : 500;
+    return new Response(JSON.stringify({ error: msg }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
 
