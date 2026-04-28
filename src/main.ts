@@ -25,6 +25,16 @@ if (isAdminPage) {
   new AdminPanel();
 }
 
+if (!isAdminPage) {
+  const buildVersion = '20260428_0802';
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
+    sessionStorage.setItem('buildVersionRedirected', buildVersion);
+    url.searchParams.set('v', buildVersion);
+    window.location.replace(url.toString());
+  }
+}
+
 // DOM Elements
 const authScreen = document.getElementById('auth-screen')!;
 const menuScreen = document.getElementById('main-menu')!;
@@ -43,7 +53,6 @@ if (!isAdminPage) {
 // Load custom maps into dropdown
 APIClient.getMaps().then(maps => {
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
-  const mapSizeDisplay = document.getElementById('map-size-display') as HTMLDivElement;
   
   if (mapTypeSelect && maps && maps.length > 0) {
     mapTypeSelect.innerHTML = ''; // Clear "Loading maps..."
@@ -51,6 +60,7 @@ APIClient.getMaps().then(maps => {
     const updateSizeDisplay = () => {
       const selectedId = mapTypeSelect.value;
       const selectedMap = maps.find((m: any) => m.id === selectedId);
+      const mapSizeDisplay = document.getElementById('map-size-display');
       if (selectedMap && mapSizeDisplay) {
         mapSizeDisplay.style.display = 'inline-block';
         mapSizeDisplay.innerText = `${selectedMap.width} x ${selectedMap.height}`;
@@ -731,7 +741,7 @@ let currentMatchToken: string | null = null;
     const isHostResume = !!(joinRoomId && savedHostRoomId && joinRoomId === savedHostRoomId);
 
   syncModule.onReady = () => {
-      document.getElementById('btn-cancel-random')?.remove();
+      document.getElementById('cancel-search-container')!.style.display = 'none';
       invitePanel.style.display = 'none';
       loaderScreen.classList.remove('active');
       gameScreen.classList.add('active');
@@ -760,6 +770,17 @@ let currentMatchToken: string | null = null;
         alert("The enemy has disconnected.");
         window.presenter.handleInput('surrender', true, true);
       }
+    };
+
+    syncModule.onMatchmakingExpired = () => {
+      if (syncModule) {
+        syncModule.peerConnection?.close();
+        syncModule = null;
+      }
+      document.getElementById('cancel-search-container')!.style.display = 'none';
+      loaderScreen.classList.remove('active');
+      menuScreen.classList.add('active');
+      alert('No opponent found. Please try again.');
     };
 
     syncModule.onStateReceived = (stateData) => {
@@ -908,7 +929,8 @@ let currentMatchToken: string | null = null;
         loaderText.innerText = 'WAITING FOR OPPONENT...';
         
         if (mode === 'friend') {
-          invitePanel.style.display = 'flex';
+          invitePanel.style.display = 'block';
+          document.getElementById('cancel-search-container')!.style.display = 'none';
           const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
           inviteInput.value = inviteUrl;
           localStorage.setItem('friendHostRoomId', roomId);
@@ -931,22 +953,17 @@ let currentMatchToken: string | null = null;
           };
         } else {
           invitePanel.style.display = 'none'; // Random mode doesn't show invite
+          document.getElementById('cancel-search-container')!.style.display = 'block';
           
-          // Add a simple cancel button for random matchmaking
-          const cancelBtn = document.createElement('button');
-          cancelBtn.innerText = 'CANCEL SEARCH';
-          cancelBtn.className = 'danger-btn mt-10';
-          cancelBtn.id = 'btn-cancel-random';
-          cancelBtn.onclick = () => {
+          document.getElementById('btn-cancel-search')!.onclick = () => {
             if (syncModule) {
               syncModule.peerConnection?.close();
               syncModule = null;
             }
-            cancelBtn.remove();
+            document.getElementById('cancel-search-container')!.style.display = 'none';
             loaderScreen.classList.remove('active');
             menuScreen.classList.add('active');
           };
-          loaderScreen.appendChild(cancelBtn);
         }
 
         document.getElementById('btn-cancel-invite')!.onclick = () => {
@@ -966,6 +983,17 @@ let currentMatchToken: string | null = null;
         window.presenter.state.mode = 'friend'; // Fix: Ensure client is not in training mode
         window.presenter.maxTurnTime = 30; // Fix: Ensure maxTurnTime is not Infinity
         loaderText.innerText = 'JOINING ROOM...';
+        
+        document.getElementById('cancel-search-container')!.style.display = 'block';
+        document.getElementById('btn-cancel-search')!.onclick = () => {
+            if (syncModule) {
+              syncModule.peerConnection?.close();
+              syncModule = null;
+            }
+            document.getElementById('cancel-search-container')!.style.display = 'none';
+            loaderScreen.classList.remove('active');
+            menuScreen.classList.add('active');
+        };
       }
     } catch (e: any) {
       alert('Failed to connect: ' + e.message);

@@ -25,3 +25,15 @@ dist-ssr
 .env
 .env.*
 .wrangler/
+
+# Local debug scripts / artifacts (do not commit)
+paypal.txt
+check_room.js
+debug_map.cjs
+get_creds.js
+get_creds.cjs
+list_pages.cjs
+test_matchmaking*.cjs
+test_matchmaking*.mjs
+tmp_match_test.sh
+verify_viewports.cjs

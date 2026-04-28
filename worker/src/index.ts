@@ -4,6 +4,7 @@ import { getWeapons, createWeapon, updateWeapon, deleteWeapon } from './controll
 export interface Env {
   DB: D1Database;
   ROOMS: KVNamespace;
+  SIGNALING: DurableObjectNamespace;
   RESEND_API_KEY?: string;
   waitUntil(promise: Promise<any>): void;
 }
@@ -14,6 +15,39 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
   'Access-Control-Max-Age': '86400',
 };
+
+function maskId(id: string | null | undefined): string | null {
+  if (!id) return null;
+  if (id.length <= 10) return id;
+  return `${id.slice(0, 4)}…${id.slice(-4)}`;
+}
+
+function summarizeIceCandidates(payload: unknown): { count: number; hasSrflx: boolean; hasRelay: boolean; hasHost: boolean } {
+  if (!Array.isArray(payload)) return { count: 0, hasSrflx: false, hasRelay: false, hasHost: false };
+  let hasSrflx = false;
+  let hasRelay = false;
+  let hasHost = false;
+  for (const c of payload) {
+    const cand = (c as any)?.candidate;
+    if (typeof cand !== 'string') continue;
+    if (cand.includes(' typ srflx ')) hasSrflx = true;
+    if (cand.includes(' typ relay ')) hasRelay = true;
+    if (cand.includes(' typ host ')) hasHost = true;
+  }
+  return { count: payload.length, hasSrflx, hasRelay, hasHost };
+}
+
+function summarizeSdp(payload: unknown): { type?: string; sdpLen?: number } {
+  if (!payload || typeof payload !== 'object') return {};
+  const p = payload as any;
+  const type = typeof p.type === 'string' ? p.type : undefined;
+  const sdpLen = typeof p.sdp === 'string' ? p.sdp.length : undefined;
+  return { type, sdpLen };
+}
+
+function logEvent(event: string, data: Record<string, unknown>) {
+  console.log(JSON.stringify({ event, ts: Date.now(), ...data }));
+}
 
 export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
@@ -229,6 +263,9 @@ export default {
       // Signaling endpoints
       else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/join') && request.method === 'POST') {
         response = await joinRoomState(request, env);
+      }
+      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/heartbeat') && request.method === 'POST') {
+        response = await heartbeatRoom(request, env);
       }
       else if (url.pathname.startsWith('/api/rooms/') && request.method === 'POST') {
         response = await handleSignaling(request, env);
@@ -1105,13 +1142,51 @@ async function capturePayPalOrder(request: Request, env: Env): Promise<Response>
     const { orderID } = await request.json() as { orderID: string };
     if (!orderID) return new Response(JSON.stringify({ error: 'Missing orderID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
-    // IDEALLY: Call PayPal API here to capture the order and verify the payment status using PAYPAL_CLIENT_ID and PAYPAL_SECRET
-    // Since this is a test environment and we only have the client-id from the script, we'll mock the verification.
-    // In production, you MUST use `fetch('https://api-m.paypal.com/v2/checkout/orders/' + orderID + '/capture', ...)`
+    const PAYPAL_CLIENT_ID = 'AbnRjP_66T1roH3unsnvsbA1CASKMDzB9rULajCynZCkQ7OUbPTK1Y5ICxk-IRUFRrVloTGmziUkdeZV';
+    const PAYPAL_SECRET = 'EKtbJ-SwacEw3CMZGoLr4-223SCtnFriBZXHsqyjGW91jnfSUfMcQ-stplyEcZ0XanQvwCijKhgrFcXq';
+    
+    // Get PayPal Access Token
+    const auth = btoa(`${PAYPAL_CLIENT_ID}:${PAYPAL_SECRET}`);
+    const tokenRes = await fetch('https://api-m.paypal.com/v1/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'grant_type=client_credentials'
+    });
 
-    // MOCK VERIFICATION: Grant 7 days premium
+    if (!tokenRes.ok) {
+      console.error('PayPal Auth Error:', await tokenRes.text());
+      return new Response(JSON.stringify({ error: 'Payment gateway authentication failed' }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    const tokenData = await tokenRes.json() as any;
+    const accessToken = tokenData.access_token;
+
+    // Capture the Order
+    const captureRes = await fetch(`https://api-m.paypal.com/v2/checkout/orders/${orderID}/capture`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const captureData = await captureRes.json() as any;
+    
+    if (!captureRes.ok || captureData.status !== 'COMPLETED') {
+      console.error('PayPal Capture Error:', captureData);
+      return new Response(JSON.stringify({ error: 'Payment capture failed' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+
+    // Grant 7 days premium (604800000 ms)
     const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-    const premiumUntil = Date.now() + sevenDaysInMs;
+    
+    // If user already has premium, add 7 days to the existing expiration
+    const currentPremium = sessionData.premium_until || 0;
+    const now = Date.now();
+    const premiumUntil = (currentPremium > now ? currentPremium : now) + sevenDaysInMs;
 
     await env.DB.prepare(`UPDATE Users SET premium_until = ? WHERE id = ?`).bind(premiumUntil, sessionData.id).run();
 
@@ -1225,6 +1300,8 @@ async function createRoom(request: Request, env: Env): Promise<Response> {
     activeAt: null
   }), { expirationTtl: 3600 });
 
+  logEvent('room.create', { roomId, hostId: maskId(hostId) });
+
   return new Response(JSON.stringify({ roomId }), {
     headers: { 'Content-Type': 'application/json' }
   });
@@ -1236,32 +1313,63 @@ async function joinRandomRoom(request: Request, env: Env): Promise<Response> {
     const body = await request.json() as any;
     playerId = body?.playerId || null;
   } catch {}
-  if (!playerId) return new Response(JSON.stringify({ error: 'playerId required' }), { status: 400 });
+  if (!playerId) return new Response(JSON.stringify({ error: 'playerId required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
-  // Try to find a valid waiting room via strongly-consistent D1
-  const row = await env.DB.prepare(`SELECT room_id FROM MatchmakingQueue WHERE host_id != ? ORDER BY created_at ASC LIMIT 1`).bind(playerId).first<{ room_id: string }>();
+  logEvent('mm.join.request', { playerId: maskId(playerId) });
 
-  if (row) {
-    const roomId = row.room_id;
-    // Delete the room from queue so no one else joins it
-    await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE room_id = ?`).bind(roomId).run();
-    
-    // Now verify the room state in KV
-    const roomStr = await env.ROOMS.get(roomId);
-    if (roomStr) {
-      const room = JSON.parse(roomStr);
-      if (room.status === 'waiting') {
-        room.clientId = playerId;
-        room.status = 'reserved';
-        room.reservedAt = Date.now();
-        await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
-        return new Response(JSON.stringify({ roomId, isHost: false }));
-      }
-    }
+  const cleanupRes = await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE host_id = ? OR datetime(created_at, '+1 day') < CURRENT_TIMESTAMP`).bind(playerId).run();
+  if (cleanupRes?.meta?.changes) {
+    logEvent('mm.queue.cleanup', { playerId: maskId(playerId), removed: cleanupRes.meta.changes });
   }
 
-  // Clean up old or duplicate entries
-  await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE host_id = ? OR datetime(created_at, '+10 minutes') < CURRENT_TIMESTAMP`).bind(playerId).run();
+  const candidates = await env.DB.prepare(
+    `SELECT room_id, host_id FROM MatchmakingQueue WHERE host_id != ? ORDER BY created_at ASC LIMIT 5`
+  ).bind(playerId).all<{ room_id: string, host_id: string }>();
+
+  logEvent('mm.queue.candidates', { playerId: maskId(playerId), count: (candidates.results || []).length });
+
+  for (const row of candidates.results || []) {
+    const roomId = row.room_id;
+
+    const roomStr = await env.ROOMS.get(roomId);
+    if (!roomStr) {
+      await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE room_id = ?`).bind(roomId).run();
+      logEvent('mm.queue.drop', { roomId, reason: 'kv_missing' });
+      continue;
+    }
+
+    let roomState: any;
+    try {
+      roomState = JSON.parse(roomStr);
+    } catch {
+      await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE room_id = ?`).bind(roomId).run();
+      logEvent('mm.queue.drop', { roomId, reason: 'kv_bad_json' });
+      continue;
+    }
+
+    if (roomState?.status !== 'waiting' || roomState?.hostId !== row.host_id) {
+      await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE room_id = ?`).bind(roomId).run();
+      logEvent('mm.queue.drop', { roomId, reason: 'state_mismatch', status: roomState?.status ?? null, hostId: maskId(roomState?.hostId ?? null), expectedHostId: maskId(row.host_id) });
+      continue;
+    }
+
+    await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE room_id = ?`).bind(roomId).run();
+
+    const reservedRoom = {
+      status: 'reserved',
+      hostId: row.host_id,
+      clientId: playerId,
+      reservedAt: Date.now(),
+      activeAt: null
+    };
+    await env.ROOMS.put(roomId, JSON.stringify(reservedRoom), { expirationTtl: 3600 });
+
+    logEvent('mm.match.found', { roomId, hostId: maskId(row.host_id), clientId: maskId(playerId) });
+
+    return new Response(JSON.stringify({ roomId, isHost: false }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
 
   // Create a new room
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -1280,36 +1388,70 @@ async function joinRandomRoom(request: Request, env: Env): Promise<Response> {
 
   await env.DB.prepare(`INSERT INTO MatchmakingQueue (room_id, host_id) VALUES (?, ?)`).bind(roomId, playerId).run();
 
+  logEvent('mm.match.created', { roomId, hostId: maskId(playerId) });
+
   return new Response(JSON.stringify({ roomId, isHost: true }), {
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json', ...corsHeaders }
   });
 }
 
+async function heartbeatRoom(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/');
+  const roomId = parts[3]; // /api/rooms/{id}/heartbeat
+
+  let hostId: string | null = null;
+  try {
+    const body = await request.json() as any;
+    hostId = body?.hostId || null;
+  } catch {}
+
+  if (!roomId || !hostId) {
+    return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  await env.DB.prepare(`UPDATE MatchmakingQueue SET created_at = CURRENT_TIMESTAMP WHERE room_id = ? AND host_id = ?`).bind(roomId, hostId).run();
+  await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE datetime(created_at, '+1 day') < CURRENT_TIMESTAMP`).run();
+
+  const exists = await env.DB.prepare(`SELECT 1 as one FROM MatchmakingQueue WHERE room_id = ? AND host_id = ?`)
+    .bind(roomId, hostId).first<{ one: number }>();
+
+  if (!exists) {
+    logEvent('mm.heartbeat.expired', { roomId, hostId: maskId(hostId) });
+  }
+
+  return new Response(JSON.stringify({ success: true, inQueue: !!exists, expired: !exists }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+}
+
 async function joinRoomState(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
   const parts = url.pathname.split('/');
   const roomId = parts[3]; // /api/rooms/{id}/join
 
-  if (!roomId) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
+  if (!roomId) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
   let playerId: string | null = null;
   try {
     const body = await request.json() as any;
     playerId = body?.playerId || null;
   } catch {}
-  if (!playerId) return new Response(JSON.stringify({ error: 'playerId required' }), { status: 400 });
+  if (!playerId) return new Response(JSON.stringify({ error: 'playerId required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
   const roomStr = await env.ROOMS.get(roomId);
   if (!roomStr) {
-    return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404 });
+    logEvent('room.join.fail', { roomId, playerId: maskId(playerId), reason: 'not_found' });
+    return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
   const room = JSON.parse(roomStr);
   if (room.hostId && room.hostId === playerId) {
-    return new Response(JSON.stringify({ error: 'Host cannot join own room link' }), { status: 403 });
+    logEvent('room.join.fail', { roomId, playerId: maskId(playerId), reason: 'host_cannot_join' });
+    return new Response(JSON.stringify({ error: 'Host cannot join own room link' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
   if (room.clientId && room.clientId === playerId) {
-    return new Response(JSON.stringify({ success: true, reconnect: true }));
+    logEvent('room.join.reconnect', { roomId, playerId: maskId(playerId) });
+    return new Response(JSON.stringify({ success: true, reconnect: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
   if (room.clientId && room.clientId !== playerId) {
@@ -1320,10 +1462,12 @@ async function joinRoomState(request: Request, env: Env): Promise<Response> {
       room.status = 'reserved';
       room.reservedAt = now;
       await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
-      return new Response(JSON.stringify({ success: true, takeover: true }));
+      logEvent('room.join.takeover', { roomId, playerId: maskId(playerId) });
+      return new Response(JSON.stringify({ success: true, takeover: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    return new Response(JSON.stringify({ error: 'Room is already full' }), { status: 403 });
+    logEvent('room.join.fail', { roomId, playerId: maskId(playerId), reason: 'full' });
+    return new Response(JSON.stringify({ error: 'Room is already full' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
   room.clientId = playerId;
@@ -1331,7 +1475,9 @@ async function joinRoomState(request: Request, env: Env): Promise<Response> {
   room.reservedAt = Date.now();
   await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
 
-  return new Response(JSON.stringify({ success: true }));
+  logEvent('room.join.ok', { roomId, playerId: maskId(playerId), hostId: maskId(room.hostId ?? null) });
+
+  return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }
 
 async function getRoomState(request: Request, env: Env): Promise<Response> {
@@ -1339,14 +1485,14 @@ async function getRoomState(request: Request, env: Env): Promise<Response> {
   const parts = url.pathname.split('/');
   const roomId = parts[3]; // /api/rooms/{id}/state
 
-  if (!roomId) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
+  if (!roomId) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
   const roomStr = await env.ROOMS.get(roomId);
   if (!roomStr) {
-    return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404 });
+    return new Response(JSON.stringify({ error: 'Room not found or expired' }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
-  return new Response(roomStr, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  return new Response(roomStr, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } });
 }
 
 async function handleSignaling(request: Request, env: Env): Promise<Response> {
@@ -1355,40 +1501,25 @@ async function handleSignaling(request: Request, env: Env): Promise<Response> {
   const roomId = parts[3]; // /api/rooms/{id}/{type}
   const type = parts[4]; // offer, answer, ice-host, ice-client
 
-  if (!roomId || !type) return new Response('Bad Request', { status: 400 });
+  if (!roomId || !type) return new Response('Bad Request', { status: 400, headers: corsHeaders });
 
   const data = await request.text();
-  
-  if (type === 'ice-host' || type === 'ice-client') {
-    const existingRow = await env.DB.prepare('SELECT data FROM Signaling WHERE room_id = ? AND type = ?')
-      .bind(roomId, type).first<any>();
+  const size = data.length;
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(data);
+  } catch {}
+  const iceSummary = type === 'ice-host' || type === 'ice-client' ? summarizeIceCandidates(parsed) : null;
+  const sdpSummary = type === 'offer' || type === 'answer' ? summarizeSdp(parsed) : null;
+  logEvent('sig.post', { roomId, type, size, ice: iceSummary, sdp: sdpSummary });
 
-    let candidates: any[] = [];
-    if (existingRow?.data) {
-      try { candidates = JSON.parse(existingRow.data); } catch (e) {}
-    }
-
-    let newCandidate;
-    try { newCandidate = JSON.parse(data); } catch (e) { return new Response('Bad JSON', { status: 400 }); }
-
-    // Deduplicate candidates
-    const newStr = JSON.stringify(newCandidate);
-    if (!candidates.some(c => JSON.stringify(c) === newStr)) {
-      candidates.push(newCandidate);
-      await env.DB.prepare(`
-        INSERT INTO Signaling (room_id, type, data, updated_at)
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(room_id, type) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
-      `).bind(roomId, type, JSON.stringify(candidates)).run();
-    }
-  } else {
-    // Store offer or answer directly
-    await env.DB.prepare(`
-      INSERT INTO Signaling (room_id, type, data, updated_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(room_id, type) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
-    `).bind(roomId, type, data).run();
-  }
+  const id = env.SIGNALING.idFromName(roomId);
+  const stub = env.SIGNALING.get(id);
+  await stub.fetch(`https://signaling/${roomId}/${type}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: data
+  });
 
   if (type === 'answer') {
     const roomStr = await env.ROOMS.get(roomId);
@@ -1397,10 +1528,11 @@ async function handleSignaling(request: Request, env: Env): Promise<Response> {
       room.status = 'active';
       room.activeAt = Date.now();
       await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
+      logEvent('room.active', { roomId, hostId: maskId(room.hostId ?? null), clientId: maskId(room.clientId ?? null) });
     }
   }
 
-  return new Response(JSON.stringify({ success: true }));
+  return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }
 
 async function handleSignalingGet(request: Request, env: Env): Promise<Response> {
@@ -1409,17 +1541,59 @@ async function handleSignalingGet(request: Request, env: Env): Promise<Response>
   const roomId = parts[3];
   const type = parts[4];
 
-  if (!roomId || !type) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400 });
+  if (!roomId || !type) return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400, headers: corsHeaders });
 
-  const row = await env.DB.prepare('SELECT data FROM Signaling WHERE room_id = ? AND type = ?')
-    .bind(roomId, type).first<any>();
-  if (row?.data) {
-    return new Response(row.data, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
-  }
+  const id = env.SIGNALING.idFromName(roomId);
+  const stub = env.SIGNALING.get(id);
+  const response = await stub.fetch(`https://signaling/${roomId}/${type}`, { method: 'GET' });
+  const data = await response.text();
 
-  // To prevent 404 console spam during polling, return 200 OK with empty representation
-  if (type === 'ice-host' || type === 'ice-client') {
-    return new Response('[]', { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  return new Response(data, { 
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } 
+  });
+}
+
+export class SignalingDO {
+  private missLogged = new Set<string>();
+  constructor(private state: DurableObjectState) {}
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const segments = url.pathname.replace(/^\//, '').split('/');
+    const roomId = segments.length >= 2 ? segments[0] : null;
+    const type = segments.length >= 2 ? segments[1] : segments[0];
+
+    if (!type) return new Response('Bad Request', { status: 400 });
+
+    if (request.method === 'POST') {
+      const data = await request.text();
+      await this.state.storage.put(type, data);
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(data);
+      } catch {}
+      const iceSummary = type === 'ice-host' || type === 'ice-client' ? summarizeIceCandidates(parsed) : null;
+      const sdpSummary = type === 'offer' || type === 'answer' ? summarizeSdp(parsed) : null;
+      logEvent('sig.store', { roomId, type, size: data.length, ice: iceSummary, sdp: sdpSummary });
+      return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (request.method === 'GET') {
+      const data = await this.state.storage.get<string>(type);
+      if (typeof data === 'string') {
+        return new Response(data, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+      }
+      const missKey = `${roomId ?? ''}:${type}`;
+      if (!this.missLogged.has(missKey)) {
+        this.missLogged.add(missKey);
+        logEvent('sig.miss', { roomId, type });
+      }
+      if (type === 'ice-host' || type === 'ice-client') {
+        return new Response('[]', { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+      }
+      return new Response('null', { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+    }
+
+    return new Response('Method Not Allowed', { status: 405 });
   }
-  return new Response('null', { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 }

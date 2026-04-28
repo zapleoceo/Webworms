@@ -544,7 +544,7 @@ export class CanvasRenderer {
         // Draw Crosshair (Reticle)
         const reticleDist = 60; // distance from worm
         const rx = Math.cos(globalAimAngle) * reticleDist;
-        const ry = Math.sin(globalAimAngle) * reticleDist;
+        const ry = Math.sin(globalAimAngle) * reticleDist - player.height / 2;
         
         this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
         this.ctx.lineWidth = 2;

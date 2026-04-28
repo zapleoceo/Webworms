@@ -11,5 +11,14 @@ database_id = "6f84783d-f776-42e1-8cb8-ce6d342e803a"
 binding = "ROOMS"
 id = "7089e094dcff4e439524738e5f129932"
 
+[durable_objects]
+bindings = [
+  { name = "SIGNALING", class_name = "SignalingDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalingDO"]
+
 [triggers]
 crons = ["0 0 * * *"] # Run every day at midnight UTC

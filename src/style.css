@@ -309,7 +309,7 @@ button:hover {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .map-title {
@@ -553,6 +553,8 @@ canvas {
   justify-content: space-between;
   align-items: flex-start;
   padding: 15px;
+  width: 100%;
+  box-sizing: border-box;
   pointer-events: none;
 }
 
@@ -926,6 +928,20 @@ canvas {
 
 .pulse-anim {
   animation: pulse 1.5s infinite ease-in-out;
+}
+
+/* Sequential pulsing for main menu buttons */
+.menu-actions .pulse-anim:nth-child(1) {
+  animation: pulse 3s infinite ease-in-out;
+  animation-delay: 0s;
+}
+.menu-actions .pulse-anim:nth-child(2) {
+  animation: pulse 3s infinite ease-in-out;
+  animation-delay: 1s;
+}
+.menu-actions .pulse-anim:nth-child(3) {
+  animation: pulse 3s infinite ease-in-out;
+  animation-delay: 2s;
 }
 
 @keyframes popIn {

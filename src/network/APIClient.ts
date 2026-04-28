@@ -1,6 +1,20 @@
 export class APIClient {
   static BASE_URL = '/api';
 
+  static isDebugEnabled(): boolean {
+    try {
+      return localStorage.getItem('ww_debug') === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  static maskId(id: string | null | undefined): string | null {
+    if (!id) return null;
+    if (id.length <= 10) return id;
+    return `${id.slice(0, 4)}…${id.slice(-4)}`;
+  }
+
   static async register(email: string, username: string, password?: string, refCode?: string) {
     try {
       console.log(`[APIClient] Registering ${email}... at ${this.BASE_URL}/auth/register`);
@@ -167,6 +181,9 @@ export class APIClient {
 
   static async joinRoomState(roomId: string, playerId: string) {
     try {
+      if (this.isDebugEnabled()) {
+        console.log('[APIClient] joinRoomState', { roomId, playerId: this.maskId(playerId) });
+      }
       const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,16 +191,19 @@ export class APIClient {
       });
       const data = await response.json();
       if (!response.ok) {
+        console.error('[APIClient] joinRoomState error', { roomId, status: response.status, error: data?.error });
         return { success: false, error: data.error };
       }
       return data;
     } catch (e) {
+      console.error('[APIClient] joinRoomState exception', { roomId, e });
       return { success: false, error: 'Network error joining room' };
     }
   }
 
   static async joinRandomRoom(playerId: string) {
     try {
+      console.log('[APIClient] joinRandomRoom', { playerId: this.maskId(playerId) });
       const response = await fetch(`${this.BASE_URL}/rooms/random`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -191,10 +211,13 @@ export class APIClient {
       });
       const data = await response.json();
       if (!response.ok) {
+        console.error('[APIClient] joinRandomRoom error', { status: response.status, error: data?.error });
         return { success: false, error: data.error };
       }
+      console.log('[APIClient] joinRandomRoom ok', { roomId: data?.roomId, isHost: data?.isHost });
       return data; // { roomId, isHost }
     } catch (e) {
+      console.error('[APIClient] joinRandomRoom exception', e);
       return { success: false, error: 'Network error joining random room' };
     }
   }
@@ -212,16 +235,22 @@ export class APIClient {
   // WebRTC Signaling
   static async sendSignal(roomId: string, type: string, payload: any) {
     try {
+      if (this.isDebugEnabled()) {
+        const size = JSON.stringify(payload)?.length ?? 0;
+        const candidateCount = Array.isArray(payload) ? payload.length : null;
+        const sdpLen = payload && typeof payload === 'object' && typeof payload.sdp === 'string' ? payload.sdp.length : null;
+        console.log('[APIClient] sendSignal', { roomId, type, size, candidateCount, sdpLen });
+      }
       const res = await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       if (!res.ok) {
-        console.error('sendSignal error:', res.status, await res.text());
+        console.error('[APIClient] sendSignal error', { roomId, type, status: res.status, body: await res.text() });
       }
     } catch (e) {
-      console.error('sendSignal exception:', e);
+      console.error('[APIClient] sendSignal exception', { roomId, type, e });
     }
   }
 
@@ -229,10 +258,30 @@ export class APIClient {
     try {
       const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/${type}?t=${Date.now()}`);
       if (response.ok) return await response.json();
-      console.error('getSignal error:', response.status, await response.text());
+      console.error('[APIClient] getSignal error', { roomId, type, status: response.status, body: await response.text() });
     } catch (e) {
-      console.error('getSignal exception:', e);
+      console.error('[APIClient] getSignal exception', { roomId, type, e });
     }
+    return null;
+  }
+
+  static async heartbeatRoom(roomId: string, hostId: string) {
+    try {
+      const res = await fetch(`${this.BASE_URL}/rooms/${roomId}/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.expired) {
+          console.warn('[APIClient] heartbeat expired', { roomId, hostId: this.maskId(hostId) });
+        } else if (this.isDebugEnabled()) {
+          console.log('[APIClient] heartbeat ok', { roomId, hostId: this.maskId(hostId), inQueue: data?.inQueue });
+        }
+        return data;
+      }
+    } catch {}
     return null;
   }
 

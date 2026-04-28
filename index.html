@@ -53,8 +53,8 @@
 
         <div class="menu-actions" style="display: flex; flex-direction: column; gap: 10px; max-width: 300px; margin: 0 auto;">
           <button class="primary-btn pulse-anim" id="btn-play-training" style="animation-delay: 0s;">PLAY NOW</button>
-          <button class="primary-btn pulse-anim" id="btn-play-random" style="animation-delay: 0.5s;">PLAY RANDOM</button>
-          <button class="primary-btn pulse-anim" id="btn-play-friends" style="animation-delay: 1.0s;">PLAY WITH FRIEND</button>
+          <button class="primary-btn pulse-anim" id="btn-play-random" style="animation-delay: 1s;">PLAY RANDOM</button>
+          <button class="primary-btn pulse-anim" id="btn-play-friends" style="animation-delay: 2s;">PLAY WITH FRIEND</button>
         </div>
 
         <div class="menu-footer" style="margin-top: 20px;">
@@ -62,12 +62,12 @@
             <!-- Map Selection Only -->
             <div class="map-selection-container" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
               <h3 class="comic-text map-title" style="font-size: 1.2rem; margin: 0;">MAP</h3>
-              <div class="select-wrapper" style="margin: 0;">
-                <select id="map-type-select" class="retro-select retro-input" style="padding: 5px 10px; font-size: 0.9rem; min-width: 120px;">
+              <div class="select-wrapper" style="margin: 0; flex-grow: 1;">
+                <select id="map-type-select" class="retro-select retro-input" style="padding: 5px 10px; font-size: 0.9rem; width: 100%; text-align: left;">
                   <option value="" disabled selected>Loading maps...</option>
                 </select>
               </div>
-              <div id="map-size-display" class="map-size-badge" style="display: none; margin: 0;"></div>
+              <div id="map-size-display" class="map-size-badge" style="margin: 0; font-size: 1rem; color: #ffeb3b; font-family: 'Press Start 2P', cursive; white-space: nowrap;"></div>
             </div>
           </div>
         </div>
@@ -78,15 +78,20 @@
     </div>
 
       <!-- LOADER / INVITE SCREEN -->
-      <div id="loader-screen" class="screen">
-        <h2 id="loader-text" class="comic-text">LOADING...</h2>
-        <div class="spinner"></div>
-        <div id="invite-panel" style="display: none;" class="modal-box">
-          <p class="comic-text" style="font-size: 1.2rem; margin-bottom: 10px;">Send this link to your friend:</p>
-          <input type="text" id="invite-link" readonly class="retro-input share-input" style="text-align: center; font-size: 0.9rem;">
-          <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
-            <button id="btn-copy-invite" class="secondary-btn w-full" style="font-size: 1.2rem; padding: 10px;">COPY LINK</button>
-            <button id="btn-cancel-invite" class="danger-btn w-full" style="font-size: 1.2rem; padding: 10px;">CANCEL</button>
+      <div id="loader-screen" class="screen" style="justify-content: center; align-items: center;">
+        <h2 id="loader-text" class="comic-text huge-text bounce-anim" style="margin-bottom: 20px;">LOADING...</h2>
+        <div class="spinner" style="margin-bottom: 30px;"></div>
+        
+        <div id="cancel-search-container" style="display: none; margin-top: 20px;">
+          <button id="btn-cancel-search" class="danger-btn pulse-anim">CANCEL SEARCH</button>
+        </div>
+
+        <div id="invite-panel" style="display: none;" class="modal-box bounce-anim">
+          <p class="comic-text" style="font-size: 1.5rem; margin-bottom: 15px; color: var(--color-primary);">Send this link to your friend:</p>
+          <input type="text" id="invite-link" readonly class="retro-input share-input" style="text-align: center; font-size: 1.1rem; padding: 15px; border: 3px solid var(--color-primary);">
+          <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
+            <button id="btn-copy-invite" class="primary-btn w-full" style="font-size: 1.2rem; padding: 12px;">COPY LINK</button>
+            <button id="btn-cancel-invite" class="danger-btn w-full" style="font-size: 1.2rem; padding: 12px;">CANCEL</button>
           </div>
         </div>
       </div>
@@ -238,7 +243,8 @@
       </div>
 
     </div>
-    <script src="https://www.paypal.com/sdk/js?client-id=test&currency=USD"></script>
+    <!-- PayPal JS SDK (Live Mode) -->
+    <script src="https://www.paypal.com/sdk/js?client-id=AbnRjP_66T1roH3unsnvsbA1CASKMDzB9rULajCynZCkQ7OUbPTK1Y5ICxk-IRUFRrVloTGmziUkdeZV&currency=USD"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
