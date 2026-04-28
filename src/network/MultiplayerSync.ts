@@ -153,6 +153,8 @@ export class MultiplayerSync {
     }
 
     if (type === 'ice-host' || type === 'ice-client') {
+      if (type === 'ice-host' && this.isHost) return;
+      if (type === 'ice-client' && !this.isHost) return;
       const list = Array.isArray(payload) ? payload : payload ? [payload] : [];
       if (!this.peerConnection.remoteDescription) {
         this.pendingRemoteIce.push(...list);
@@ -208,8 +210,11 @@ export class MultiplayerSync {
         const newClient = iceClient.slice(this.lastIceClientLen);
         this.lastIceHostLen = iceHost.length;
         this.lastIceClientLen = iceClient.length;
-        newHost.forEach((c: any) => this.applySignal('ice-host', c));
-        newClient.forEach((c: any) => this.applySignal('ice-client', c));
+        if (this.isHost) {
+          newClient.forEach((c: any) => this.applySignal('ice-client', c));
+        } else {
+          newHost.forEach((c: any) => this.applySignal('ice-host', c));
+        }
       } catch {}
     };
     this.pollingTimer = window.setInterval(poll, 500);

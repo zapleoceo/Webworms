@@ -254,7 +254,7 @@ export default {
 
       // Maps Endpoints
       else if (url.pathname === '/api/maps' && request.method === 'GET') {
-        response = await getMaps(env, corsHeaders);
+        response = await getMaps(request, env, corsHeaders);
       }
       else if (url.pathname.startsWith('/api/maps/') && url.pathname.endsWith('/image') && request.method === 'GET') {
         response = await getMapImage(request, env, corsHeaders);

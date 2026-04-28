@@ -586,7 +586,7 @@ export class AdminPanel {
 
   private async loadMapsData() {
     try {
-      const res = await fetch(APIClient.BASE_URL + '/maps');
+      const res = await fetch(APIClient.BASE_URL + '/maps?include_image_data=1');
       if (!res.ok) throw new Error('Failed to fetch maps');
       
       const maps = await res.json();

@@ -1,9 +1,26 @@
 import { checkAdminAuth } from '../services/adminAuth';
 
-export async function getMaps(env: any, corsHeaders: Record<string, string>): Promise<Response> {
+export async function getMaps(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
   try {
-    const res = await env.DB.prepare('SELECT id, name, image_data, width, height, created_at FROM Maps ORDER BY created_at DESC').all();
-    return new Response(JSON.stringify(res.results), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    const url = new URL(request.url);
+    const includeImageData = url.searchParams.get('include_image_data') === '1';
+
+    const res = await env.DB.prepare('SELECT id, name, width, height, created_at FROM Maps ORDER BY created_at DESC').all<any>();
+    const rows = (res.results || []).map((m: any) => {
+      const row: any = {
+        id: m.id,
+        name: m.name,
+        width: m.width,
+        height: m.height,
+        created_at: m.created_at
+      };
+      if (includeImageData) {
+        row.image_data = `/api/maps/${m.id}/image`;
+      }
+      return row;
+    });
+
+    return new Response(JSON.stringify(rows), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
@@ -55,6 +72,9 @@ export async function getMapById(request: Request, env: any, corsHeaders: Record
     const res = await env.DB.prepare('SELECT * FROM Maps WHERE id = ?').bind(id).first();
     if (!res) {
       return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
+    if (typeof (res as any).image_data === 'string' && (res as any).image_data.startsWith('data:')) {
+      (res as any).image_data = `/api/maps/${id}/image`;
     }
     return new Response(JSON.stringify(res), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
