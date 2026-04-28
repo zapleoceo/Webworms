@@ -48,6 +48,17 @@ const profileScreen = document.getElementById('profile-screen')!;
 const btnOpenAuth = document.getElementById('btn-open-auth')!;
 const btnUserProfile = document.getElementById('btn-user-profile') as HTMLButtonElement;
 
+const loaderTextEl = document.getElementById('loader-text') as HTMLElement | null;
+const loaderProgressBarEl = document.getElementById('loader-progress-bar') as HTMLElement | null;
+const loaderProgressTextEl = document.getElementById('loader-progress-text') as HTMLElement | null;
+
+function setLoaderProgress(progress01: number, text?: string) {
+  const p = Math.max(0, Math.min(1, progress01));
+  if (loaderProgressBarEl) loaderProgressBarEl.style.width = `${Math.round(p * 100)}%`;
+  if (loaderProgressTextEl) loaderProgressTextEl.innerText = `${Math.round(p * 100)}%`;
+  if (loaderTextEl && text) loaderTextEl.innerText = text;
+}
+
 // Only run game logic if we are not on the admin page and have game elements
 if (!isAdminPage) {
 
@@ -294,6 +305,7 @@ let currentMatchToken: string | null = null;
   // Start Game Helpers
   async function startGame(mode: 'training' | 'friend' | 'random') {
     currentMode = mode;
+    setLoaderProgress(0, 'LOADING...');
 
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
   const mapType = (mapTypeSelect?.value || 'islands') as 'islands' | 'cave' | 'flat';
@@ -311,6 +323,7 @@ let currentMatchToken: string | null = null;
       }
     }
   }
+  setLoaderProgress(0.1, 'PREPARING...');
   
   // Allow UI to paint the loader
   await new Promise(resolve => setTimeout(resolve, 50));
@@ -322,6 +335,7 @@ let currentMatchToken: string | null = null;
   const canvasEl = document.getElementById('gameCanvas') as HTMLCanvasElement;
   window.presenter = new GamePresenter(GAME_WIDTH, GAME_HEIGHT);
   window.renderer = new CanvasRenderer(canvasEl);
+  setLoaderProgress(0.2, 'CONNECTING...');
   
   // Re-bind input handler to new presenter
   window.inputHandler = new InputHandler(window.presenter, canvasEl, [
@@ -344,7 +358,9 @@ let currentMatchToken: string | null = null;
       const turnTimePromise = APIClient.getTurnTime();
       const logosPromise = APIClient.getLogos();
       const turnTime = await turnTimePromise;
+      setLoaderProgress(0.35, 'LOADING GAME...');
       const logos = await logosPromise;
+      setLoaderProgress(0.45, 'LOADING GAME...');
       await window.presenter.startGame({
         width: 1500,
         height: 800,
@@ -358,8 +374,11 @@ let currentMatchToken: string | null = null;
     })();
   } else {
     const turnTime = await APIClient.getTurnTime();
+    setLoaderProgress(0.35, 'LOADING GAME...');
     const logos = await APIClient.getLogos();
+    setLoaderProgress(0.45, 'LOADING GAME...');
     const maps = await APIClient.getMaps();
+    setLoaderProgress(0.6, 'LOADING MAP...');
 
     // Use the first uploaded custom map if available
     let mapData = null;
@@ -389,6 +408,7 @@ let currentMatchToken: string | null = null;
       mapData: mapData
     });
     window.presenter.localTeam = 'training';
+    setLoaderProgress(1, 'STARTING...');
   }
 
   function resizeCanvas() {
@@ -427,6 +447,7 @@ let currentMatchToken: string | null = null;
     const inviteInput = document.getElementById('invite-link') as HTMLInputElement;
     
     loaderText.innerText = 'CONNECTING TO SERVER...';
+    setLoaderProgress(0.3, 'CONNECTING TO SERVER...');
     multiplayerController = new MultiplayerController(window.presenter, userSessionId);
     syncModule = multiplayerController.sync;
     
@@ -438,6 +459,7 @@ let currentMatchToken: string | null = null;
     syncModule.onReady = () => {
       const ready = gameInitPromise || Promise.resolve();
       ready.then(() => {
+        setLoaderProgress(1, 'STARTING...');
         document.getElementById('cancel-search-container')!.style.display = 'none';
         invitePanel.style.display = 'none';
         loaderScreen.classList.remove('active');
@@ -471,6 +493,7 @@ let currentMatchToken: string | null = null;
         // We are the host, waiting for someone
         window.presenter.localTeam = 'team1';
         loaderText.innerText = 'WAITING FOR OPPONENT...';
+        setLoaderProgress(0.8, 'WAITING FOR OPPONENT...');
         
         if (mode === 'friend') {
           invitePanel.style.display = 'block';
@@ -525,6 +548,7 @@ let currentMatchToken: string | null = null;
         window.presenter.state.mode = 'friend'; // Fix: Ensure client is not in training mode
         window.presenter.maxTurnTime = 30; // Fix: Ensure maxTurnTime is not Infinity
         loaderText.innerText = 'JOINING ROOM...';
+        setLoaderProgress(0.8, 'JOINING ROOM...');
         
         document.getElementById('cancel-search-container')!.style.display = 'block';
         document.getElementById('btn-cancel-search')!.onclick = () => {
@@ -613,16 +637,19 @@ document.getElementById('btn-confirm-leave')?.addEventListener('click', () => {
 // Helper to process sprites for UI (remove background)
 const transparentSprites: Record<string, string> = {};
 const loadingSprites: Record<string, boolean> = {};
+const waitingSpriteCallbacks: Record<string, Array<(newUrl: string) => void>> = {};
 
 function getTransparentSprite(url: string, fw: number, fh: number, callback: (newUrl: string) => void) {
   if (transparentSprites[url]) {
     return callback(transparentSprites[url]);
   }
   if (loadingSprites[url]) {
-    // Just wait for next tick to render, it will use transparentSprites when done
+    if (!waitingSpriteCallbacks[url]) waitingSpriteCallbacks[url] = [];
+    waitingSpriteCallbacks[url].push(callback);
     return;
   }
   loadingSprites[url] = true;
+  waitingSpriteCallbacks[url] = [callback];
 
   const img = new Image();
   img.crossOrigin = "Anonymous";
@@ -656,11 +683,15 @@ function getTransparentSprite(url: string, fw: number, fh: number, callback: (ne
     const newUrl = cropCanvas.toDataURL('image/png');
     transparentSprites[url] = newUrl;
     delete loadingSprites[url];
-    callback(newUrl);
+    const cbs = waitingSpriteCallbacks[url] || [];
+    delete waitingSpriteCallbacks[url];
+    cbs.forEach((cb) => cb(newUrl));
   };
   img.onerror = () => {
     delete loadingSprites[url];
-    callback(url);
+    const cbs = waitingSpriteCallbacks[url] || [];
+    delete waitingSpriteCallbacks[url];
+    cbs.forEach((cb) => cb(url));
   };
 }
 // Export to window for presenters to use
@@ -695,7 +726,9 @@ function updateWormSelectionUI(state: any) {
     .map((p: any, index: number) => ({ p, index }))
     .filter((item: any) => item.p.team === currentTeam);
 
-  const currentStateStr = teamWorms.map((item: any) => `${item.index}:${item.p.health}:${state.currentPlayerIndex}`).join(',');
+  const currentStateStr = teamWorms
+    .map((item: any) => `${item.index}:${item.p.health}:${state.currentPlayerIndex}:${item.p.currentWeaponIndex}:${item.p.facingRight ? 1 : 0}`)
+    .join(',');
   if (lastWormUIStateStr === currentStateStr) {
     return; // No need to re-render DOM if nothing changed
   }
@@ -709,22 +742,9 @@ function updateWormSelectionUI(state: any) {
     btn.className = `worm-btn ${item.index === state.currentPlayerIndex ? 'active' : ''} ${item.p.health <= 0 ? 'dead' : ''}`;
     btn.dataset.index = item.index.toString();
     
-    const spriteUrl = item.p.health > 0 ? '/sprites/Worms/wbrth1.png' : '/sprites/Misc/grave1.png';
     const hpStr = Math.ceil(Math.max(0, item.p.health)).toString();
-
-    // We create a temporary placeholder, and load the transparent sprite asynchronously
-    const imgId = `worm-img-${item.p.id || i}`;
-    
-    // Check if it's already cached to avoid flickering
-    if (transparentSprites[spriteUrl]) {
-      btn.innerHTML = `<img id="${imgId}" src="${transparentSprites[spriteUrl]}" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
-    } else {
-      btn.innerHTML = `<img id="${imgId}" src="" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
-      getTransparentSprite(spriteUrl, 60, 60, (newUrl) => {
-      const imgEl = btn.querySelector('img') as HTMLImageElement;
-      if (imgEl) imgEl.src = newUrl;
-    });
-  }
+    const thumb = (window.renderer as any)?.getWormThumbnail?.(item.p, 60) || '/sprites/Worms/wbrth1.png';
+    btn.innerHTML = `<img src="${thumb}" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
 
   // Use both touchstart and click to ensure it works on mobile
   const handleSwitch = (e: Event) => {

@@ -591,6 +591,10 @@ export class GamePresenter {
             player.vy = player.jumpForce * 1.3;
             player.vx = 0;
           }
+          const dir = player.facingRight ? 1 : -1;
+          if (Math.abs(player.vx) < 10) {
+            player.vx = dir * 40 * (player.speedMultiplier || 1);
+          }
           // Play jump sound
           if (this.physics.onJump) this.physics.onJump();
           AudioManager.playJump();

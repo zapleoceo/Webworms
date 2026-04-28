@@ -80,6 +80,42 @@ export class CanvasRenderer {
     this.drawUI(state);
   }
 
+  public getWormThumbnail(player: any, size: number = 60): string {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    ctx.clearRect(0, 0, size, size);
+
+    let animKey = 'idle';
+    let frameIndex = 0;
+    let flipX = !!player?.facingRight;
+    let offsetY = 24;
+
+    if (!player || player.health <= 0) {
+      animKey = 'grave';
+      frameIndex = 0;
+      flipX = false;
+      offsetY = 16;
+    } else {
+      const weapon = player.getCurrentWeapon?.();
+      const weaponMap: any = {
+        'bazooka': 'bazooka',
+        'minigun': 'minigun',
+        'triple': 'shotgun',
+        'rocket': 'rocket'
+      };
+      animKey = weaponMap[weapon?.id] || 'bazooka';
+      frameIndex = 15;
+      offsetY = 24;
+    }
+
+    this.animCtrl.drawFrame(ctx, animKey, frameIndex, size / 2, size * 0.85, 1.0, flipX, offsetY);
+    return canvas.toDataURL('image/png');
+  }
+
   private drawBrandLogos(state: GameState): void {
     if (!state.brandLogos) return;
     for (const logo of state.brandLogos) {
@@ -553,7 +589,14 @@ export class CanvasRenderer {
       } else {
         // Idle breathing
         animKey = 'idle';
-        frameIndex = Math.floor((Date.now() / 100) % this.animCtrl.getAnimLength(animKey));
+        const numFrames = this.animCtrl.getAnimLength(animKey);
+        if (numFrames > 0) {
+          const totalSteps = (numFrames * 2) - 2;
+          const step = Math.floor(Date.now() / 120) % totalSteps;
+          frameIndex = step < numFrames ? step : totalSteps - step;
+        } else {
+          frameIndex = 0;
+        }
       }
 
       this.animCtrl.drawFrame(
