@@ -712,7 +712,7 @@ function updateWormSelectionUI(state: any) {
   const handleSwitch = (e: Event) => {
     e.preventDefault();
     if (item.p.health > 0 && !window.presenter.hasFiredThisTurn) {
-      window.presenter.handleInput('switchWorm', true, false, i);
+      window.presenter.handleInput('switchWorm', true, false, item.index);
       updateWormSelectionUI(window.presenter.state); // Force re-render immediately
     }
   };

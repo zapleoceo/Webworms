@@ -599,19 +599,12 @@ export class GamePresenter {
       case 'switchWorm':
         if (isActive && typeof payload === 'number') {
           if (this.hasFiredThisTurn) break;
-          // Directly switch to specific worm by team index
-          const currentTeam = player.team;
-          const teamWorms = this.state.players.filter(p => p.team === currentTeam);
-          if (payload >= 0 && payload < teamWorms.length) {
-            const targetWorm = teamWorms[payload];
-            if (targetWorm.health > 0) {
-              const globalIndex = this.state.players.indexOf(targetWorm);
-              if (globalIndex !== -1) {
-                this.state.currentPlayerIndex = globalIndex;
-                this.updateMobileWeaponIcon(targetWorm);
-              }
-            }
-          }
+          const targetWorm = this.state.players[payload];
+          if (!targetWorm) break;
+          if (targetWorm.health <= 0) break;
+          if (targetWorm.team !== player.team) break;
+          this.state.currentPlayerIndex = payload;
+          this.updateMobileWeaponIcon(targetWorm);
         }
         break;
     }
