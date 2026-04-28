@@ -1238,30 +1238,32 @@ async function joinRandomRoom(request: Request, env: Env): Promise<Response> {
   } catch {}
   if (!playerId) return new Response(JSON.stringify({ error: 'playerId required' }), { status: 400 });
 
-  const queueKey = 'matchmaking_queue';
-  const queueStr = await env.ROOMS.get(queueKey);
-  let queue: string[] = queueStr ? JSON.parse(queueStr) : [];
+  // Try to find a valid waiting room via strongly-consistent D1
+  const row = await env.DB.prepare(`SELECT room_id FROM MatchmakingQueue WHERE host_id != ? ORDER BY created_at ASC LIMIT 1`).bind(playerId).first<{ room_id: string }>();
 
-  // Try to find a valid waiting room
-  while (queue.length > 0) {
-    const roomId = queue.shift()!;
+  if (row) {
+    const roomId = row.room_id;
+    // Delete the room from queue so no one else joins it
+    await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE room_id = ?`).bind(roomId).run();
+    
+    // Now verify the room state in KV
     const roomStr = await env.ROOMS.get(roomId);
     if (roomStr) {
       const room = JSON.parse(roomStr);
-      // Ensure the room is still waiting and the host isn't the same as the joining player
-      if (room.status === 'waiting' && room.hostId !== playerId) {
-        // We found a room! Join it.
+      if (room.status === 'waiting') {
         room.clientId = playerId;
         room.status = 'reserved';
         room.reservedAt = Date.now();
         await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
-        await env.ROOMS.put(queueKey, JSON.stringify(queue), { expirationTtl: 3600 });
         return new Response(JSON.stringify({ roomId, isHost: false }));
       }
     }
   }
 
-  // If no valid room found, create a new one and add it to the queue
+  // Clean up old or duplicate entries
+  await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE host_id = ? OR datetime(created_at, '+10 minutes') < CURRENT_TIMESTAMP`).bind(playerId).run();
+
+  // Create a new room
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   let roomId = '';
   for (let i = 0; i < 4; i++) {
@@ -1276,8 +1278,7 @@ async function joinRandomRoom(request: Request, env: Env): Promise<Response> {
     activeAt: null
   }), { expirationTtl: 3600 });
 
-  queue.push(roomId);
-  await env.ROOMS.put(queueKey, JSON.stringify(queue), { expirationTtl: 3600 });
+  await env.DB.prepare(`INSERT INTO MatchmakingQueue (room_id, host_id) VALUES (?, ?)`).bind(roomId, playerId).run();
 
   return new Response(JSON.stringify({ roomId, isHost: true }), {
     headers: { 'Content-Type': 'application/json' }
