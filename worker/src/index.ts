@@ -6,6 +6,8 @@ export interface Env {
   ROOMS: KVNamespace;
   SIGNALING: DurableObjectNamespace;
   RESEND_API_KEY?: string;
+  PAYPAL_CLIENT_ID?: string;
+  PAYPAL_SECRET?: string;
   waitUntil(promise: Promise<any>): void;
 }
 
@@ -1142,8 +1144,11 @@ async function capturePayPalOrder(request: Request, env: Env): Promise<Response>
     const { orderID } = await request.json() as { orderID: string };
     if (!orderID) return new Response(JSON.stringify({ error: 'Missing orderID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
-    const PAYPAL_CLIENT_ID = 'AbnRjP_66T1roH3unsnvsbA1CASKMDzB9rULajCynZCkQ7OUbPTK1Y5ICxk-IRUFRrVloTGmziUkdeZV';
-    const PAYPAL_SECRET = 'EKtbJ-SwacEw3CMZGoLr4-223SCtnFriBZXHsqyjGW91jnfSUfMcQ-stplyEcZ0XanQvwCijKhgrFcXq';
+    const PAYPAL_CLIENT_ID = env.PAYPAL_CLIENT_ID;
+    const PAYPAL_SECRET = env.PAYPAL_SECRET;
+    if (!PAYPAL_CLIENT_ID || !PAYPAL_SECRET) {
+      return new Response(JSON.stringify({ error: 'PayPal not configured' }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    }
     
     // Get PayPal Access Token
     const auth = btoa(`${PAYPAL_CLIENT_ID}:${PAYPAL_SECRET}`);
