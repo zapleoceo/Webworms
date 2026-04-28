@@ -94,6 +94,33 @@ let userBalanceSeconds = parseInt(localStorage.getItem('userBalanceSeconds') || 
 let deductInterval: number | null = null;
 let syncModule: MultiplayerSync | null = null;
 
+// Function to fetch the latest profile and update UI
+async function fetchAndUpdateProfile() {
+  if (userSessionId) {
+    const res = await APIClient.getProfile(userSessionId);
+    if (res.success && res.user) {
+      localStorage.setItem('userSessionName', res.user.username || res.user.email.split('@')[0]);
+      localStorage.setItem('userBalanceSeconds', res.user.play_time_balance.toString());
+      if (res.user.premium_until) {
+        localStorage.setItem('premiumUntil', res.user.premium_until.toString());
+      } else {
+        localStorage.removeItem('premiumUntil');
+      }
+      userSessionName = localStorage.getItem('userSessionName');
+      userBalanceSeconds = parseInt(localStorage.getItem('userBalanceSeconds') || '3600');
+      updateTimeBalanceDisplay();
+      
+      const btnProfile = document.getElementById('btn-user-profile');
+      if (btnProfile) {
+        btnProfile.innerText = userSessionName!.toUpperCase();
+        btnProfile.style.display = 'block';
+      }
+      const btnOpenAuth = document.getElementById('btn-open-auth');
+      if (btnOpenAuth) btnOpenAuth.style.display = 'none';
+    }
+  }
+}
+
 function updateTimeBalanceDisplay() {
   const display = document.getElementById('play-time-display');
   const timeBalanceEl = document.getElementById('profile-stats-balance');
@@ -235,8 +262,11 @@ if (savedSessionId) {
 if (userSessionId && userSessionName) {
   btnOpenAuth.style.display = 'none';
   btnUserProfile.style.display = 'block';
-  btnUserProfile.innerText = userSessionName;
+  btnUserProfile.innerText = userSessionName.toUpperCase();
   updateTimeBalanceDisplay();
+  
+  // Fetch latest profile state from server in background
+  fetchAndUpdateProfile();
 }
 
 // Contact Author Modal
@@ -1062,6 +1092,8 @@ function getTransparentSprite(url: string, fw: number, fh: number, callback: (ne
     callback(url);
   };
 }
+// Export to window for presenters to use
+(window as any).getTransparentSprite = getTransparentSprite;
 
 // Update HUD elements
 const hpLocalEl = document.getElementById('hp-local')!;
@@ -1118,19 +1150,24 @@ function updateWormSelectionUI(state: any) {
     } else {
       btn.innerHTML = `<img id="${imgId}" src="" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
       getTransparentSprite(spriteUrl, 60, 60, (newUrl) => {
-        const imgEl = btn.querySelector('img') as HTMLImageElement;
-        if (imgEl) imgEl.src = newUrl;
-      });
-    }
-    
-    btn.addEventListener('click', () => {
-      if (item.p.health > 0 && !window.presenter.hasFiredThisTurn) {
-        window.presenter.handleInput('switchWorm', true, false, i);
-        updateWormSelectionUI(window.presenter.state); // Force re-render immediately
-      }
+      const imgEl = btn.querySelector('img') as HTMLImageElement;
+      if (imgEl) imgEl.src = newUrl;
     });
-    
-    panel.appendChild(btn);
+  }
+
+  // Use both touchstart and click to ensure it works on mobile
+  const handleSwitch = (e: Event) => {
+    e.preventDefault();
+    if (item.p.health > 0 && !window.presenter.hasFiredThisTurn) {
+      window.presenter.handleInput('switchWorm', true, false, i);
+      updateWormSelectionUI(window.presenter.state); // Force re-render immediately
+    }
+  };
+  
+  btn.addEventListener('touchstart', handleSwitch, { passive: false });
+  btn.addEventListener('click', handleSwitch);
+
+  panel.appendChild(btn);
   });
 }
 

@@ -332,6 +332,17 @@ button:hover {
   white-space: nowrap;
 }
 
+.icon-only-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1.2rem;
+}
+
 .footer-contact {
   text-align: center;
   margin-top: 20px;
@@ -833,6 +844,7 @@ canvas {
   border-radius: 12px;
   border: 2px solid var(--color-text);
   z-index: 20;
+  pointer-events: auto; /* Ensure clickable */
 }
 
 .worm-btn {

@@ -800,7 +800,16 @@ export class GamePresenter {
           'blaster': 'laser.1.png'
         };
         const spriteName = weaponSpriteMap[weapon.id] || 'bazooka.1.png';
-        iconEl.src = `/sprites/Weapon Icons/${spriteName}`;
+        const url = `/sprites/Weapon Icons/${spriteName}`;
+        
+        // Ensure transparent sprite is loaded
+        if ((window as any).getTransparentSprite) {
+          (window as any).getTransparentSprite(url, 60, 60, (newUrl: string) => {
+            iconEl.src = newUrl;
+          });
+        } else {
+          iconEl.src = url;
+        }
       }
     }
   }

@@ -778,21 +778,61 @@ export class CanvasRenderer {
     this.ctx.fillStyle = 'white';
     this.ctx.font = '14px Courier New';
     this.ctx.textAlign = 'left';
+
+    // Draw center-top wind indicator
+    const centerX = this.canvas.width / 2;
+    const topY = 30;
     
-    // Draw wind indicator
-    this.ctx.fillText(`WIND: ${Math.round(state.wind)}`, 20, 20);
+    this.ctx.save();
+    this.ctx.textAlign = 'center';
+    this.ctx.font = 'bold 16px "Bangers", Courier New';
+    this.ctx.fillStyle = 'white';
+    this.ctx.shadowColor = 'black';
+    this.ctx.shadowBlur = 4;
+    this.ctx.shadowOffsetX = 2;
+    this.ctx.shadowOffsetY = 2;
+    this.ctx.fillText(`WIND: ${Math.round(state.wind)}`, centerX, topY);
     
     // Draw wind bar
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    this.ctx.fillRect(20, 30, 100, 5);
+    const maxWind = 100;
+    const barWidth = 100;
+    const barHeight = 10;
+    const barX = centerX - barWidth / 2;
+    const barY = topY + 10;
     
-    this.ctx.fillStyle = state.wind > 0 ? '#4CAF50' : '#FF4500';
-    const windBarLength = (state.wind / 200) * 50; // max wind ~200
-    this.ctx.fillRect(70, 30, windBarLength, 5);
+    this.ctx.shadowColor = 'transparent';
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    this.ctx.fillRect(barX, barY, barWidth, barHeight);
     
-    // Center line for wind
+    // Draw center line
     this.ctx.fillStyle = 'white';
-    this.ctx.fillRect(70, 28, 1, 9);
+    this.ctx.fillRect(centerX - 1, barY, 2, barHeight);
+    
+    if (state.wind !== 0) {
+      const windFill = (state.wind / maxWind) * (barWidth / 2);
+      this.ctx.fillStyle = state.wind > 0 ? '#00ff00' : '#ff0000';
+      if (state.wind > 0) {
+        this.ctx.fillRect(centerX, barY, windFill, barHeight);
+      } else {
+        this.ctx.fillRect(centerX + windFill, barY, Math.abs(windFill), barHeight);
+      }
+      
+      // Draw arrow
+      this.ctx.fillStyle = 'white';
+      this.ctx.beginPath();
+      const arrowY = barY + barHeight / 2;
+      if (state.wind > 0) {
+        this.ctx.moveTo(centerX + windFill + 5, arrowY);
+        this.ctx.lineTo(centerX + windFill - 5, arrowY - 5);
+        this.ctx.lineTo(centerX + windFill - 5, arrowY + 5);
+      } else {
+        this.ctx.moveTo(centerX + windFill - 5, arrowY);
+        this.ctx.lineTo(centerX + windFill + 5, arrowY - 5);
+        this.ctx.lineTo(centerX + windFill + 5, arrowY + 5);
+      }
+      this.ctx.fill();
+    }
+    this.ctx.restore();
     
     if (state.turnTimeLeft !== Infinity) {
       this.ctx.fillStyle = 'white';

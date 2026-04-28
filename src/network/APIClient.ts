@@ -35,6 +35,21 @@ export class APIClient {
     }
   }
 
+  static async getProfile(sessionId: string) {
+    try {
+      const response = await fetch(`${this.BASE_URL}/auth/profile`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionId}`
+        }
+      });
+      return await response.json();
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  }
+
   public static async updateProfile(sessionId: string, username: string): Promise<any> {
     const res = await fetch(`${this.BASE_URL}/auth/profile`, {
       method: 'PUT',

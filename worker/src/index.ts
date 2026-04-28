@@ -110,8 +110,12 @@ export default {
         response = await handleDailyReset(request, env);
       }
       
-      else if (url.pathname === '/api/auth/profile' && request.method === 'PUT') {
-        response = await handleUpdateProfile(request, env);
+      else if (url.pathname === '/api/auth/profile') {
+        if (request.method === 'PUT') {
+          response = await handleUpdateProfile(request, env);
+        } else if (request.method === 'GET') {
+          response = await getProfile(request, env);
+        }
       }
 
       else if (url.pathname === '/api/auth/password' && request.method === 'PUT') {
@@ -621,6 +625,24 @@ async function handleSession(request: Request, env: Env): Promise<Response> {
         premium_until: user.premium_until || 0 
       } 
     }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+async function getProfile(request: Request, env: Env): Promise<Response> {
+  try {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    const sessionId = authHeader.replace('Bearer ', '');
+    const user = await env.DB.prepare('SELECT id, email, username, play_time_balance, is_admin, premium_until FROM Users WHERE id = ?').bind(sessionId).first<any>();
+
+    if (!user) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    return new Response(JSON.stringify({ success: true, user }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
