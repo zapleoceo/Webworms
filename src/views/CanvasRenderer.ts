@@ -432,22 +432,32 @@ export class CanvasRenderer {
         }
         
         if (img && img.complete) {
+          const angle = typeof (stamp as any).angle === 'number' ? (stamp as any).angle : 0;
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          const rotW = Math.ceil(Math.abs(stamp.w * cos) + Math.abs(stamp.h * sin));
+          const rotH = Math.ceil(Math.abs(stamp.w * sin) + Math.abs(stamp.h * cos));
+
           // Draw to a temporary canvas to get pixel data
           const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = stamp.w;
-          tempCanvas.height = stamp.h;
+          tempCanvas.width = rotW;
+          tempCanvas.height = rotH;
           const tCtx = tempCanvas.getContext('2d');
           if (tCtx) {
-            tCtx.drawImage(img, 0, 0, stamp.w, stamp.h);
-            const imgData = tCtx.getImageData(0, 0, stamp.w, stamp.h);
+            tCtx.clearRect(0, 0, rotW, rotH);
+            tCtx.translate(rotW / 2, rotH / 2);
+            tCtx.rotate(angle);
+            tCtx.drawImage(img, -stamp.w / 2, -stamp.h / 2, stamp.w, stamp.h);
+            tCtx.setTransform(1, 0, 0, 1, 0, 0);
+            const imgData = tCtx.getImageData(0, 0, rotW, rotH);
             
             // Map alpha > 0 pixels to terrain grid
-            const startX = Math.floor(stamp.x - stamp.w / 2);
-            const startY = Math.floor(stamp.y - stamp.h / 2);
+            const startX = Math.floor(stamp.x - rotW / 2);
+            const startY = Math.floor(stamp.y - rotH / 2);
             
-            for (let y = 0; y < stamp.h; y++) {
-              for (let x = 0; x < stamp.w; x++) {
-                const alpha = imgData.data[(y * stamp.w + x) * 4 + 3];
+            for (let y = 0; y < rotH; y++) {
+              for (let x = 0; x < rotW; x++) {
+                const alpha = imgData.data[(y * rotW + x) * 4 + 3];
                 if (alpha > 128) {
                   const mapX = startX + x;
                   const mapY = startY + y;
@@ -460,7 +470,11 @@ export class CanvasRenderer {
             }
           }
           // Draw visually on the terrain canvas
-          this.terrainCtx.drawImage(img, stamp.x - stamp.w / 2, stamp.y - stamp.h / 2, stamp.w, stamp.h);
+          this.terrainCtx.save();
+          this.terrainCtx.translate(stamp.x, stamp.y);
+          this.terrainCtx.rotate(angle);
+          this.terrainCtx.drawImage(img, -stamp.w / 2, -stamp.h / 2, stamp.w, stamp.h);
+          this.terrainCtx.restore();
         }
       }
       state.landscape.newStamps = [];

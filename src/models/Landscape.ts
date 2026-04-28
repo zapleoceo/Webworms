@@ -8,7 +8,7 @@ export class Landscape {
   public needsUpdate: boolean = true; // Flag for full renderer caching (init only)
   public newCraters: {x: number, y: number, r: number}[] = []; // Queue for fast erasure
   public syncCraters: {x: number, y: number, r: number}[] = []; // Used to sync craters exactly once per network tick
-  public newStamps: {imgKey: string, x: number, y: number, w: number, h: number}[] = []; // Queue for stamping images
+  public newStamps: { imgKey: string; x: number; y: number; w: number; h: number; angle: number }[] = []; // Queue for stamping images
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -136,9 +136,9 @@ export class Landscape {
     this.syncCraters.push({x: cx, y: cy, r: radius});
   }
 
-  public stampImage(imgKey: string, cx: number, cy: number, w: number, h: number): void {
+  public stampImage(imgKey: string, cx: number, cy: number, w: number, h: number, angle: number = 0): void {
     // Add to stamp queue for the renderer to process into the grid and offscreen canvas
-    this.newStamps.push({ imgKey, x: Math.floor(cx), y: Math.floor(cy), w: Math.floor(w), h: Math.floor(h) });
+    this.newStamps.push({ imgKey, x: Math.floor(cx), y: Math.floor(cy), w: Math.floor(w), h: Math.floor(h), angle });
   }
 
   public getTopSolidY(x: number): number {

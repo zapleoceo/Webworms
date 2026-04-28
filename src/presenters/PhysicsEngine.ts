@@ -114,7 +114,7 @@ export class PhysicsEngine {
       // Effect: Landed this frame
       if (wasDynamic && !logo.isDynamic) {
         AudioManager.playLand();
-        state.landscape.stampImage(logo.sprite, logo.x, logo.y, logo.width, logo.height);
+        state.landscape.stampImage(logo.sprite, logo.x, logo.y, logo.width, logo.height, logo.angle);
         stamped.push(logo);
         // Shake camera slightly
         if (this.onHeavyImpact) {
@@ -194,7 +194,7 @@ export class PhysicsEngine {
         
         // STAMP into terrain and remove the physical prop
         const imgKey = prop.brandImage?.split('/').pop()?.split('.')[0] || 'brand_apple';
-        state.landscape.stampImage(imgKey, prop.x, prop.y, prop.radius * 2, prop.radius * 2);
+        state.landscape.stampImage(imgKey, prop.x, prop.y, prop.radius * 2, prop.radius * 2, prop.rotation);
         prop.health = 0; // kill it
       } else {
         // Free falling rotation
