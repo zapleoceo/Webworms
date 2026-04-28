@@ -1,6 +1,17 @@
 export class APIClient {
   static BASE_URL = '/api';
 
+  private static async fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<any> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...init, signal: controller.signal });
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   static isDebugEnabled(): boolean {
     try {
       return localStorage.getItem('ww_debug') === '1';
@@ -18,12 +29,11 @@ export class APIClient {
   static async register(email: string, username: string, password?: string, refCode?: string) {
     try {
       console.log(`[APIClient] Registering ${email}... at ${this.BASE_URL}/auth/register`);
-      const response = await fetch(`${this.BASE_URL}/auth/register`, {
+      const data = await this.fetchJsonWithTimeout(`${this.BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, username, password, referred_by: refCode })
-      });
-      const data = await response.json();
+      }, 15000);
       console.log('[APIClient] Register Response:', data);
       return data;
     } catch (e: any) {
@@ -35,12 +45,11 @@ export class APIClient {
   static async login(email: string, password?: string) {
     try {
       console.log(`[APIClient] Logging in ${email}... at ${this.BASE_URL}/auth/login`);
-      const response = await fetch(`${this.BASE_URL}/auth/login`, {
+      const data = await this.fetchJsonWithTimeout(`${this.BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
-      });
-      const data = await response.json();
+      }, 15000);
       console.log('[APIClient] Login Response:', data);
       return data;
     } catch (e: any) {

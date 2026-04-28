@@ -1,5 +1,22 @@
 import { hashPassword } from '../services/password';
 
+async function d1Retry<T>(fn: () => Promise<T>): Promise<T> {
+  const delays = [0, 75, 250];
+  let lastErr: any;
+  for (const delay of delays) {
+    if (delay) await new Promise((r) => setTimeout(r, delay));
+    try {
+      return await fn();
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message || e);
+      const retryable = msg.includes('D1_ERROR') || msg.toLowerCase().includes('timeout');
+      if (!retryable) break;
+    }
+  }
+  throw lastErr;
+}
+
 async function sendResendEmail(env: any, to: string, token: string, host: string): Promise<string | null> {
   if (!env.RESEND_API_KEY) {
     return 'RESEND_API_KEY missing';
@@ -56,7 +73,9 @@ export async function handleRegister(request: Request, env: any, corsHeaders: Re
       return new Response(JSON.stringify({ error: 'Email, username, and password are required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    const existingUser = await env.DB.prepare('SELECT * FROM Users WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)').bind(email, username).first<any>();
+    const existingUser = await d1Retry(() =>
+      env.DB.prepare('SELECT * FROM Users WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)').bind(email, username).first<any>()
+    );
 
     if (existingUser) {
       return new Response(JSON.stringify({ error: 'User with this email or username already exists' }), { status: 409, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -71,9 +90,11 @@ export async function handleRegister(request: Request, env: any, corsHeaders: Re
     const isAdmin = email.toLowerCase() === 'demoniwwwe@gmail.com' ? 1 : 0;
 
     if (!referred_by) {
-      await env.DB.prepare(
-        `INSERT INTO Users (id, email, username, password_hash, is_active, is_admin, verification_token, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(id, email, username, hashedPassword, 0, isAdmin, token, initialBalance).run();
+      await d1Retry(() =>
+        env.DB.prepare(
+          `INSERT INTO Users (id, email, username, password_hash, is_active, is_admin, verification_token, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(id, email, username, hashedPassword, 0, isAdmin, token, initialBalance).run()
+      );
 
       const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
       const emailError = await sendResendEmail(env, email, token, new URL(request.url).origin);
@@ -86,9 +107,11 @@ export async function handleRegister(request: Request, env: any, corsHeaders: Re
       }), { status: 201, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    const parentRow = await env.DB.prepare(
-      `SELECT id, referred_by FROM Users WHERE id = ? OR LOWER(username) = LOWER(?)`
-    ).bind(referred_by, referred_by).first<{id: string, referred_by: string | null}>();
+    const parentRow = await d1Retry(() =>
+      env.DB.prepare(
+        `SELECT id, referred_by FROM Users WHERE id = ? OR LOWER(username) = LOWER(?)`
+      ).bind(referred_by, referred_by).first<{id: string, referred_by: string | null}>()
+    );
 
     const stmts: any[] = [];
 
@@ -108,7 +131,7 @@ export async function handleRegister(request: Request, env: any, corsHeaders: Re
       }
     }
 
-    await env.DB.batch(stmts);
+    await d1Retry(() => env.DB.batch(stmts));
 
     const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
     const emailError = await sendResendEmail(env, email, token, new URL(request.url).origin);
@@ -135,7 +158,9 @@ export async function handleLogin(request: Request, env: any, corsHeaders: Recor
       return new Response(JSON.stringify({ error: 'Email and password are required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    const user = await env.DB.prepare('SELECT * FROM Users WHERE LOWER(email) = LOWER(?)').bind(email).first<any>();
+    const user = await d1Retry(() =>
+      env.DB.prepare('SELECT * FROM Users WHERE LOWER(email) = LOWER(?)').bind(email).first<any>()
+    );
 
     if (!user) {
       return new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -154,7 +179,9 @@ export async function handleLogin(request: Request, env: any, corsHeaders: Recor
       return new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    await env.DB.prepare('UPDATE Users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').bind(user.id).run();
+    await d1Retry(() =>
+      env.DB.prepare('UPDATE Users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').bind(user.id).run()
+    );
 
     delete user.password_hash;
     delete user.verification_token;
@@ -327,4 +354,3 @@ export async function handleDailyReset(request: Request, env: any, corsHeaders: 
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
-
