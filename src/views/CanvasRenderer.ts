@@ -89,8 +89,55 @@ export class CanvasRenderer {
         img.src = logo.sprite;
         this.wormImages[logo.sprite] = img;
       }
+      if (img.complete && img.naturalWidth !== 0) {
+        const bounds = this.getOpaqueBounds(logo.sprite, img);
+        if (bounds) {
+          const scaleX = logo.width / img.naturalWidth;
+          const scaleY = logo.height / img.naturalHeight;
+          logo.collisionWidth = Math.max(10, bounds.w * scaleX);
+          logo.collisionHeight = Math.max(10, bounds.h * scaleY);
+        }
+      }
       logo.draw(this.ctx, img);
     }
+  }
+
+  private static opaqueBoundsCache: Record<string, { w: number; h: number }> = {};
+
+  private getOpaqueBounds(key: string, img: HTMLImageElement): { w: number; h: number } | null {
+    const cached = CanvasRenderer.opaqueBoundsCache[key];
+    if (cached) return cached;
+
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    if (!w || !h) return null;
+
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0);
+    const data = ctx.getImageData(0, 0, w, h).data;
+
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const a = data[(y * w + x) * 4 + 3];
+        if (a > 0) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (maxX < 0 || maxY < 0) return null;
+    const bounds = { w: maxX - minX + 1, h: maxY - minY + 1 };
+    CanvasRenderer.opaqueBoundsCache[key] = bounds;
+    return bounds;
   }
 
   private drawProps(state: GameState): void {

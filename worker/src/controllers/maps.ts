@@ -37,7 +37,7 @@ export async function getMapImage(request: Request, env: any, corsHeaders: Recor
     return new Response(bytes, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=31536000',
+        'Cache-Control': 'no-store',
         ...corsHeaders
       }
     });
@@ -99,7 +99,7 @@ export async function updateMap(request: Request, env: any, corsHeaders: Record<
       return new Response(JSON.stringify({ error: 'Missing ID' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    const { image_data, width, height } = await request.json() as any;
+    const { image_data, width, height, name } = await request.json() as any;
     
     if (!image_data) {
       return new Response(JSON.stringify({ error: 'Missing image_data' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -119,8 +119,13 @@ export async function updateMap(request: Request, env: any, corsHeaders: Record<
 
     await env.ROOMS.put('map_img_' + id, image_data);
 
-    await env.DB.prepare('UPDATE Maps SET width = ?, height = ? WHERE id = ?')
-      .bind(newWidth, newHeight, id).run();
+    if (typeof name === 'string' && name.trim()) {
+      await env.DB.prepare('UPDATE Maps SET name = ?, width = ?, height = ? WHERE id = ?')
+        .bind(name.trim(), newWidth, newHeight, id).run();
+    } else {
+      await env.DB.prepare('UPDATE Maps SET width = ?, height = ? WHERE id = ?')
+        .bind(newWidth, newHeight, id).run();
+    }
 
     return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
@@ -147,4 +152,3 @@ export async function deleteMap(request: Request, env: any, corsHeaders: Record<
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
-

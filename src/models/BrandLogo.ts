@@ -18,6 +18,10 @@ export class BrandLogo {
   
   public hitShake: number = 0; // Visual shake
   public bounceTime: number = 0; // Bounce animation
+  public collisionWidth: number;
+  public collisionHeight: number;
+  public age: number = 0;
+  public touchedGround: boolean = false;
 
   constructor(sprite: string, x: number, y: number, vx: number, vy: number, angle: number, angularVelocity: number) {
     this.sprite = sprite;
@@ -30,6 +34,8 @@ export class BrandLogo {
     // Sizes based on ~2-3 worms width (worm is 30px)
     this.width = 100;
     this.height = 50;
+    this.collisionWidth = this.width;
+    this.collisionHeight = this.height;
   }
 
   public takeDamage(amount: number): void {
@@ -44,6 +50,8 @@ export class BrandLogo {
 
     if (!this.isDynamic) return;
 
+    this.age += dt;
+
     this.vy += gravity * dt;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
@@ -53,8 +61,8 @@ export class BrandLogo {
     let collision = false;
     let collisionY = this.y;
 
-    const halfW = this.width / 2;
-    const halfH = this.height / 2;
+    const halfW = this.collisionWidth / 2;
+    const halfH = this.collisionHeight / 2;
 
     // Check bottom edge
     for (let dx = -halfW; dx <= halfW; dx += 10) {
@@ -90,19 +98,25 @@ export class BrandLogo {
     }
 
     if (collision) {
-      this.vy = 0;
-      this.vx *= 0.2;
+      this.touchedGround = true;
+      if (Math.abs(this.vy) > 50) {
+        this.vy = -this.vy * 0.12;
+      } else {
+        this.vy = 0;
+      }
+      this.vx *= 0.6;
       this.y = collisionY;
       
       // Reduce angular velocity smoothly
-      this.angularVelocity *= 0.8;
-      this.angle *= 0.8; // Flatten out
+      this.angularVelocity *= 0.9;
 
-      if (Math.abs(this.vx) < 5 && Math.abs(this.angularVelocity) < 0.1 && Math.abs(this.angle) < 0.1) {
+      const shouldForceSettle = this.touchedGround && this.age >= 5;
+      const isSlow = Math.abs(this.vx) < 5 && Math.abs(this.vy) < 5 && Math.abs(this.angularVelocity) < 0.1;
+
+      if (shouldForceSettle || isSlow) {
         this.isDynamic = false;
         this.vx = 0;
         this.vy = 0;
-        this.angle = 0;
         this.angularVelocity = 0;
         this.bounceTime = 1.0; // Trigger small bounce effect when settling
         

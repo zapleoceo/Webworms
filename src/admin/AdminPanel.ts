@@ -305,6 +305,8 @@ export class AdminPanel {
         const img = new Image();
         img.onload = async () => {
           try {
+            const author = (this.adminHeaders.get('X-Admin-Email') || '').trim();
+            const named = `${name} (${img.width}x${img.height})${author ? ` by ${author}` : ''}`;
             const res = await fetch(APIClient.BASE_URL + '/admin/maps', {
               method: 'POST',
               headers: { 
@@ -313,7 +315,7 @@ export class AdminPanel {
                 'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
               },
               body: JSON.stringify({
-                name,
+                name: named,
                 image_data: base64,
                 width: img.width,
                 height: img.height
@@ -668,7 +670,13 @@ export class AdminPanel {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
 
-      ctx.drawImage(img, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+      const scale = Math.min(TARGET_WIDTH / img.width, TARGET_HEIGHT / img.height);
+      const drawW = img.width * scale;
+      const drawH = img.height * scale;
+      const drawX = (TARGET_WIDTH - drawW) / 2;
+      const drawY = (TARGET_HEIGHT - drawH) / 2;
+      ctx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
 
       // Use PNG to preserve transparency. 
       // To ensure it doesn't hit the 25MB KV limit, we can just use standard PNG. 
@@ -677,6 +685,9 @@ export class AdminPanel {
       const newBase64 = canvas.toDataURL('image/png');
 
       // Update map in database
+      const author = (this.adminHeaders.get('X-Admin-Email') || '').trim();
+      const baseName = String(mapObj?.name || 'Unnamed Map').replace(/\s*\(\s*\d+\s*x\s*\d+\s*\)\s*(by\s+.+)?\s*$/i, '').trim();
+      const newName = `${baseName} (${TARGET_WIDTH}x${TARGET_HEIGHT})${author ? ` by ${author}` : ''}`;
       const updateRes = await fetch(APIClient.BASE_URL + `/admin/maps/${id}`, {
         method: 'PUT',
         headers: { 
@@ -685,6 +696,7 @@ export class AdminPanel {
           'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
         },
         body: JSON.stringify({
+          name: newName,
           image_data: newBase64,
           width: TARGET_WIDTH,
           height: TARGET_HEIGHT
