@@ -545,7 +545,10 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     delete user.password_hash;
     delete user.verification_token;
 
-    return new Response(JSON.stringify({ success: true, user, message: 'Logged in' }), {
+    // Provide token as id for backward compatibility
+    const token = user.id;
+
+    return new Response(JSON.stringify({ success: true, user, token, message: 'Logged in' }), {
       headers: { 'Content-Type': 'application/json' }
     });
 
