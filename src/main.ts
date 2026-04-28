@@ -248,9 +248,10 @@ document.getElementById('btn-close-payment')?.addEventListener('click', () => {
 
 const savedSessionId = localStorage.getItem('userSessionId');
 if (savedSessionId) {
-  APIClient.getSession(savedSessionId).then((res: any) => {
+  APIClient.getProfile(savedSessionId).then((res: any) => {
     if (res.success && res.user) {
       localStorage.setItem('playTimeBalance', res.user.play_time_balance.toString());
+      localStorage.setItem('userBalanceSeconds', res.user.play_time_balance.toString());
       localStorage.setItem('premiumUntil', res.user.premium_until?.toString() || '0');
       userBalanceSeconds = res.user.play_time_balance;
       updateTimeBalanceDisplay();

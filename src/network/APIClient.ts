@@ -50,6 +50,8 @@ export class APIClient {
     }
   }
 
+
+
   public static async updateProfile(sessionId: string, username: string): Promise<any> {
     const res = await fetch(`${this.BASE_URL}/auth/profile`, {
       method: 'PUT',

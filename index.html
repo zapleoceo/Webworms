@@ -51,25 +51,25 @@
           <img src="/logo.png?v=5" alt="Worms Logo" class="main-logo bounce-anim" style="filter: drop-shadow(0px 10px 10px rgba(0,0,0,0.8));" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend', '<h1 class=\\'fallback-logo\\'>WEBWORMS</h1>')">
         </div>
 
-        <div class="menu-footer">
-          <div class="game-settings">
-            <!-- Map Selection Only -->
-            <div class="mb-10 text-center map-selection-container">
-              <h3 class="mb-5 comic-text map-title" style="font-size: 1.2rem;">MAP</h3>
-              <div class="select-wrapper">
-                <select id="map-type-select" class="retro-select retro-input">
-                  <option value="" disabled selected>Loading maps...</option>
-                </select>
-              </div>
-              <div id="map-size-display" class="map-size-badge" style="display: none;"></div>
-            </div>
-          </div>
-        </div>
-
         <div class="menu-actions" style="display: flex; flex-direction: column; gap: 10px; max-width: 300px; margin: 0 auto;">
           <button class="primary-btn pulse-anim" id="btn-play-training" style="animation-delay: 0s;">PLAY NOW</button>
           <button class="primary-btn pulse-anim" id="btn-play-random" style="animation-delay: 0.5s;">PLAY RANDOM</button>
           <button class="primary-btn pulse-anim" id="btn-play-friends" style="animation-delay: 1.0s;">PLAY WITH FRIEND</button>
+        </div>
+
+        <div class="menu-footer" style="margin-top: 20px;">
+          <div class="game-settings">
+            <!-- Map Selection Only -->
+            <div class="map-selection-container" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+              <h3 class="comic-text map-title" style="font-size: 1.2rem; margin: 0;">MAP</h3>
+              <div class="select-wrapper" style="margin: 0;">
+                <select id="map-type-select" class="retro-select retro-input" style="padding: 5px 10px; font-size: 0.9rem; min-width: 120px;">
+                  <option value="" disabled selected>Loading maps...</option>
+                </select>
+              </div>
+              <div id="map-size-display" class="map-size-badge" style="display: none; margin: 0;"></div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="footer-contact">
