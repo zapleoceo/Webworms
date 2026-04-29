@@ -22,6 +22,7 @@ export class BrandLogo {
   public collisionHeight: number;
   public age: number = 0;
   public touchedGround: boolean = false;
+  public spriteCrop?: { x: number; y: number; w: number; h: number };
 
   constructor(sprite: string, x: number, y: number, vx: number, vy: number, angle: number, angularVelocity: number) {
     this.sprite = sprite;

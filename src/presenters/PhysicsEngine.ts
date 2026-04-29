@@ -164,7 +164,7 @@ export class PhysicsEngine {
         if (hitWorm) continue;
 
         AudioManager.playLand();
-        state.landscape.stampImage(logo.sprite, logo.x, logo.y, logo.width, logo.height, logo.angle);
+        state.landscape.stampImage(logo.sprite, logo.x, logo.y, logo.width, logo.height, logo.angle, (logo as any).spriteCrop);
         stamped.push(logo);
         // Shake camera slightly
         if (this.onHeavyImpact) {

@@ -9,12 +9,12 @@ export function findSafeWormSpawn(
   minDistance: number
 ): { x: number; y: number } {
   const rng = mulberry32((seed ^ hashStringToSeed(salt)) >>> 0);
-  const maxAttempts = 250;
+  const maxAttempts = 200;
   const hw = 8;
   const hh = 14;
-  const clearance = 2;
+  const clearance = 4;
 
-  const isAreaAir = (cx: number, cy: number): boolean => {
+  const isAirBox = (cx: number, cy: number): boolean => {
     const left = Math.floor(cx - hw - clearance);
     const right = Math.floor(cx + hw + clearance);
     const top = Math.floor(cy - hh - clearance);
@@ -27,25 +27,17 @@ export function findSafeWormSpawn(
     return true;
   };
 
-  const hasGroundBelow = (cx: number, cy: number): number | null => {
-    const x = Math.floor(cx);
-    const start = Math.floor(cy + hh + 1);
-    const end = Math.min(landscape.height - 20, start + 240);
-    for (let y = start; y <= end; y++) {
-      if (landscape.getMaterial(x, y) > 0) return y;
-    }
-    return null;
-  };
-
   for (let i = 0; i < maxAttempts; i++) {
-    const x = 60 + rng() * (landscape.width - 120);
-    const y = 60 + rng() * (landscape.height - 200);
-    if (!isAreaAir(x, y)) continue;
-    const gy = hasGroundBelow(x, y);
-    if (gy === null) continue;
+    const x = 80 + rng() * (landscape.width - 160);
+    const surfaceY = landscape.getTopSolidY(x);
+    const spawnY = surfaceY - hh - 1;
+    if (spawnY < 40 || spawnY > landscape.height - 40) continue;
 
-    const spawnY = gy - hh - 1;
-    if (!isAreaAir(x, spawnY)) continue;
+    if (!isAirBox(x, spawnY)) continue;
+
+    const yL = landscape.getTopSolidY(x - 14);
+    const yR = landscape.getTopSolidY(x + 14);
+    if (Math.abs(yR - yL) > 50) continue;
 
     let tooClose = false;
     for (const p of existing) {
@@ -61,6 +53,7 @@ export function findSafeWormSpawn(
     return { x, y: spawnY };
   }
 
-  return { x: landscape.width / 2, y: 80 };
+  const x = landscape.width / 2;
+  const y = landscape.getTopSolidY(x) - hh - 1;
+  return { x, y: Math.max(40, y) };
 }
-

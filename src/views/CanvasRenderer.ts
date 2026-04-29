@@ -135,6 +135,7 @@ export class CanvasRenderer {
         const bounds = this.getOpaqueBounds(logo.sprite, img);
         if (bounds) {
           crop = bounds;
+          logo.spriteCrop = bounds;
           const scaleX = logo.width / img.naturalWidth;
           const scaleY = logo.height / img.naturalHeight;
           logo.collisionWidth = Math.max(10, bounds.w * scaleX);
@@ -480,6 +481,7 @@ export class CanvasRenderer {
           const sin = Math.sin(angle);
           const rotW = Math.ceil(Math.abs(stamp.w * cos) + Math.abs(stamp.h * sin));
           const rotH = Math.ceil(Math.abs(stamp.w * sin) + Math.abs(stamp.h * cos));
+          const crop = (stamp as any).crop as { x: number; y: number; w: number; h: number } | undefined;
 
           // Draw to a temporary canvas to get pixel data
           const tempCanvas = document.createElement('canvas');
@@ -490,7 +492,11 @@ export class CanvasRenderer {
             tCtx.clearRect(0, 0, rotW, rotH);
             tCtx.translate(rotW / 2, rotH / 2);
             tCtx.rotate(angle);
-            tCtx.drawImage(img, -stamp.w / 2, -stamp.h / 2, stamp.w, stamp.h);
+            if (crop) {
+              tCtx.drawImage(img, crop.x, crop.y, crop.w, crop.h, -stamp.w / 2, -stamp.h / 2, stamp.w, stamp.h);
+            } else {
+              tCtx.drawImage(img, -stamp.w / 2, -stamp.h / 2, stamp.w, stamp.h);
+            }
             tCtx.setTransform(1, 0, 0, 1, 0, 0);
             const imgData = tCtx.getImageData(0, 0, rotW, rotH);
             
@@ -516,7 +522,11 @@ export class CanvasRenderer {
           this.terrainCtx.save();
           this.terrainCtx.translate(stamp.x, stamp.y);
           this.terrainCtx.rotate(angle);
-          this.terrainCtx.drawImage(img, -stamp.w / 2, -stamp.h / 2, stamp.w, stamp.h);
+          if (crop) {
+            this.terrainCtx.drawImage(img, crop.x, crop.y, crop.w, crop.h, -stamp.w / 2, -stamp.h / 2, stamp.w, stamp.h);
+          } else {
+            this.terrainCtx.drawImage(img, -stamp.w / 2, -stamp.h / 2, stamp.w, stamp.h);
+          }
           this.terrainCtx.restore();
         }
       }
