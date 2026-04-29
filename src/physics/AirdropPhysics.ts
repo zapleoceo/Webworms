@@ -121,6 +121,7 @@ export function obbHits(landscape: Landscape, cx: number, cy: number, hw: number
   const check = (lx: number, ly: number): boolean => {
     const x = Math.floor(cx + lx * cosA - ly * sinA);
     const y = Math.floor(cy + lx * sinA + ly * cosA);
+    if (y < 0) return false;
     return landscape.getMaterial(x, y) > 0;
   };
 
