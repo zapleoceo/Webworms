@@ -59,6 +59,50 @@ function normalizeAirdropPhysics(raw: any): any {
   };
 }
 
+function normalizeBotSettings(raw: any): any {
+  const r: any = raw && typeof raw === 'object' ? raw : {};
+  const planSeconds = clamp(num(r.planSeconds, 3), 0.2, 8);
+  const reserveSeconds = clamp(num(r.reserveSeconds, 1), 0, 3);
+  const ropeAttachLimit = r.ropeAttachLimit && typeof r.ropeAttachLimit === 'object' ? r.ropeAttachLimit : {};
+  const aimErrorPct = r.aimErrorPct && typeof r.aimErrorPct === 'object' ? r.aimErrorPct : {};
+  const powerErrorPct = r.powerErrorPct && typeof r.powerErrorPct === 'object' ? r.powerErrorPct : {};
+  const grenade = r.grenade && typeof r.grenade === 'object' ? r.grenade : {};
+  const scoring = r.scoring && typeof r.scoring === 'object' ? r.scoring : {};
+
+  return {
+    planSeconds,
+    reserveSeconds,
+    ropeAttachLimit: {
+      easy: Math.floor(clamp(num(ropeAttachLimit.easy, 3), 0, 8)),
+      medium: Math.floor(clamp(num(ropeAttachLimit.medium, 4), 0, 10)),
+      hard: Math.floor(clamp(num(ropeAttachLimit.hard, 5), 0, 12))
+    },
+    aimErrorPct: {
+      easy: clamp(num(aimErrorPct.easy, 0.3), 0, 0.8),
+      medium: clamp(num(aimErrorPct.medium, 0.15), 0, 0.8),
+      hard: clamp(num(aimErrorPct.hard, 0.05), 0, 0.8)
+    },
+    powerErrorPct: {
+      easy: clamp(num(powerErrorPct.easy, 0.3), 0, 0.8),
+      medium: clamp(num(powerErrorPct.medium, 0.15), 0, 0.8),
+      hard: clamp(num(powerErrorPct.hard, 0.05), 0, 0.8)
+    },
+    grenade: {
+      fuseSeconds: clamp(num(grenade.fuseSeconds, 3), 0.6, 6),
+      restitution: clamp(num(grenade.restitution, 0.35), 0, 0.85),
+      friction: clamp(num(grenade.friction, 0.85), 0, 2),
+      stopSpeed: clamp(num(grenade.stopSpeed, 28), 0, 200)
+    },
+    scoring: {
+      killBonus: clamp(num(scoring.killBonus, 4000), 0, 20000),
+      damageWeight: clamp(num(scoring.damageWeight, 1), 0, 50),
+      missWeight: clamp(num(scoring.missWeight, 1), 0, 10),
+      movePenaltyPerPx: clamp(num(scoring.movePenaltyPerPx, 0.35), 0, 10),
+      safeExtraRadius: clamp(num(scoring.safeExtraRadius, 14), 0, 100)
+    }
+  };
+}
+
 export async function getAirdropPhysics(_request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
   try {
     const row = await env.DB.prepare(`SELECT value FROM Settings WHERE key = ?`).bind('airdrop_physics').first<any>();
@@ -87,9 +131,37 @@ export async function updateAirdropPhysics(request: Request, env: any, corsHeade
   }
 }
 
+export async function getBotSettings(_request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
+  try {
+    const row = await env.DB.prepare(`SELECT value FROM Settings WHERE key = ?`).bind('bot_settings').first<any>();
+    if (!row?.value) return new Response(JSON.stringify(normalizeBotSettings({})), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(row.value);
+    } catch {}
+    return new Response(JSON.stringify(normalizeBotSettings(parsed)), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
+export async function updateBotSettings(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
+  if (!(await checkAdminAuth(request, env))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+  try {
+    const body = await request.json() as any;
+    const cfg = normalizeBotSettings(body);
+    await env.DB.prepare(`INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)`).bind('bot_settings', JSON.stringify(cfg)).run();
+    return new Response(JSON.stringify({ success: true, ...cfg }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+}
+
 export async function getGameSettings(_request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
   try {
-    const rows = await env.DB.prepare(`SELECT key, value FROM Settings WHERE key IN ('turn_time', 'airdrop_physics')`).all<any>();
+    const rows = await env.DB.prepare(`SELECT key, value FROM Settings WHERE key IN ('turn_time', 'airdrop_physics', 'bot_settings')`).all<any>();
     const map = new Map<string, string>();
     for (const r of rows.results || []) {
       if (typeof r?.key === 'string' && typeof r?.value === 'string') map.set(r.key, r.value);
@@ -102,7 +174,15 @@ export async function getGameSettings(_request: Request, env: any, corsHeaders: 
       } catch {}
     }
     const airdrop_physics = normalizeAirdropPhysics(airdrop);
-    return new Response(JSON.stringify({ turn_time, airdrop_physics }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+
+    let bot: any = {};
+    if (map.has('bot_settings')) {
+      try {
+        bot = JSON.parse(map.get('bot_settings') as string);
+      } catch {}
+    }
+    const bot_settings = normalizeBotSettings(bot);
+    return new Response(JSON.stringify({ turn_time, airdrop_physics, bot_settings }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }

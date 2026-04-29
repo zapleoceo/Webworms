@@ -117,7 +117,7 @@ export class APIClient {
     }
   }
 
-  public static async getGameSettings(): Promise<{ turn_time: number; airdrop_physics: any } | null> {
+  public static async getGameSettings(): Promise<{ turn_time: number; airdrop_physics: any; bot_settings?: any } | null> {
     try {
       const res = await fetch(`${this.BASE_URL}/settings/game`);
       if (!res.ok) return null;

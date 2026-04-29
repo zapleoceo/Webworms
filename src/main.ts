@@ -14,6 +14,7 @@ import { TimeBalanceController } from './controllers/TimeBalanceController';
 import { AuthController } from './controllers/AuthController';
 import { BotTurnController } from './controllers/BotTurnController';
 import { getAIDifficulty, setAIDifficulty } from './ai/AIStorage';
+import { normalizeBotConfig } from './ai/BotConfig';
 
 declare global {
   interface Window {
@@ -394,6 +395,7 @@ let currentMatchToken: string | null = null;
       const logosPromise = APIClient.getLogos();
       const gameSettings = await settingsPromise;
       const turnTime = gameSettings?.turn_time || (await APIClient.getTurnTime());
+      const botConfig = normalizeBotConfig(gameSettings?.bot_settings);
       setLoaderProgress(0.35, 'LOADING GAME...');
       const logos = await logosPromise;
       const airdropPhysics = gameSettings?.airdrop_physics || null;
@@ -406,6 +408,7 @@ let currentMatchToken: string | null = null;
         turnTime: turnTime,
         logos: logos,
         airdropPhysics: airdropPhysics,
+        botConfig: botConfig,
         mapData: null
       });
       window.presenter.localTeam = 'team1';
@@ -413,6 +416,7 @@ let currentMatchToken: string | null = null;
   } else {
     const gameSettings = await APIClient.getGameSettings();
     const turnTime = gameSettings?.turn_time || (await APIClient.getTurnTime());
+    const botConfig = normalizeBotConfig(gameSettings?.bot_settings);
     setLoaderProgress(0.35, 'LOADING GAME...');
     const logos = await APIClient.getLogos();
     const airdropPhysics = gameSettings?.airdrop_physics || null;
@@ -446,6 +450,7 @@ let currentMatchToken: string | null = null;
       turnTime: turnTime,
       logos: logos,
       airdropPhysics: airdropPhysics,
+      botConfig: botConfig,
       mapData: mapData
     });
     if (mode === 'ai') {

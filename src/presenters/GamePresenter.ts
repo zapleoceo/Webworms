@@ -155,6 +155,7 @@ export class GamePresenter {
     Random.setSeed(this.state.mapSeed!);
 
     this.state.airdropPhysics = normalizeAirdropPhysicsConfig(settings.airdropPhysics || DEFAULT_AIRDROP_PHYSICS);
+    this.state.botConfig = settings.botConfig || undefined;
 
     this.state.airdropTimer = 20 + Random.next() * 25; // First airdrop in 20-45s
     this.state.airdropIndex = 0;

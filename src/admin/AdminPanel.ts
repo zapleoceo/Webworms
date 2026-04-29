@@ -42,6 +42,7 @@ export class AdminPanel {
             <nav>
               <button id="nav-maps" class="admin-nav-btn active">Custom Maps</button>
               <button id="nav-dashboard" class="admin-nav-btn">Dashboard</button>
+              <button id="nav-bot" class="admin-nav-btn">Bot</button>
               <button id="nav-users" class="admin-nav-btn">Users Management</button>
               <button id="nav-logos" class="admin-nav-btn">Airdrop Logos</button>
               <button id="nav-spritesets" class="admin-nav-btn">Sprite Sets</button>
@@ -120,6 +121,42 @@ export class AdminPanel {
                   <h3>Admins</h3>
                   <p id="stat-admins">Loading...</p>
                 </div>
+              </div>
+            </section>
+
+            <section id="section-bot" class="admin-section">
+              <h2>Bot</h2>
+              <div class="upload-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
+                <h3>AI Bot Settings</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                  <input type="number" id="bot-plan" placeholder="Plan seconds" class="retro-input" step="0.1">
+                  <input type="number" id="bot-reserve" placeholder="Reserve seconds" class="retro-input" step="0.1">
+                  <input type="number" id="bot-rope-easy" placeholder="Rope attaches (easy)" class="retro-input" step="1">
+                  <input type="number" id="bot-rope-medium" placeholder="Rope attaches (medium)" class="retro-input" step="1">
+                  <input type="number" id="bot-rope-hard" placeholder="Rope attaches (hard)" class="retro-input" step="1">
+                  <input type="number" id="bot-aim-easy" placeholder="Aim error % (easy)" class="retro-input" step="1">
+                  <input type="number" id="bot-aim-medium" placeholder="Aim error % (medium)" class="retro-input" step="1">
+                  <input type="number" id="bot-aim-hard" placeholder="Aim error % (hard)" class="retro-input" step="1">
+                  <input type="number" id="bot-power-easy" placeholder="Power error % (easy)" class="retro-input" step="1">
+                  <input type="number" id="bot-power-medium" placeholder="Power error % (medium)" class="retro-input" step="1">
+                  <input type="number" id="bot-power-hard" placeholder="Power error % (hard)" class="retro-input" step="1">
+                  <input type="number" id="bot-grenade-fuse" placeholder="Grenade fuse (s)" class="retro-input" step="0.1">
+                  <input type="number" id="bot-grenade-rest" placeholder="Grenade restitution" class="retro-input" step="0.05">
+                  <input type="number" id="bot-grenade-fric" placeholder="Grenade friction" class="retro-input" step="0.05">
+                  <input type="number" id="bot-grenade-stop" placeholder="Grenade stop speed" class="retro-input" step="1">
+                  <input type="number" id="bot-kill-bonus" placeholder="Kill bonus" class="retro-input" step="100">
+                  <input type="number" id="bot-damage-weight" placeholder="Damage weight" class="retro-input" step="0.1">
+                  <input type="number" id="bot-miss-weight" placeholder="Miss weight" class="retro-input" step="0.1">
+                  <input type="number" id="bot-move-penalty" placeholder="Move penalty per px" class="retro-input" step="0.05">
+                  <input type="number" id="bot-safe-extra" placeholder="Safe extra radius" class="retro-input" step="1">
+                </div>
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                  <button id="bot-load" class="secondary-btn small-btn">Load</button>
+                  <button id="bot-save" class="primary-btn small-btn">Save</button>
+                </div>
+                <p style="font-size: 12px; color: #ccc; margin-top: 10px;">
+                  Plan seconds controls how long the bot searches for the best plan. Execution time is 30 - plan - reserve.
+                </p>
               </div>
             </section>
 
@@ -276,12 +313,18 @@ export class AdminPanel {
     document.getElementById('load-users')?.addEventListener('click', () => this.loadUsersData());
     document.getElementById('adp-load')?.addEventListener('click', () => this.loadAirdropPhysics());
     document.getElementById('adp-save')?.addEventListener('click', () => this.saveAirdropPhysics());
+    document.getElementById('bot-load')?.addEventListener('click', () => this.loadBotSettings());
+    document.getElementById('bot-save')?.addEventListener('click', () => this.saveBotSettings());
     
     // Navigation
     document.getElementById('nav-dashboard')?.addEventListener('click', (e) => {
       this.switchTab('dashboard', e.target as HTMLElement);
       this.loadUsersData(); // To populate dashboard stats
       this.loadAirdropPhysics();
+    });
+    document.getElementById('nav-bot')?.addEventListener('click', (e) => {
+      this.switchTab('bot', e.target as HTMLElement);
+      this.loadBotSettings();
     });
     document.getElementById('nav-maps')?.addEventListener('click', (e) => {
       this.switchTab('maps', e.target as HTMLElement);
@@ -1079,6 +1122,95 @@ export class AdminPanel {
       }
       await this.loadAirdropPhysics();
     } catch (e: any) {
+      alert('Network error');
+    }
+  }
+
+  private async loadBotSettings() {
+    try {
+      const res = await fetch(APIClient.BASE_URL + '/settings/bot');
+      if (!res.ok) return;
+      const cfg = await res.json();
+
+      this.setNumberInput('bot-plan', cfg.planSeconds);
+      this.setNumberInput('bot-reserve', cfg.reserveSeconds);
+
+      this.setNumberInput('bot-rope-easy', cfg.ropeAttachLimit?.easy);
+      this.setNumberInput('bot-rope-medium', cfg.ropeAttachLimit?.medium);
+      this.setNumberInput('bot-rope-hard', cfg.ropeAttachLimit?.hard);
+
+      this.setNumberInput('bot-aim-easy', Math.round((cfg.aimErrorPct?.easy || 0) * 100));
+      this.setNumberInput('bot-aim-medium', Math.round((cfg.aimErrorPct?.medium || 0) * 100));
+      this.setNumberInput('bot-aim-hard', Math.round((cfg.aimErrorPct?.hard || 0) * 100));
+
+      this.setNumberInput('bot-power-easy', Math.round((cfg.powerErrorPct?.easy || 0) * 100));
+      this.setNumberInput('bot-power-medium', Math.round((cfg.powerErrorPct?.medium || 0) * 100));
+      this.setNumberInput('bot-power-hard', Math.round((cfg.powerErrorPct?.hard || 0) * 100));
+
+      this.setNumberInput('bot-grenade-fuse', cfg.grenade?.fuseSeconds);
+      this.setNumberInput('bot-grenade-rest', cfg.grenade?.restitution);
+      this.setNumberInput('bot-grenade-fric', cfg.grenade?.friction);
+      this.setNumberInput('bot-grenade-stop', cfg.grenade?.stopSpeed);
+
+      this.setNumberInput('bot-kill-bonus', cfg.scoring?.killBonus);
+      this.setNumberInput('bot-damage-weight', cfg.scoring?.damageWeight);
+      this.setNumberInput('bot-miss-weight', cfg.scoring?.missWeight);
+      this.setNumberInput('bot-move-penalty', cfg.scoring?.movePenaltyPerPx);
+      this.setNumberInput('bot-safe-extra', cfg.scoring?.safeExtraRadius);
+    } catch {}
+  }
+
+  private async saveBotSettings() {
+    try {
+      const cfg = {
+        planSeconds: this.getNumberInput('bot-plan', 3),
+        reserveSeconds: this.getNumberInput('bot-reserve', 1),
+        ropeAttachLimit: {
+          easy: this.getNumberInput('bot-rope-easy', 3),
+          medium: this.getNumberInput('bot-rope-medium', 4),
+          hard: this.getNumberInput('bot-rope-hard', 5)
+        },
+        aimErrorPct: {
+          easy: this.getNumberInput('bot-aim-easy', 30) / 100,
+          medium: this.getNumberInput('bot-aim-medium', 15) / 100,
+          hard: this.getNumberInput('bot-aim-hard', 5) / 100
+        },
+        powerErrorPct: {
+          easy: this.getNumberInput('bot-power-easy', 30) / 100,
+          medium: this.getNumberInput('bot-power-medium', 15) / 100,
+          hard: this.getNumberInput('bot-power-hard', 5) / 100
+        },
+        grenade: {
+          fuseSeconds: this.getNumberInput('bot-grenade-fuse', 3),
+          restitution: this.getNumberInput('bot-grenade-rest', 0.35),
+          friction: this.getNumberInput('bot-grenade-fric', 0.85),
+          stopSpeed: this.getNumberInput('bot-grenade-stop', 28)
+        },
+        scoring: {
+          killBonus: this.getNumberInput('bot-kill-bonus', 4000),
+          damageWeight: this.getNumberInput('bot-damage-weight', 1),
+          missWeight: this.getNumberInput('bot-miss-weight', 1),
+          movePenaltyPerPx: this.getNumberInput('bot-move-penalty', 0.35),
+          safeExtraRadius: this.getNumberInput('bot-safe-extra', 14)
+        }
+      };
+
+      const res = await fetch(APIClient.BASE_URL + '/settings/bot', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        },
+        body: JSON.stringify(cfg)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert('Failed to save: ' + (err.error || 'Unknown error'));
+        return;
+      }
+      await this.loadBotSettings();
+    } catch {
       alert('Network error');
     }
   }

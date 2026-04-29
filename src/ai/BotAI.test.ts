@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { chooseBotAction } from './BotAI';
 import { gunMuzzlePosition, simulateTrajectory, type TerrainQuery } from './PhysicsHelper';
 import { WEAPONS } from '../models/Weapon';
+import { DEFAULT_BOT_CONFIG } from './BotConfig';
 
 const makeRng = (seq: number[]) => {
   let i = 0;
@@ -43,7 +44,7 @@ describe('BotAI', () => {
       weaponCooldowns: {}
     };
 
-    const action = chooseBotAction('hard', rng, world, shooter, [enemy]);
+    const action = chooseBotAction(rng, world, shooter, [enemy], [shooter], DEFAULT_BOT_CONFIG);
     expect(action).not.toBeNull();
     expect(action?.weaponIndex).toBe(0);
 
@@ -70,4 +71,3 @@ describe('BotAI', () => {
     expect(res.minDistToTarget).toBeLessThan(120);
   });
 });
-

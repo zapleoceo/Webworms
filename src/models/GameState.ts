@@ -5,6 +5,7 @@ import { Explosion } from './Explosion';
 import { PhysicsProp } from './PhysicsProp';
 import { BrandLogo } from './BrandLogo';
 import type { AirdropPhysicsConfig } from '../physics/AirdropConfig';
+import type { BotConfig } from '../ai/BotConfig';
 
 export interface FloatingText {
   x: number;
@@ -58,6 +59,7 @@ export class GameState {
   public airdropIndex: number = 0;
   public airdropOffset: number = 0;
   public airdropPhysics?: AirdropPhysicsConfig;
+  public botConfig?: BotConfig;
   public cameraShakeTime: number = 0;
   public lastPlayedIndex?: { [team: string]: number };
 

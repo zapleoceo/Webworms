@@ -1,7 +1,7 @@
 import { getWeaponByEquipmentId, isWeaponEquipment } from '../equipment/EquipmentRegistry';
 import type { Weapon } from '../models/Weapon';
-import type { AIDifficulty, AIDifficultyConfig } from './AIDifficulty';
-import { AI_DIFFICULTY } from './AIDifficulty';
+import type { AIDifficulty, BotConfig } from './BotConfig';
+import { DEFAULT_BOT_CONFIG } from './BotConfig';
 import { gunMuzzlePosition, simulateTrajectory, type TerrainQuery } from './PhysicsHelper';
 
 export type Rng = () => number;
@@ -46,12 +46,6 @@ const angleNorm = (a: number): number => {
   return a - Math.PI;
 };
 
-function gaussian(rng: Rng): number {
-  const u = Math.max(1e-9, rng());
-  const v = Math.max(1e-9, rng());
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-}
-
 function localAimFromGlobal(global: number): { facingRight: boolean; aimAngle: number } {
   const facingRight = Math.cos(global) >= 0;
   if (facingRight) {
@@ -74,43 +68,25 @@ function weaponCandidates(shooter: BotWormSnapshot): Array<{ index: number; weap
   return out;
 }
 
-function chooseTarget(difficulty: AIDifficulty, rng: Rng, shooter: BotWormSnapshot, enemies: BotWormSnapshot[]): BotWormSnapshot | null {
-  const alive = enemies.filter(e => e.health > 0);
-  if (alive.length === 0) return null;
-
-  if (difficulty === 'easy') {
-    return alive[Math.floor(rng() * alive.length)] || alive[0];
-  }
-
-  const scored = alive.map(t => {
-    const d = Math.hypot(t.x - shooter.x, t.y - shooter.y);
-    const lowHp = (100 - t.health) / 100;
-    const score = (difficulty === 'hard' ? 0.55 : 0.35) * lowHp + 0.65 * (1 / Math.max(60, d));
-    return { t, score };
-  }).sort((a, b) => b.score - a.score);
-
-  return scored[0]?.t || alive[0];
-}
-
-function sampleAngles(cfg: AIDifficultyConfig): number[] {
+function sampleAngles(n: number): number[] {
   const max = 78 * (Math.PI / 180);
   const min = -78 * (Math.PI / 180);
-  const n = Math.max(6, cfg.angleSamples);
+  const cnt = Math.max(8, n);
   const out: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = n === 1 ? 0.5 : i / (n - 1);
+  for (let i = 0; i < cnt; i++) {
+    const t = cnt === 1 ? 0.5 : i / (cnt - 1);
     out.push(min + (max - min) * t);
   }
   return out;
 }
 
-function samplePowers(cfg: AIDifficultyConfig): number[] {
+function samplePowers(n: number): number[] {
   const lo = 22;
   const hi = 100;
-  const n = Math.max(4, cfg.powerSamples);
+  const cnt = Math.max(6, n);
   const out: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = n === 1 ? 1 : i / (n - 1);
+  for (let i = 0; i < cnt; i++) {
+    const t = cnt === 1 ? 1 : i / (cnt - 1);
     out.push(lo + (hi - lo) * t);
   }
   return out;
@@ -128,96 +104,98 @@ function pickWeaponByRange(weapons: Array<{ index: number; weapon: Weapon; id: s
 type ScoredAction = { action: BotAction; score: number; impact: { x: number; y: number } };
 
 function chooseBotActionScored(
-  difficulty: AIDifficulty,
   rng: Rng,
   world: BotWorldSnapshot,
   shooter: BotWormSnapshot,
   enemies: BotWormSnapshot[],
-  allies: BotWormSnapshot[]
+  allies: BotWormSnapshot[],
+  botCfg: BotConfig
 ): ScoredAction | null {
-  const cfg = AI_DIFFICULTY[difficulty] || AI_DIFFICULTY.medium;
-  const target = chooseTarget(difficulty, rng, shooter, enemies);
-  if (!target) return null;
+  const aliveEnemies = enemies.filter(e => e.health > 0);
+  if (aliveEnemies.length === 0) return null;
 
   const weapons = weaponCandidates(shooter);
   if (weapons.length === 0) return null;
 
-  const dist = Math.hypot(target.x - shooter.x, target.y - shooter.y);
-  const ordered = pickWeaponByRange(weapons, dist);
-
-  const angleList = sampleAngles(cfg);
-  const powerList = samplePowers(cfg);
+  const angleList = sampleAngles(18);
+  const powerList = samplePowers(10);
 
   const targetRadius = 10;
 
-  let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weapon: Weapon } | null = null;
+  let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weapon: Weapon; target: BotWormSnapshot } | null = null;
 
-  for (let wIdx = 0; wIdx < ordered.length; wIdx++) {
-    const w = ordered[wIdx];
-    const weapon = w.weapon;
+  for (const target of aliveEnemies) {
+    const dist = Math.hypot(target.x - shooter.x, target.y - shooter.y);
+    const ordered = pickWeaponByRange(weapons, dist);
 
-    for (const localAngle of angleList) {
-      const global = (target.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
-      for (const power of powerList) {
-        let speed = power * 4.2 * (weapon.speedModifier || 1);
-        if (weapon.id === 'blaster') speed = 750;
-        const muzzle = gunMuzzlePosition(shooter, global);
-        const res = simulateTrajectory(
-          world.terrain,
-          {
-            start: muzzle,
-            velocity: { x: Math.cos(global) * speed, y: Math.sin(global) * speed },
-            gravity: world.gravity,
-            wind: cfg.considerWind ? world.wind : 0,
-            windMultiplier: weapon.windMultiplier || 0,
-            radius: weapon.id === 'grenade' ? 6 : 3,
-            dt: 1 / 60,
-            maxTime: weapon.id === 'grenade' ? 3.0 : 2.2
-          },
-          { x: target.x, y: target.y },
-          targetRadius
-        );
+    for (let wIdx = 0; wIdx < ordered.length; wIdx++) {
+      const w = ordered[wIdx];
+      const weapon = w.weapon;
 
-        const miss = res.minDistToTarget;
-        const hitBonus = res.hitTarget ? 2000 : 0;
-        const splash = weapon.explosionRadius * 0.75;
-        const splashScore = Math.max(0, splash - miss) * 4;
-        let score = hitBonus + splashScore - miss;
+      for (const localAngle of angleList) {
+        const global = (target.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
+        for (const power of powerList) {
+          let speed = power * 4.2 * (weapon.speedModifier || 1);
+          if (weapon.id === 'blaster') speed = 750;
+          const muzzle = gunMuzzlePosition(shooter, global);
+          const res = simulateTrajectory(
+            world.terrain,
+            {
+              start: muzzle,
+              velocity: { x: Math.cos(global) * speed, y: Math.sin(global) * speed },
+              gravity: world.gravity,
+              wind: world.wind,
+              windMultiplier: weapon.windMultiplier || 0,
+              radius: weapon.id === 'grenade' ? 6 : 3,
+              dt: 1 / 60,
+              maxTime: weapon.id === 'grenade' ? botCfg.grenade.fuseSeconds : 2.2,
+              mode: weapon.id === 'grenade' ? 'grenade' : 'projectile',
+              grenade: weapon.id === 'grenade' ? botCfg.grenade : undefined
+            },
+            { x: target.x, y: target.y },
+            targetRadius
+          );
 
-        const safeRadius = weapon.explosionRadius + 14;
-        for (const ally of allies) {
-          if (ally.health <= 0) continue;
-          const d = Math.hypot(res.end.x - ally.x, res.end.y - ally.y);
-          if (d < safeRadius) score -= 100000;
-        }
+          const distEnd = Math.hypot(res.end.x - target.x, res.end.y - target.y);
+          const miss = weapon.id === 'grenade' ? distEnd : res.minDistToTarget;
 
-        if (!best || score > best.score) {
-          best = { score, global, power, weaponIndex: w.index, impact: res.end, weapon };
+          const falloff = clamp(1 - miss / Math.max(1, weapon.explosionRadius), 0, 1);
+          const expectedDamage = weapon.damage * falloff;
+          const isKill = expectedDamage >= target.health && target.health > 0;
+          let score = expectedDamage * botCfg.scoring.damageWeight - miss * botCfg.scoring.missWeight;
+          if (isKill) score += botCfg.scoring.killBonus;
+
+          const safeRadius = weapon.explosionRadius + botCfg.scoring.safeExtraRadius;
+          let unsafe = false;
+          for (const ally of allies) {
+            if (ally.health <= 0) continue;
+            const d = Math.hypot(res.end.x - ally.x, res.end.y - ally.y);
+            if (d < safeRadius) {
+              unsafe = true;
+              break;
+            }
+          }
+          if (unsafe) continue;
+
+          if (!best || score > best.score) {
+            best = { score, global, power, weaponIndex: w.index, impact: res.end, weapon, target };
+          }
         }
       }
     }
-    if (difficulty === 'easy' && best && best.score > 1500) break;
   }
 
   if (!best) return null;
 
-  const mistake = rng() < cfg.weaponMistakeChance;
-  if (mistake && weapons.length > 1) {
-    const alt = weapons[Math.floor(rng() * weapons.length)];
-    if (alt) best.weaponIndex = alt.index;
-  }
-
-  const noisyGlobal = best.global + gaussian(rng) * cfg.aimAngleNoiseRad;
-  const noisyPower = clamp(best.power + gaussian(rng) * cfg.aimPowerNoise, 10, 100);
-  const local = localAimFromGlobal(noisyGlobal);
+  const local = localAimFromGlobal(best.global);
 
   return {
     action: {
       weaponIndex: best.weaponIndex,
       facingRight: local.facingRight,
       aimAngle: local.aimAngle,
-      power: noisyPower,
-      targetId: target.id
+      power: best.power,
+      targetId: best.target.id
     },
     score: best.score,
     impact: best.impact
@@ -267,26 +245,31 @@ function surfaceY(terrain: TerrainQuery, x: number): number | null {
 }
 
 export function chooseBotAction(
-  difficulty: AIDifficulty,
-  rng: Rng,
-  world: BotWorldSnapshot,
-  shooter: BotWormSnapshot,
-  enemies: BotWormSnapshot[]
-): BotAction | null {
-  const allies = [shooter];
-  return chooseBotActionScored(difficulty, rng, world, shooter, enemies, allies)?.action || null;
-}
-
-export function chooseBotPlan(
-  difficulty: AIDifficulty,
   rng: Rng,
   world: BotWorldSnapshot,
   shooter: BotWormSnapshot,
   enemies: BotWormSnapshot[],
-  allies: BotWormSnapshot[]
+  allies: BotWormSnapshot[] = [shooter],
+  botCfg: BotConfig = DEFAULT_BOT_CONFIG
+): BotAction | null {
+  return chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg)?.action || null;
+}
+
+export function chooseBotPlan(
+  rng: Rng,
+  world: BotWorldSnapshot,
+  shooter: BotWormSnapshot,
+  enemies: BotWormSnapshot[],
+  allies: BotWormSnapshot[],
+  botCfg: BotConfig,
+  moveSeconds: number,
+  ropeAttachBudget: number
 ): BotPlan | null {
   const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
-  const maxMoveDist = Math.max(0, maxSpeed * 25);
+  const maxMoveDist = Math.max(0, maxSpeed * Math.max(0, moveSeconds));
+  const ropeRange = 252 * 0.85;
+  const ropeBoost = ropeRange * Math.min(2, Math.max(0, ropeAttachBudget));
+
   const xs = [
     shooter.x,
     shooter.x - maxMoveDist * 0.9,
@@ -295,10 +278,17 @@ export function chooseBotPlan(
     shooter.x + maxMoveDist * 0.3,
     shooter.x + maxMoveDist * 0.6,
     shooter.x + maxMoveDist * 0.9
-  ].map(x => clamp(x, 30, world.terrain.width - 30));
+  ];
+
+  if (ropeBoost > 0) {
+    xs.push(shooter.x - (maxMoveDist * 0.6 + ropeBoost));
+    xs.push(shooter.x + (maxMoveDist * 0.6 + ropeBoost));
+  }
+
+  const bounded = xs.map(x => clamp(x, 30, world.terrain.width - 30));
 
   const uniq: number[] = [];
-  for (const x of xs) {
+  for (const x of bounded) {
     if (uniq.every(u => Math.abs(u - x) > 24)) uniq.push(x);
   }
 
@@ -308,9 +298,9 @@ export function chooseBotPlan(
     const ySolid = surfaceY(world.terrain, x);
     const y = ySolid === null ? shooter.y : (ySolid - 1 - shooter.height / 2);
     const moveDist = Math.hypot(x - shooter.x, y - shooter.y);
-    const movePenalty = moveDist * 0.35;
+    const movePenalty = moveDist * botCfg.scoring.movePenaltyPerPx;
     const s2: BotWormSnapshot = { ...shooter, x, y };
-    const scored = chooseBotActionScored(difficulty, rng, world, s2, enemies, allies);
+    const scored = chooseBotActionScored(rng, world, s2, enemies, allies, botCfg);
     if (!scored) continue;
     const totalScore = scored.score - movePenalty;
     if (!best || totalScore > best.score) {
