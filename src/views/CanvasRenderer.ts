@@ -973,6 +973,63 @@ export class CanvasRenderer {
       
       this.ctx.restore();
     }
+
+    if (state.brandLogos) {
+      for (const logo of state.brandLogos) {
+        if (!logo.isDynamic) continue;
+        if (logo.x >= viewLeft && logo.x <= viewRight && logo.y >= viewTop && logo.y <= viewBottom) {
+          continue;
+        }
+
+        const dx = logo.x - centerX;
+        const dy = logo.y - centerY;
+        const angle = Math.atan2(dy, dx);
+
+        let edgeX, edgeY;
+        const slope = dy / dx;
+        const padding = 40;
+
+        if (Math.abs(slope) < (this.canvas.height - padding * 2) / (this.canvas.width - padding * 2)) {
+          edgeX = dx > 0 ? this.canvas.width - padding : padding;
+          edgeY = this.canvas.height / 2 + (edgeX - this.canvas.width / 2) * slope;
+        } else {
+          edgeY = dy > 0 ? this.canvas.height - padding : padding;
+          edgeX = this.canvas.width / 2 + (edgeY - this.canvas.height / 2) / slope;
+        }
+
+        this.ctx.save();
+        this.ctx.translate(edgeX, edgeY);
+
+        const color = '#ffcc00';
+        this.ctx.font = 'bold 14px "Bangers", Courier New';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillStyle = 'black';
+        this.ctx.fillText('DROP', 2, dy > 0 ? -28 : 28);
+        this.ctx.fillStyle = color;
+        this.ctx.fillText('DROP', 0, dy > 0 ? -30 : 30);
+
+        this.ctx.rotate(angle);
+        this.ctx.beginPath();
+        this.ctx.moveTo(20, 0);
+        this.ctx.lineTo(-10, 15);
+        this.ctx.lineTo(-2, 0);
+        this.ctx.lineTo(-10, -15);
+        this.ctx.closePath();
+        this.ctx.shadowColor = 'black';
+        this.ctx.shadowBlur = 0;
+        this.ctx.shadowOffsetX = 2;
+        this.ctx.shadowOffsetY = 2;
+        this.ctx.fillStyle = color;
+        this.ctx.fill();
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeStyle = 'black';
+        this.ctx.shadowColor = 'transparent';
+        this.ctx.stroke();
+
+        this.ctx.restore();
+      }
+    }
   }
 
   // Draw UI
