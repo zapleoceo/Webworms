@@ -113,6 +113,30 @@ export class PhysicsEngine {
       const touchedBefore = logo.touchedGround;
       logo.update(dt, this.gravity, state.landscape, state.brandLogos);
 
+      if (logo.isDynamic) {
+        const halfW = logo.collisionWidth / 2;
+        const halfH = logo.collisionHeight / 2;
+        for (const worm of state.players) {
+          if (worm.health <= 0) continue;
+          const wHalfW = (worm.width || 0) / 2;
+          const wHalfH = (worm.height || 0) / 2;
+          if (Math.abs(logo.x - worm.x) < halfW + wHalfW && Math.abs(logo.y - worm.y) < halfH + wHalfH) {
+            if (logo.vy > 80) {
+              const dmg = Math.max(2, Math.min(8, logo.vy * 0.02));
+              worm.takeDamage(dmg);
+              this.addFloatingText(state, worm.x, worm.y - 20, `-${Math.round(dmg)}`, '#FF0000');
+              if (this.onHurt) this.onHurt();
+              AudioManager.playDamage();
+            }
+
+            logo.y = worm.y - wHalfH - halfH;
+            logo.vy = 0;
+            logo.vx += (logo.x > worm.x ? 1 : -1) * 60;
+            break;
+          }
+        }
+      }
+
       if (!touchedBefore && logo.touchedGround) {
         if (this.onHeavyImpact) {
           this.onHeavyImpact();
@@ -121,6 +145,24 @@ export class PhysicsEngine {
 
       // Effect: Landed this frame
       if (wasDynamic && !logo.isDynamic) {
+        const halfW = logo.collisionWidth / 2;
+        const halfH = logo.collisionHeight / 2;
+        let hitWorm = false;
+        for (const worm of state.players) {
+          if (worm.health <= 0) continue;
+          const wHalfW = (worm.width || 0) / 2;
+          const wHalfH = (worm.height || 0) / 2;
+          if (Math.abs(logo.x - worm.x) < halfW + wHalfW && Math.abs(logo.y - worm.y) < halfH + wHalfH) {
+            hitWorm = true;
+            logo.isDynamic = true;
+            logo.vy = 0;
+            logo.vx += (logo.x > worm.x ? 1 : -1) * 90;
+            logo.y = worm.y - wHalfH - halfH;
+            break;
+          }
+        }
+        if (hitWorm) continue;
+
         AudioManager.playLand();
         state.landscape.stampImage(logo.sprite, logo.x, logo.y, logo.width, logo.height, logo.angle);
         stamped.push(logo);

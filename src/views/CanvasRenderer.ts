@@ -575,13 +575,36 @@ export class CanvasRenderer {
           frameIndex = 0;
         }
       } else if (isActive && equip?.aimAnimKey) {
-        animKey = equip.aimAnimKey;
-
-        const frames = this.animCtrl.getAnimLength(animKey);
-        const normalizedAngle = player.aimAngle + Math.PI / 2; // 0..PI
-        const maxFrame = Math.max(0, frames - 1);
-        frameIndex = Math.floor((1 - (normalizedAngle / Math.PI)) * maxFrame);
-        frameIndex = Math.max(0, Math.min(maxFrame, frameIndex));
+        if (equipmentId === 'rope') {
+          if (!player.ropeActive) {
+            animKey = 'idle';
+            const numFrames = this.animCtrl.getAnimLength(animKey);
+            if (numFrames > 0) {
+              const totalSteps = (numFrames * 2) - 2;
+              const step = Math.floor(Date.now() / 120) % totalSteps;
+              frameIndex = step < numFrames ? step : totalSteps - step;
+            } else {
+              frameIndex = 0;
+            }
+          } else {
+            animKey = 'rope';
+            flipX = false;
+            const frames = this.animCtrl.getAnimLength(animKey);
+            const dx = player.ropeAnchorX - player.x;
+            const dy = player.ropeAnchorY - (player.y - player.height / 2);
+            const angle = Math.atan2(dy, dx);
+            let normalizedAngle = angle + Math.PI / 2;
+            if (normalizedAngle < 0) normalizedAngle += Math.PI * 2;
+            frameIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * frames) % frames;
+          }
+        } else {
+          animKey = equip.aimAnimKey;
+          const frames = this.animCtrl.getAnimLength(animKey);
+          const normalizedAngle = player.aimAngle + Math.PI / 2;
+          const maxFrame = Math.max(0, frames - 1);
+          frameIndex = Math.floor((1 - (normalizedAngle / Math.PI)) * maxFrame);
+          frameIndex = Math.max(0, Math.min(maxFrame, frameIndex));
+        }
       } else {
         // Idle breathing
         animKey = 'idle';

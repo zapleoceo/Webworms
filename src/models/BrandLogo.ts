@@ -131,7 +131,9 @@ export class BrandLogo {
       } else {
         this.vy = 0;
       }
-      this.vx *= 0.7;
+      const slope = (yR - yL) / Math.max(1, halfW * 2);
+      this.vx += slope * gravity * dt * 0.18;
+      this.vx *= 0.85;
       this.y = collisionY;
       
       this.angularVelocity += norm(targetAngle - this.angle) * 6 * dt;
