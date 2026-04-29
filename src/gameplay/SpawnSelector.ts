@@ -35,7 +35,7 @@ export function findSafeWormSpawn(
 
   const tryPoint = (x: number): { ok: boolean; x: number; y: number } => {
     const surfaceY = landscape.getTopSolidY(x);
-    const spawnY = surfaceY - hh - 1;
+    const spawnY = surfaceY - hh - clearance - 1;
     if (spawnY < 40 || spawnY > landscape.height - 40) return { ok: false, x, y: spawnY };
     if (!isAirBox(x, spawnY)) return { ok: false, x, y: spawnY };
     const yL = landscape.getTopSolidY(x - 14);
@@ -63,6 +63,6 @@ export function findSafeWormSpawn(
   }
 
   const fx = landscape.width / 2;
-  const fy = landscape.getTopSolidY(fx) - hh - 1;
+  const fy = landscape.getTopSolidY(fx) - hh - clearance - 1;
   return { x: fx, y: Math.max(40, fy) };
 }
