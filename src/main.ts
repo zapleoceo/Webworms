@@ -151,6 +151,24 @@ function bindAIDifficultyWormCards() {
   const cards = Array.from(document.querySelectorAll<HTMLButtonElement>('.ai-worm-card'));
   if (cards.length === 0) return;
 
+  const scheduleIdle = (fn: () => void, delayMs: number) => {
+    const w = window as any;
+    if (typeof w.requestIdleCallback === 'function') {
+      w.requestIdleCallback(fn, { timeout: delayMs });
+      return;
+    }
+    window.setTimeout(fn, delayMs);
+  };
+
+  scheduleIdle(() => {
+    for (const card of cards) {
+      const hoverSrc = card.dataset.hoverSrc || '';
+      const loaderSrc = card.dataset.loaderSrc || '';
+      if (hoverSrc) preloadImageOnce(hoverSrc);
+      if (loaderSrc) preloadImageOnce(loaderSrc);
+    }
+  }, 1400);
+
   cards.forEach((card) => {
     const imgEl = card.querySelector<HTMLImageElement>('img');
     if (!imgEl) return;

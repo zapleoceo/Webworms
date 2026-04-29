@@ -266,6 +266,21 @@ export class BotTurnController {
       return true;
     }
 
+    const cliff = this.scanCliffAhead(presenter, player, dir);
+    const obstacle = this.detectObstacle(presenter, player, dir);
+    const ceilingLow = this.detectCeilingLow(presenter, player, dir);
+
+    if (obstacle && ceilingLow && this.stuckTime > 0.35) {
+      this.bannedTurn.add('walk');
+      this.bannedTurn.add('jump');
+      if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
+        this.lastReplanAt = now;
+        this.plannedThisTurn = false;
+        this.plan = null;
+      }
+      return true;
+    }
+
     const strategy = this.selectStrategy(presenter, player, moveTo, dir, ropeRemaining);
     this.ensureStrategy(strategy, presenter, player, moveTo, now);
 
@@ -288,6 +303,12 @@ export class BotTurnController {
       }
       this.recordStrategyFailure('jump', now);
       this.strategy = null;
+    }
+
+    if (this.strategy === 'walk' && cliff.isDeepVoid) {
+      this.recordStrategyFailure('walk', now);
+      this.strategy = null;
+      return true;
     }
 
     presenter.handleInput?.('left', false, true);
@@ -360,14 +381,16 @@ export class BotTurnController {
     const needUp = dy < -30;
     const needDown = dy > 30;
     const obstacle = this.detectObstacle(presenter, player, dir);
-    const gap = this.detectGap(presenter, player, dir);
+    const cliff = this.scanCliffAhead(presenter, player, dir);
+    const gap = cliff.isGapOrCliff;
+    const ceilingLow = this.detectCeilingLow(presenter, player, dir);
     const hasRope = Array.isArray(player.equipmentIds) && player.equipmentIds.includes('rope') && ropeRemaining > 0;
 
     const candidates: MoveStrategy[] = [];
     if (hasRope && needUp) candidates.push('rope_climb');
     if (hasRope && gap) candidates.push('rope_swing');
-    if (hasRope && needDown) candidates.push('rope_descend');
-    if (obstacle) candidates.push('jump');
+    if (hasRope && needDown && !cliff.isDeepVoid) candidates.push('rope_descend');
+    if (obstacle && !ceilingLow) candidates.push('jump');
     candidates.push('walk');
 
     let best: { s: MoveStrategy; score: number } | null = null;
@@ -379,6 +402,8 @@ export class BotTurnController {
       if (s === 'rope_climb') score += needUp ? 1.8 : 0.3;
       if (s === 'rope_swing') score += gap ? 1.9 : 0.2;
       if (s === 'rope_descend') score += needDown ? 1.3 : 0.2;
+      if (cliff.isGapOrCliff && s === 'walk') score -= 3.0;
+      if (ceilingLow && s === 'jump') score -= 3.0;
 
       const att = this.matchAttempts[s] || 0;
       const suc = this.matchSuccess[s] || 0;
@@ -407,12 +432,62 @@ export class BotTurnController {
     return solid(x, yMid) || solid(x, yTop) || solid(x, yHead);
   }
 
-  private detectGap(presenter: any, player: any, dir: 'left' | 'right'): boolean {
-    const ahead = (player.width || 10) + 18;
-    const x = player.x + (dir === 'right' ? 1 : -1) * ahead;
-    const yFoot = player.y + (player.height || 10) / 2 + 2;
+  private scanCliffAhead(
+    presenter: any,
+    player: any,
+    dir: 'left' | 'right'
+  ): { isGapOrCliff: boolean; isDeepVoid: boolean; maxDrop: number } {
     const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
-    return mat(Math.floor(x), Math.floor(yFoot)) <= 0;
+    const w = presenter.state.width;
+    const h = presenter.state.height;
+    const sign = dir === 'right' ? 1 : -1;
+
+    const yFoot = player.y + (player.height || 10) / 2 + 2;
+    const yStart = Math.max(0, Math.floor(yFoot));
+    const maxSearch = 220;
+
+    const distances = [16, 28, 40, 52, 64, 80];
+    let maxDrop = 0;
+    let missingCount = 0;
+
+    for (const d of distances) {
+      const x = Math.floor(player.x + sign * ((player.width || 10) + d));
+      if (x < 0 || x >= w) continue;
+      let groundY: number | null = null;
+      for (let y = yStart; y < Math.min(h, yStart + maxSearch); y++) {
+        if (mat(x, y) > 0) {
+          groundY = y;
+          break;
+        }
+      }
+      if (groundY === null) {
+        missingCount += 1;
+        maxDrop = Math.max(maxDrop, maxSearch);
+      } else {
+        maxDrop = Math.max(maxDrop, groundY - yStart);
+      }
+    }
+
+    const isGapOrCliff = missingCount >= 2 || maxDrop >= 90;
+    const isDeepVoid = missingCount >= 4 || maxDrop >= 170;
+    return { isGapOrCliff, isDeepVoid, maxDrop };
+  }
+
+  private detectCeilingLow(presenter: any, player: any, dir: 'left' | 'right'): boolean {
+    const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
+    const w = presenter.state.width;
+    const sign = dir === 'right' ? 1 : -1;
+    const headY = player.y - (player.height || 10) / 2;
+    const checksY = [Math.floor(headY - 6), Math.floor(headY - 14), Math.floor(headY - 22)];
+    const checksX = [Math.floor(player.x), Math.floor(player.x + sign * ((player.width || 10) + 10))];
+    for (const x of checksX) {
+      if (x < 0 || x >= w) continue;
+      for (const y of checksY) {
+        if (y < 0) continue;
+        if (mat(x, y) > 0) return true;
+      }
+    }
+    return false;
   }
 
   private tryJump(presenter: any, player: any, now: number): boolean {

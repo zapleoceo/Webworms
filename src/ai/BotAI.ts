@@ -332,6 +332,20 @@ export function chooseBotPlan(
     if (uniq.every(u => Math.abs(u - x) > 24)) uniq.push(x);
   }
 
+  const aliveEnemies = enemies.filter(e => e.health > 0);
+  const minDistToEnemy = (w: BotWormSnapshot): number => {
+    if (aliveEnemies.length === 0) return Infinity;
+    let best = Infinity;
+    for (const e of aliveEnemies) {
+      const d = Math.hypot(e.x - w.x, e.y - w.y);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+  const d0 = minDistToEnemy(shooter);
+  const nearDist = 170;
+  const retreatPenaltyPerPx = 2.0;
+
   let best: { plan: BotPlan; score: number } | null = null;
 
   for (const x of uniq) {
@@ -342,7 +356,9 @@ export function chooseBotPlan(
     const s2: BotWormSnapshot = { ...shooter, x, y };
     const scored = chooseBotActionScored(rng, world, s2, enemies, allies, botCfg);
     if (!scored) continue;
-    const totalScore = scored.score - movePenalty;
+    const d1 = minDistToEnemy(s2);
+    const retreatPenalty = (d0 < nearDist && d1 > d0) ? ((d1 - d0) * retreatPenaltyPerPx) : 0;
+    const totalScore = scored.score - movePenalty - retreatPenalty;
     if (!best || totalScore > best.score) {
       best = { score: totalScore, plan: { moveTo: moveDist > 20 ? { x, y } : undefined, action: scored.action } };
     }
