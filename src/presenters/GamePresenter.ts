@@ -412,14 +412,11 @@ export class GamePresenter {
     return { vx, vy };
   }
 
-  private snapCameraTo(x: number, y: number): void {
-    const viewportWidth = this.initialWidth / this.state.zoom;
-    const viewportHeight = this.initialHeight / this.state.zoom;
-    this.state.cameraX = x - viewportWidth / 2;
-    this.state.cameraY = y - viewportHeight / 2;
+  private focusCameraOn(x: number, y: number, duration: number = 0.6): void {
     this.cameraFreeMode = false;
-    this.cameraDelayTimer = 0;
-    this.clampCamera(this.initialWidth, this.initialHeight);
+    this.cameraDelayTimer = Math.max(0, duration);
+    this.lastExplosionX = x;
+    this.lastExplosionY = y;
   }
 
   private processActiveInputs(dt: number): void {
@@ -613,7 +610,7 @@ export class GamePresenter {
           this.state.currentPlayerIndex = next;
           const nextWorm = this.state.players[next];
           this.updateMobileWeaponIcon(nextWorm);
-          this.snapCameraTo(nextWorm.x, nextWorm.y);
+          this.focusCameraOn(nextWorm.x, nextWorm.y);
         }
         break;
       case 'jump':
@@ -661,7 +658,7 @@ export class GamePresenter {
           if (targetWorm.team !== player.team) break;
           this.state.currentPlayerIndex = payload;
           this.updateMobileWeaponIcon(targetWorm);
-          this.snapCameraTo(targetWorm.x, targetWorm.y);
+          this.focusCameraOn(targetWorm.x, targetWorm.y);
         }
         break;
     }
