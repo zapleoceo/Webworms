@@ -99,6 +99,20 @@ export class BrandLogo {
 
     if (collision) {
       this.touchedGround = true;
+      const sampleY = (sx: number): number => {
+        const ix = Math.floor(sx);
+        let y = Math.floor(this.y + halfH);
+        let steps = 0;
+        while (landscape.isSolid(ix, y) && y > 0 && steps < 60) {
+          y--;
+          steps++;
+        }
+        return y;
+      };
+      const yL = sampleY(this.x - halfW);
+      const yR = sampleY(this.x + halfW);
+      const targetAngle = Math.max(-0.6, Math.min(0.6, Math.atan2(yR - yL, Math.max(1, halfW * 2))));
+
       if (Math.abs(this.vy) > 50) {
         this.vy = -this.vy * 0.12;
       } else {
@@ -107,19 +121,18 @@ export class BrandLogo {
       this.vx *= 0.7;
       this.y = collisionY;
       
-      // Reduce angular velocity smoothly
-      this.angularVelocity += (-this.angle) * 2.5 * dt;
-      this.angularVelocity *= 0.97;
+      this.angularVelocity += (targetAngle - this.angle) * 6 * dt;
+      this.angularVelocity *= 0.96;
 
       const shouldForceSettle = this.touchedGround && this.age >= 8;
-      const isSlow = Math.abs(this.vx) < 3 && Math.abs(this.vy) < 3 && Math.abs(this.angularVelocity) < 0.05 && Math.abs(this.angle) < 0.15;
+      const isSlow = Math.abs(this.vx) < 3 && Math.abs(this.vy) < 3 && Math.abs(this.angularVelocity) < 0.05 && Math.abs(this.angle - targetAngle) < 0.15;
 
       if (shouldForceSettle || isSlow) {
         this.isDynamic = false;
         this.vx = 0;
         this.vy = 0;
         this.angularVelocity = 0;
-        this.angle = 0;
+        this.angle = targetAngle;
         this.bounceTime = 1.0; // Trigger small bounce effect when settling
         
         // Trigger dust and camera shake (handled in GamePresenter or PhysicsEngine via callbacks)

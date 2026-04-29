@@ -208,13 +208,6 @@ export class PhysicsEngine {
           state.landscape.needsUpdate = true;
         }
 
-        if (Math.abs(prop.vy) > 20) {
-          prop.vy = -prop.vy * prop.bounce;
-        } else {
-          prop.vy = 0;
-        }
-        prop.vx *= prop.friction;
-
         const halfW = Math.max(8, prop.width ? prop.width / 2 : prop.radius);
         const sample = (sx: number) => {
           const ix = Math.floor(sx);
@@ -233,15 +226,30 @@ export class PhysicsEngine {
         const slope = (((yR - yC) / (dx / 2)) + ((yC - yL) / (dx / 2))) * 0.5;
         const targetAngle = Math.max(-0.8, Math.min(0.8, Math.atan(slope)));
 
-        prop.angularVelocity += (targetAngle - prop.rotation) * 10 * dt;
-        prop.angularVelocity += (-prop.rotation) * 4 * dt;
-        prop.angularVelocity *= 0.92;
+        const cosA = Math.cos(targetAngle);
+        const sinA = Math.sin(targetAngle);
+        let along = prop.vx * cosA + prop.vy * sinA;
+        let perp = -prop.vx * sinA + prop.vy * cosA;
+
+        if (perp > 20) {
+          perp = -perp * prop.bounce;
+        } else {
+          perp = 0;
+        }
+        along *= prop.friction;
+
+        prop.vx = along * cosA - perp * sinA;
+        prop.vy = along * sinA + perp * cosA;
+
+        prop.angularVelocity += (targetAngle - prop.rotation) * 18 * dt;
+        prop.angularVelocity *= 0.9;
 
         const shouldSettle =
           (prop as any).settleAge > 1.2 &&
           Math.abs(prop.vx) < 8 &&
           Math.abs(prop.vy) < 8 &&
-          Math.abs(prop.angularVelocity) < 0.4;
+          Math.abs(prop.angularVelocity) < 0.4 &&
+          Math.abs(prop.rotation - targetAngle) < 0.2;
 
         if (shouldSettle) {
           const imgKey = prop.brandImage?.split('/').pop()?.split('.')[0] || 'brand_apple';
