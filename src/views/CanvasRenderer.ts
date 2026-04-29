@@ -1,5 +1,6 @@
 import { GameState } from '../models/GameState';
 import { AnimationController } from './AnimationController';
+import { getEquipmentDefinition } from '../equipment/EquipmentRegistry';
 
 export class CanvasRenderer {
   private canvas: HTMLCanvasElement;
@@ -41,18 +42,24 @@ export class CanvasRenderer {
       'minigun': { src: '/sprites/Worms/wmini.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'shotgun': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'rocket': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'throw': { src: '/sprites/Worms/wthrow.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'rope': { src: '/sprites/Worms/wbatrope.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       // Projectiles
       'proj_bazooka': { src: '/sprites/Weapons/missile.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'proj_minigun': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'proj_triple': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'proj_shotgun': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'proj_rocket': { src: '/sprites/Weapons/missile.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'proj_rocket': { src: '/sprites/Weapons/hmissil1.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'proj_grenade': { src: '/sprites/Weapons/grenade.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'proj_blaster': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
     });
 
     // Load brand assets for airdrops
     this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg?v=3');
     this.wormImages['brand_windows'] = this.loadImg('/brand_windows.svg?v=3');
     this.wormImages['brand_android'] = this.loadImg('/brand_android.svg?v=3');
+    this.wormImages['ropetip'] = this.loadImg('/sprites/Weapons/ropetip.png');
+    this.wormImages['ropecuff'] = this.loadImg('/sprites/Weapons/ropecuff.png');
   }
 
   public render(state: GameState): void {
@@ -103,14 +110,9 @@ export class CanvasRenderer {
       flipX = false;
       offsetY = 16;
     } else {
-      const weapon = player.getCurrentWeapon?.();
-      const weaponMap: any = {
-        'bazooka': 'bazooka',
-        'minigun': 'minigun',
-        'triple': 'shotgun',
-        'rocket': 'rocket'
-      };
-      animKey = weaponMap[weapon?.id] || 'bazooka';
+      const equipmentId = player.getCurrentEquipmentId?.() || 'bazooka';
+      const equip = getEquipmentDefinition(equipmentId);
+      animKey = equip?.aimAnimKey || 'bazooka';
       frameIndex = 15;
       offsetY = 24;
     }
@@ -541,7 +543,8 @@ export class CanvasRenderer {
       // Advanced Canvas Animation for Worms
       const isMoving = Math.abs(player.vx) > 5 && player.health > 0 && !player.isJumping;
       const isActive = player === state.getCurrentPlayer() && player.health > 0;
-      const weapon = player.getCurrentWeapon();
+      const equipmentId = player.getCurrentEquipmentId ? player.getCurrentEquipmentId() : 'bazooka';
+      const equip = getEquipmentDefinition(equipmentId);
 
       // Determine animation state
       let animKey = 'idle';
@@ -569,15 +572,8 @@ export class CanvasRenderer {
         } else {
           frameIndex = 0;
         }
-      } else if (isActive && weapon) {
-        // Aiming state
-        const weaponMap: any = {
-          'bazooka': 'bazooka',
-          'minigun': 'minigun',
-          'triple': 'shotgun',
-          'rocket': 'rocket'
-        };
-        animKey = weaponMap[weapon.id] || 'bazooka';
+      } else if (isActive && equip?.aimAnimKey) {
+        animKey = equip.aimAnimKey;
 
         // Calculate aim frame (0 to 31)
         // aimAngle is -PI/2 (up) to PI/2 (down)
@@ -612,6 +608,31 @@ export class CanvasRenderer {
         flipX,
         offsetY
       );
+
+      if (player.ropeActive) {
+        const ax = player.ropeAnchorX - player.x;
+        const ay = player.ropeAnchorY - player.y;
+        const sx = 0;
+        const sy = -player.height / 2;
+        const ex = ax;
+        const ey = ay;
+
+        this.ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(sx, sy);
+        this.ctx.lineTo(ex, ey);
+        this.ctx.stroke();
+
+        const cuff = this.wormImages['ropecuff'];
+        if (cuff?.complete) {
+          this.ctx.drawImage(cuff, sx - 10, sy - 10, 20, 20);
+        }
+        const tip = this.wormImages['ropetip'];
+        if (tip?.complete) {
+          this.ctx.drawImage(tip, ex - 10, ey - 10, 20, 20);
+        }
+      }
 
       // Draw name and health
       if (player.health > 0) {

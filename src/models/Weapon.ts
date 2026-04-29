@@ -17,57 +17,85 @@ export const WEAPONS: Record<string, Weapon> = {
   bazooka: {
     id: 'bazooka',
     name: 'Bazooka',
-    damage: 50,
-    explosionRadius: 60,
-    knockback: 300,
+    damage: 25,
+    explosionRadius: 40,
+    knockback: 220,
     windMultiplier: 1.0,
     spread: 0,
     projectilesPerShot: 1,
     color: '#FF4500', // OrangeRed
-    cooldown: 2.0,
-    chargeSpeed: 1.0, // Needs charging
+    cooldown: 1.0,
+    chargeSpeed: 1.0,
     speedModifier: 1.0
   },
   minigun: {
     id: 'minigun',
     name: 'Minigun',
-    damage: 8,
-    explosionRadius: 10,
-    knockback: 10,
+    damage: 4,
+    explosionRadius: 15,
+    knockback: 40,
     windMultiplier: 0.5,
-    spread: 5,
+    spread: 15,
     projectilesPerShot: 1,
     color: '#FFA500', // Orange
-    cooldown: 0.1, // Almost instant reload
-    chargeSpeed: 0, // Fires instantly without charging
-    speedModifier: 2.0 // Fast bullets
+    cooldown: 0.1,
+    chargeSpeed: 0,
+    speedModifier: 1.0
   },
   triple: {
     id: 'triple',
     name: 'Triple-barrel',
-    damage: 15, // Per pellet
-    explosionRadius: 25, // Small explosion per pellet
-    knockback: 100,
-    windMultiplier: 0.8,
-    spread: 15, // 15 degrees spread
+    damage: 15,
+    explosionRadius: 25,
+    knockback: 120,
+    windMultiplier: 1.0,
+    spread: 20,
     projectilesPerShot: 3,
     color: '#FFD700', // Gold
-    cooldown: 2.5,
-    chargeSpeed: 1.5, // Charges a bit faster than bazooka
+    cooldown: 1.5,
+    chargeSpeed: 1.0,
     speedModifier: 1.2
   },
   rocket: {
     id: 'rocket',
     name: 'Rocket Launcher',
-    damage: 35,
-    explosionRadius: 40,
-    knockback: 200,
-    windMultiplier: 0.2, // Less affected by wind
+    damage: 40,
+    explosionRadius: 60,
+    knockback: 320,
+    windMultiplier: 1.2,
     spread: 0,
     projectilesPerShot: 1,
     color: '#FF1493', // DeepPink
-    cooldown: 3.0,
-    chargeSpeed: 2.0, // Fast charge
-    speedModifier: 2.5 // Very fast straight trajectory
+    cooldown: 2.0,
+    chargeSpeed: 1.0,
+    speedModifier: 1.0
+  },
+  blaster: {
+    id: 'blaster',
+    name: 'Blaster',
+    damage: 10,
+    explosionRadius: 15,
+    knockback: 60,
+    windMultiplier: 0.1,
+    spread: 2,
+    projectilesPerShot: 1,
+    color: '#7FFFD4',
+    cooldown: 0.3,
+    chargeSpeed: 0,
+    speedModifier: 1.0
+  },
+  grenade: {
+    id: 'grenade',
+    name: 'Grenade',
+    damage: 35,
+    explosionRadius: 55,
+    knockback: 260,
+    windMultiplier: 0.6,
+    spread: 0,
+    projectilesPerShot: 1,
+    color: '#9ACD32',
+    cooldown: 1.5,
+    chargeSpeed: 1.0,
+    speedModifier: 0.9
   }
 };

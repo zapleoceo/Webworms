@@ -202,6 +202,7 @@ window.inputHandler = new InputHandler(window.presenter, canvas, [
   { id: 'btn-down', action: 'down' },
   { id: 'btn-jump', action: 'jump' },
   { id: 'btn-fire', action: 'fire' },
+  { id: 'btn-equip', action: 'switch' },
   { id: 'btn-switch', action: 'switchWormCycle' }
 ]);
 
@@ -747,7 +748,7 @@ function updateWormSelectionUI(state: any) {
     .filter((item: any) => item.p.team === currentTeam);
 
   const currentStateStr = teamWorms
-    .map((item: any) => `${item.index}:${item.p.health}:${state.currentPlayerIndex}:${item.p.currentWeaponIndex}:${item.p.facingRight ? 1 : 0}`)
+    .map((item: any) => `${item.index}:${item.p.health}:${state.currentPlayerIndex}:${item.p.currentEquipmentIndex}:${item.p.facingRight ? 1 : 0}`)
     .join(',');
   if (lastWormUIStateStr === currentStateStr) {
     return; // No need to re-render DOM if nothing changed

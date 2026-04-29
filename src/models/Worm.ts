@@ -1,4 +1,5 @@
 import type { Weapon } from './Weapon';
+import { getDefaultLoadout, getWeaponByEquipmentId, isWeaponEquipment } from '../equipment/EquipmentRegistry';
 
 export class Worm {
   public x: number;
@@ -30,15 +31,27 @@ export class Worm {
   public name: string;
   public unitClass: 'soldier' | 'heavy' | 'scout';
   
-  // Weapons
-  public weapons: Weapon[] = [];
-  public currentWeaponIndex: number = 0;
+  public equipmentIds: string[] = [];
+  public currentEquipmentIndex: number = 0;
   public weaponCooldowns: Record<string, number> = {};
   public maxWeaponCooldowns: Record<string, number> = {};
 
   public damageDealt: number = 0;
 
-  constructor(x: number, y: number, isDummy: boolean = false, name: string = 'Player', unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier', selectedWeapons: string[] = ['bazooka', 'blaster'], forceTeam?: string) {
+  public ropeActive: boolean = false;
+  public ropeAnchorX: number = 0;
+  public ropeAnchorY: number = 0;
+  public ropeLength: number = 0;
+
+  constructor(
+    x: number,
+    y: number,
+    isDummy: boolean = false,
+    name: string = 'Player',
+    unitClass: 'soldier' | 'heavy' | 'scout' = 'soldier',
+    equipmentIds: string[] = getDefaultLoadout(),
+    forceTeam?: string
+  ) {
     this.x = x;
     this.y = y;
     this.name = name;
@@ -81,43 +94,36 @@ export class Worm {
       this.teamColor = '#4169E1';
     }
     
-    // Load selected weapons
-    const WEAPONS: any = {
-      'bazooka': { id: 'bazooka', name: 'Bazooka', damage: 25, explosionRadius: 40, projectilesPerShot: 1, spread: 0, cooldown: 1.0, windMultiplier: 1.0 },
-      'minigun': { id: 'minigun', name: 'Minigun', damage: 4, explosionRadius: 15, projectilesPerShot: 1, spread: 15, cooldown: 0.1, windMultiplier: 0.5 },
-      'triple': { id: 'triple', name: 'Triple Shot', damage: 15, explosionRadius: 25, projectilesPerShot: 3, spread: 20, cooldown: 1.5, windMultiplier: 1.0 },
-      'rocket': { id: 'rocket', name: 'Heavy Rocket', damage: 40, explosionRadius: 60, projectilesPerShot: 1, spread: 0, cooldown: 2.0, windMultiplier: 1.2 },
-      'blaster': { id: 'blaster', name: 'Blaster', damage: 10, explosionRadius: 15, projectilesPerShot: 1, spread: 2, cooldown: 0.3, windMultiplier: 0.1 }
-    };
-
-    for (const wid of selectedWeapons) {
-      if (WEAPONS[wid]) {
-        this.weapons.push(WEAPONS[wid]);
-        this.weaponCooldowns[wid] = 0;
-        this.maxWeaponCooldowns[wid] = WEAPONS[wid].cooldown;
-      }
-    }
-    // Fallback if none selected
-    if (this.weapons.length === 0) {
-      this.weapons.push(WEAPONS['bazooka']);
-      this.weaponCooldowns['bazooka'] = 0;
-      this.maxWeaponCooldowns['bazooka'] = WEAPONS['bazooka'].cooldown;
+    this.equipmentIds = equipmentIds.length > 0 ? [...equipmentIds] : getDefaultLoadout();
+    for (const id of this.equipmentIds) {
+      if (!isWeaponEquipment(id)) continue;
+      const w = getWeaponByEquipmentId(id);
+      if (!w) continue;
+      if (this.weaponCooldowns[id] === undefined) this.weaponCooldowns[id] = 0;
+      if (this.maxWeaponCooldowns[id] === undefined) this.maxWeaponCooldowns[id] = w.cooldown;
     }
   }
 
-  public getCurrentWeapon(): Weapon {
-    return this.weapons[this.currentWeaponIndex];
+  public getCurrentEquipmentId(): string {
+    if (this.equipmentIds.length === 0) return 'bazooka';
+    return this.equipmentIds[Math.max(0, Math.min(this.currentEquipmentIndex, this.equipmentIds.length - 1))];
   }
 
-  public switchWeapon(): void {
-    if (this.weapons.length > 0) {
-      this.currentWeaponIndex = (this.currentWeaponIndex + 1) % this.weapons.length;
+  public getCurrentWeapon(): Weapon | null {
+    const id = this.getCurrentEquipmentId();
+    if (!isWeaponEquipment(id)) return null;
+    return getWeaponByEquipmentId(id) || null;
+  }
+
+  public switchEquipment(): void {
+    if (this.equipmentIds.length > 0) {
+      this.currentEquipmentIndex = (this.currentEquipmentIndex + 1) % this.equipmentIds.length;
     }
   }
 
-  public setWeaponIndex(index: number): void {
-    if (this.weapons.length > 0 && index >= 0 && index < this.weapons.length) {
-      this.currentWeaponIndex = index;
+  public setEquipmentIndex(index: number): void {
+    if (this.equipmentIds.length > 0 && index >= 0 && index < this.equipmentIds.length) {
+      this.currentEquipmentIndex = index;
     }
   }
 

@@ -102,8 +102,14 @@ export class MultiplayerController {
         p.aimAngle = pData.aimAngle;
         p.facingRight = pData.facingRight;
 
-        if (pData.currentWeaponIndex !== undefined) {
-          p.currentWeaponIndex = pData.currentWeaponIndex;
+        if (pData.currentEquipmentIndex !== undefined) {
+          p.currentEquipmentIndex = pData.currentEquipmentIndex;
+        }
+        if (pData.ropeActive !== undefined) {
+          p.ropeActive = pData.ropeActive;
+          p.ropeAnchorX = pData.ropeAnchorX || 0;
+          p.ropeAnchorY = pData.ropeAnchorY || 0;
+          p.ropeLength = pData.ropeLength || 0;
         }
         p.team = pData.team;
         if (pData.unitClass && p.unitClass !== pData.unitClass) {
@@ -144,13 +150,13 @@ export class MultiplayerController {
     for (let i = 0; i < 3; i++) {
       const s = this.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, mapSeed);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team1');
+      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'grenade', 'rope'], 'team1');
       this.presenter.state.addPlayer(p);
     }
     for (let i = 0; i < 3; i++) {
       const s = this.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, mapSeed);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, false, `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team2');
+      const p = new Worm(s.x, s.y, false, `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'grenade', 'rope'], 'team2');
       this.presenter.state.addPlayer(p);
     }
   }

@@ -5,6 +5,7 @@ import { BrandLogo } from '../models/BrandLogo';
 import { MathUtils } from '../utils/MathUtils';
 import { Random } from '../utils/Random';
 import { AudioManager } from '../utils/AudioManager';
+import { RopeTool } from '../equipment/items/RopeTool';
 
 export class PhysicsEngine {
   public gravity: number = 195; // pixels per second squared (Increased by 30% from 150)
@@ -557,6 +558,54 @@ export class PhysicsEngine {
         worm.vx += state.wind * dt * 0.5; // Worms are slightly affected by wind in the air
       }
     }
+
+    if (worm.ropeActive && worm.ropeLength > 0) {
+      RopeTool.applyConstraint(worm, state);
+    }
+  }
+
+  private getTerrainNormal(state: GameState, x: number, y: number): { nx: number; ny: number } {
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const sL = state.landscape.getMaterial(ix - 1, iy) > 0 ? 1 : 0;
+    const sR = state.landscape.getMaterial(ix + 1, iy) > 0 ? 1 : 0;
+    const sU = state.landscape.getMaterial(ix, iy - 1) > 0 ? 1 : 0;
+    const sD = state.landscape.getMaterial(ix, iy + 1) > 0 ? 1 : 0;
+
+    let nx = sL - sR;
+    let ny = sU - sD;
+    const n = Math.hypot(nx, ny);
+    if (n < 0.0001) return { nx: 0, ny: -1 };
+    nx /= n;
+    ny /= n;
+    return { nx, ny };
+  }
+
+  private bounceOnNormal(
+    proj: any,
+    nx: number,
+    ny: number,
+    bounce: number,
+    friction: number,
+    pushOut: number
+  ): void {
+    const vDotN = proj.vx * nx + proj.vy * ny;
+    let rx = proj.vx - 2 * vDotN * nx;
+    let ry = proj.vy - 2 * vDotN * ny;
+
+    rx *= bounce;
+    ry *= bounce;
+
+    const tx = -ny;
+    const ty = nx;
+    const vDotT = rx * tx + ry * ty;
+    rx -= tx * vDotT * (1 - friction);
+    ry -= ty * vDotT * (1 - friction);
+
+    proj.vx = rx;
+    proj.vy = ry;
+    proj.x += nx * pushOut;
+    proj.y += ny * pushOut;
   }
 
   private updateProjectile(proj: Projectile, state: GameState, dt: number): void {
@@ -564,6 +613,15 @@ export class PhysicsEngine {
       (proj as any).framesAlive = 0;
     }
     (proj as any).framesAlive++;
+
+    const fuseRemaining = (proj as any).fuseRemaining;
+    if (typeof fuseRemaining === 'number') {
+      (proj as any).fuseRemaining = fuseRemaining - dt;
+      if ((proj as any).fuseRemaining <= 0) {
+        this.explode(proj, state, 1.0);
+        return;
+      }
+    }
 
     proj.vy += this.gravity * dt;
     if (state.wind) {
@@ -677,6 +735,42 @@ export class PhysicsEngine {
     proj.y = hitY;
 
     if (hitTerrain || hitEntity) {
+      const isGrenade = typeof (proj as any).fuseRemaining === 'number';
+      if (isGrenade) {
+        let nx = 0;
+        let ny = -1;
+        if (hitTerrain) {
+          const n = this.getTerrainNormal(state, hitX, hitY);
+          nx = n.nx;
+          ny = n.ny;
+        } else {
+          const owner = (proj as any).owner;
+          let closest: any = null;
+          let best = Infinity;
+          for (const p of state.players) {
+            if (p.health <= 0) continue;
+            if (p === owner && (proj as any).framesAlive < 5) continue;
+            const d = MathUtils.distance(hitX, hitY, p.x, p.y);
+            if (d < best) {
+              best = d;
+              closest = p;
+            }
+          }
+          if (closest) {
+            const dx = hitX - closest.x;
+            const dy = hitY - closest.y;
+            const n = Math.hypot(dx, dy) || 1;
+            nx = dx / n;
+            ny = dy / n;
+          }
+        }
+
+        const bounce = (proj as any).bounce ?? 0.45;
+        const friction = (proj as any).friction ?? 0.85;
+        this.bounceOnNormal(proj as any, nx, ny, bounce, friction, proj.radius + 0.5);
+        return;
+      }
+
       // Determine material strength modifier for explosion radius
       let radiusModifier = 1.0;
       if (hitTerrain) {

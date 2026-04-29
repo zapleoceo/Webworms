@@ -5,6 +5,9 @@ import { Projectile } from '../models/Projectile';
 import { Random } from '../utils/Random';
 import { SoundManager } from '../utils/SoundManager';
 import { AudioManager } from '../utils/AudioManager';
+import { RopeTool } from '../equipment/items/RopeTool';
+import { GrenadeWeapon } from '../equipment/items/GrenadeWeapon';
+import { getEquipmentDefinition } from '../equipment/EquipmentRegistry';
 
 import { BrandLogo } from '../models/BrandLogo';
 
@@ -163,6 +166,17 @@ export class GamePresenter {
     // Add teams of 3 worms
     const spawnPoints: {x: number, y: number}[] = [];
     const availableClasses: ('soldier'|'heavy'|'scout')[] = ['soldier', 'heavy', 'scout'];
+    const defaultLoadout = ['bazooka', 'grenade', 'rope'];
+    const loadoutTeam1 = Array.isArray(settings?.loadout)
+      ? settings.loadout
+      : Array.isArray(settings?.loadouts?.team1)
+        ? settings.loadouts.team1
+        : defaultLoadout;
+    const loadoutTeam2 = Array.isArray(settings?.loadout)
+      ? settings.loadout
+      : Array.isArray(settings?.loadouts?.team2)
+        ? settings.loadouts.team2
+        : defaultLoadout;
 
     // Generate team classes deterministically from seed so both clients agree
     const t1Classes = [
@@ -180,7 +194,7 @@ export class GamePresenter {
     for (let i = 0; i < 3; i++) {
       const s = this.state.landscape.getSafeSpawn(spawnPoints, 150, this.state.mapSeed);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team1');
+      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, loadoutTeam1, 'team1');
       this.state.addPlayer(p);
     }
 
@@ -188,7 +202,7 @@ export class GamePresenter {
     for (let i = 0; i < 3; i++) {
       const s = this.state.landscape.getSafeSpawn(spawnPoints, 150, this.state.mapSeed);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, this.state.mode === 'training', `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'minigun', 'triple', 'rocket', 'blaster'], 'team2');
+      const p = new Worm(s.x, s.y, this.state.mode === 'training', `Enemy ${i+1}`, t2Classes[i] as any, loadoutTeam2, 'team2');
       this.state.addPlayer(p);
     }
 
@@ -433,26 +447,22 @@ export class GamePresenter {
     // Slower aim speed (Decreased by 3x for desktop precision)
     const actualAimSpeed = Math.PI / 6; // rad/sec
 
-    if (Math.abs(this.analogY) > 0.1) {
-      // Map Y (-1 to 1) to angle (-PI/2 to PI/2 rad)
-      // If Y is negative (stick pushed UP), angle should be negative (aiming UP)
-      // If Y is positive (stick pushed DOWN), angle should be positive (aiming DOWN)
+    if (player.ropeActive) {
+      const ropeRate = 220;
+      if (Math.abs(this.analogY) > 0.1) {
+        RopeTool.adjustLength(player, this.analogY * ropeRate * dt);
+      } else {
+        if (this.activeInputs.has('up')) RopeTool.adjustLength(player, -ropeRate * dt);
+        if (this.activeInputs.has('down')) RopeTool.adjustLength(player, ropeRate * dt);
+      }
+    } else if (Math.abs(this.analogY) > 0.1) {
       const targetAngle = this.analogY * (Math.PI / 2);
-
-      // Smoothly rotate towards target angle based on stick deflection (Slower for mobile precision)
       player.aimAngle += (targetAngle - player.aimAngle) * dt * 1.25;
-
-      // Clamp angle
       if (player.aimAngle < -Math.PI / 2) player.aimAngle = -Math.PI / 2;
       if (player.aimAngle > Math.PI / 2) player.aimAngle = Math.PI / 2;
     } else {
-      // Keyboard fallback
-      if (this.activeInputs.has('up')) {
-        player.updateAim(-actualAimSpeed * dt); // Rotate UP (negative)
-      }
-      if (this.activeInputs.has('down')) {
-        player.updateAim(actualAimSpeed * dt); // Rotate DOWN (positive)
-      }
+      if (this.activeInputs.has('up')) player.updateAim(-actualAimSpeed * dt);
+      if (this.activeInputs.has('down')) player.updateAim(actualAimSpeed * dt);
     }
 
     if (this.activeInputs.has('fire')) {
@@ -481,20 +491,21 @@ export class GamePresenter {
       analogSpeedMod = Math.abs(this.analogX); // The further you push, the faster you go
     }
 
-    if (isMovingLeft) {
-      player.facingRight = false;
-      if (!player.isJumping) {
-        player.vx = -maxSpeed * analogSpeedMod; // Instant speed on ground
-      } else {
-        player.vx -= moveForce * airControl * dt; // Gradual acceleration in air
+    if (player.ropeActive) {
+      const dir = isMovingLeft ? -1 : isMovingRight ? 1 : 0;
+      if (dir !== 0) {
+        player.facingRight = dir > 0;
+        const pump = 420 * analogSpeedMod * (player.speedMultiplier || 1);
+        RopeTool.pump(player, dir, pump, dt);
       }
+    } else if (isMovingLeft) {
+      player.facingRight = false;
+      if (!player.isJumping) player.vx = -maxSpeed * analogSpeedMod;
+      else player.vx -= moveForce * airControl * dt;
     } else if (isMovingRight) {
       player.facingRight = true;
-      if (!player.isJumping) {
-        player.vx = maxSpeed * analogSpeedMod; // Instant speed on ground
-      } else {
-        player.vx += moveForce * airControl * dt; // Gradual acceleration in air
-      }
+      if (!player.isJumping) player.vx = maxSpeed * analogSpeedMod;
+      else player.vx += moveForce * airControl * dt;
     }
 
     // Clamp air speed so they don't accelerate infinitely
@@ -626,25 +637,28 @@ export class GamePresenter {
         }
         break;
       case 'fire':
-        if (isActive) {
-          // Start charging - if aimPower is 0, give it a tiny bit so it registers as a shot
-          if (player.aimPower === 0) {
-            player.aimPower = 1;
+        if (player.getCurrentEquipmentId() === 'rope') {
+          if (isActive) {
+            if (player.ropeActive) RopeTool.detach(player);
+            else RopeTool.tryAttach(player, this.state);
           }
+          break;
+        }
+        if (isActive) {
+          if (player.aimPower === 0) player.aimPower = 1;
         } else {
-          // If releasing fire, shoot the weapon
           this.fireWeapon(player);
         }
         break;
       case 'switch':
         if (isActive && typeof payload === 'number') {
-          // Directly switch to weapon index
-          player.setWeaponIndex(payload);
+          player.setEquipmentIndex(payload);
           this.updateMobileWeaponIcon(player);
         } else if (isActive) {
-          if (this.hasFiredThisTurn) break;
+          if (player.ropeActive) RopeTool.detach(player);
+          if (this.hasFiredThisTurn) break
 
-          player.switchWeapon();
+          player.switchEquipment();
           this.updateMobileWeaponIcon(player);
         }
         break;
@@ -761,11 +775,8 @@ export class GamePresenter {
       }
 
       const baseRad = globalAimAngle;
-    let speed = power * 4.2; // Reduced by 30% from the previous 6x multiplier
-
-    if (weapon.id === 'blaster') {
-      speed = 750; // Laser goes fast but not infinite
-    }
+    let speed = power * 4.2 * (weapon.speedModifier || 1);
+    if (weapon.id === 'blaster') speed = 750;
 
     // Spawn perfectly at the end of the visual gun barrel
     // Worm is drawn from bottom center (player.height / 2), so we offset Y
@@ -784,8 +795,9 @@ export class GamePresenter {
 
       const vx = Math.cos(rad) * speed;
       const vy = Math.sin(rad) * speed; // Negative is up, positive is down
-
-      const proj = new Projectile(startX, startY, vx, vy, weapon);
+      const proj = weapon.id === 'grenade'
+        ? GrenadeWeapon.createProjectile(startX, startY, vx, vy, weapon)
+        : new Projectile(startX, startY, vx, vy, weapon);
       (proj as any).owner = player; // Attach owner for stats tracking
       this.state.projectiles.push(proj);
     }
@@ -838,27 +850,19 @@ export class GamePresenter {
   public updateMobileWeaponIcon(player: any) {
     const iconEl = document.getElementById('current-weapon-icon') as HTMLImageElement;
     if (iconEl && player) {
-      const weapon = player.getCurrentWeapon();
-      if (weapon) {
-        // Map weapon id to actual original sprite filename
-        const weaponSpriteMap: Record<string, string> = {
-          'bazooka': 'bazooka.1.png',
-          'minigun': 'minigun.1.png',
-          'triple': 'shotgun.1.png',
-          'rocket': 'hmissile.1.png',
-          'blaster': 'laser.1.png'
-        };
-        const spriteName = weaponSpriteMap[weapon.id] || 'bazooka.1.png';
-        const url = `/sprites/Weapon Icons/${spriteName}`;
-        
-        // Ensure transparent sprite is loaded
-        if ((window as any).getTransparentSprite) {
-          (window as any).getTransparentSprite(url, 60, 60, (newUrl: string) => {
-            iconEl.src = newUrl;
-          });
-        } else {
-          iconEl.src = url;
-        }
+      const equipmentId = player.getCurrentEquipmentId?.() || 'bazooka';
+      const def = getEquipmentDefinition(equipmentId);
+      if (!def) return;
+
+      const selectedUrl = def.icon.endsWith('.1.png') ? def.icon.replace('.1.png', '.2.png') : def.icon;
+      const url = selectedUrl;
+
+      if ((window as any).getTransparentSprite) {
+        (window as any).getTransparentSprite(url, 60, 60, (newUrl: string) => {
+          iconEl.src = newUrl;
+        });
+      } else {
+        iconEl.src = url;
       }
     }
   }

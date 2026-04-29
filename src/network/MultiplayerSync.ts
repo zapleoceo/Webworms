@@ -476,7 +476,11 @@ export class MultiplayerSync {
           facingRight: p.facingRight,
           team: p.team,
           unitClass: p.unitClass,
-          currentWeaponIndex: p.currentWeaponIndex
+          currentEquipmentIndex: p.currentEquipmentIndex,
+          ropeActive: p.ropeActive,
+          ropeAnchorX: p.ropeAnchorX,
+          ropeAnchorY: p.ropeAnchorY,
+          ropeLength: p.ropeLength
         })),
         projectiles: state.projectiles.map((p: any) => ({
           x: p.x,

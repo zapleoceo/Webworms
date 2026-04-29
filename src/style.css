@@ -846,6 +846,19 @@ canvas {
   background: rgba(255, 215, 0, 0.9);
 }
 
+.btn-equip {
+  width: 60px;
+  height: 60px;
+  background: rgba(138, 43, 226, 0.6);
+  padding: 0;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.btn-equip:active {
+  background: rgba(138, 43, 226, 0.9);
+}
+
 /* Weapon Selection UI in Main Menu */
 .weapon-selection {
   display: flex;
