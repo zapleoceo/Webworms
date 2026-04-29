@@ -1,6 +1,6 @@
 import { getWeaponByEquipmentId, isWeaponEquipment } from '../equipment/EquipmentRegistry';
 import type { Weapon } from '../models/Weapon';
-import type { AIDifficulty, BotConfig } from './BotConfig';
+import type { BotConfig } from './BotConfig';
 import { DEFAULT_BOT_CONFIG } from './BotConfig';
 import { gunMuzzlePosition, simulateTrajectory, type TerrainQuery } from './PhysicsHelper';
 
@@ -164,6 +164,7 @@ function chooseBotActionScored(
           const isKill = expectedDamage >= target.health && target.health > 0;
           let score = expectedDamage * botCfg.scoring.damageWeight - miss * botCfg.scoring.missWeight;
           if (isKill) score += botCfg.scoring.killBonus;
+          score += (rng() - 0.5) * 1e-6;
 
           const safeRadius = weapon.explosionRadius + botCfg.scoring.safeExtraRadius;
           let unsafe = false;
