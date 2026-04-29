@@ -39,6 +39,6 @@ describe('signaling', () => {
     const ctx2 = createExecutionContext();
     const wsRes: any = await worker.fetch(new Request(`http://example.com/api/rooms/${roomId}/ws`, { method: 'GET' }), env as any, ctx2 as any);
     await waitOnExecutionContext(ctx2);
-    expect(wsRes.status).toBe(501);
+    expect(wsRes.status).toBe(400);
   });
 });

@@ -1,10 +1,28 @@
+const appendCors = (res: Response, corsHeaders: Record<string, string>): Response => {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(corsHeaders)) headers.set(k, v);
+  const ws = (res as any).webSocket;
+  if (ws) {
+    return new Response(null, { status: 101, webSocket: ws, headers });
+  }
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+};
+
+const getStub = (env: any, roomId: string) => {
+  const id = env.SIGNALING.idFromName(roomId);
+  return env.SIGNALING.get(id);
+};
+
 export async function handleSignalingWS(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
   const url = new URL(request.url);
   const parts = url.pathname.split('/');
   const roomId = parts[3];
   const type = parts[4];
   if (!roomId || type !== 'ws') return new Response('Bad Request', { status: 400, headers: corsHeaders });
-  return new Response('WebSocket signaling disabled', { status: 501, headers: corsHeaders });
+  if (request.headers.get('Upgrade') !== 'websocket') return new Response('Expected websocket', { status: 400, headers: corsHeaders });
+  const stub = getStub(env, roomId);
+  const res = await stub.fetch(`https://do/${roomId}/ws`, request);
+  return appendCors(res, corsHeaders);
 }
 
 export async function handleSignalingSnapshot(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {

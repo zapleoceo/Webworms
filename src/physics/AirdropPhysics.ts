@@ -11,8 +11,11 @@ export function integrateAirdrop(
 
   logo.vy += gravity * dt;
 
+  const hw = logo.collisionWidth / 2;
+  const hh = logo.collisionHeight / 2;
+
   let unstickSteps = 0;
-  while (aabbHits(landscape, logo.x, logo.y, logo.collisionWidth / 2, logo.collisionHeight / 2) && unstickSteps < 6) {
+  while (obbHits(landscape, logo.x, logo.y, hw, hh, logo.angle) && unstickSteps < 16) {
     logo.y -= 1;
     unstickSteps++;
   }
@@ -31,15 +34,26 @@ export function integrateAirdrop(
       if (axis === 'x') logo.x += dir * m;
       else logo.y += dir * m;
 
-      const hit = aabbHits(landscape, logo.x, logo.y, logo.collisionWidth / 2, logo.collisionHeight / 2);
+      const hit = obbHits(landscape, logo.x, logo.y, hw, hh, logo.angle);
       if (hit) {
         if (axis === 'x') {
           logo.x -= dir * m;
-          logo.vx = 0;
+          logo.vx *= -0.15;
+          if (Math.abs(logo.vx) < 5) logo.vx = 0;
         } else {
           logo.y -= dir * m;
           if (dir > 0) logo.touchedGround = true;
-          logo.vy = 0;
+          if (dir > 0) {
+            const impact = logo.vy;
+            const restitution = 0.08;
+            if (impact > 260) {
+              logo.vy = -Math.min(impact * restitution, 80);
+            } else {
+              logo.vy = 0;
+            }
+          } else {
+            logo.vy = 0;
+          }
         }
         break;
       }
@@ -51,7 +65,7 @@ export function integrateAirdrop(
   sweepAxis('y', dy);
 
   if (logo.touchedGround) {
-    const slope = estimateSlope(landscape, logo.x, logo.y, logo.collisionWidth / 2, logo.collisionHeight / 2);
+    const slope = estimateSlope(landscape, logo.x, logo.y, hw, hh);
     logo.vx += slope * gravity * dt * 0.25;
 
     const friction = 18;
@@ -100,19 +114,27 @@ export function estimateSlope(
   return (yR - yL) / Math.max(1, hx * 2);
 }
 
-export function aabbHits(landscape: Landscape, cx: number, cy: number, hx: number, hy: number): boolean {
-  const left = Math.floor(cx - hx);
-  const right = Math.floor(cx + hx);
-  const top = Math.floor(cy - hy);
-  const bottom = Math.floor(cy + hy);
+export function obbHits(landscape: Landscape, cx: number, cy: number, hw: number, hh: number, angle: number): boolean {
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
 
-  for (let x = left; x <= right; x += 1) {
-    if (top >= 0 && landscape.getMaterial(x, top) > 0) return true;
-    if (bottom >= 0 && landscape.getMaterial(x, bottom) > 0) return true;
+  const check = (lx: number, ly: number): boolean => {
+    const x = Math.floor(cx + lx * cosA - ly * sinA);
+    const y = Math.floor(cy + lx * sinA + ly * cosA);
+    return landscape.getMaterial(x, y) > 0;
+  };
+
+  const sx = Math.max(1, Math.floor(hw));
+  const sy = Math.max(1, Math.floor(hh));
+  const step = 1;
+
+  for (let i = -sx; i <= sx; i += step) {
+    if (check(i, -sy)) return true;
+    if (check(i, sy)) return true;
   }
-  for (let y = Math.max(0, top); y <= bottom; y += 1) {
-    if (landscape.getMaterial(left, y) > 0) return true;
-    if (landscape.getMaterial(right, y) > 0) return true;
+  for (let j = -sy; j <= sy; j += step) {
+    if (check(-sx, j)) return true;
+    if (check(sx, j)) return true;
   }
   return false;
 }

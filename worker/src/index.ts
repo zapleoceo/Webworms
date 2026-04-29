@@ -67,6 +67,92 @@ function logEvent(event: string, data: Record<string, unknown>) {
   console.log(JSON.stringify({ event, ts: Date.now(), ...data }));
 }
 
+let dbInitPromise: Promise<void> | null = null;
+let dbInitDb: Env['DB'] | null = null;
+
+async function ensureDbInitialized(env: Env): Promise<void> {
+  const existing = await env.DB.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='MatchmakingQueue'`
+  ).first<any>();
+
+  if (existing && existing.name === 'MatchmakingQueue') {
+    dbInitDb = env.DB;
+    dbInitPromise = Promise.resolve();
+    return dbInitPromise;
+  }
+
+  dbInitPromise = (async () => {
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS Settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      )
+    `).run();
+
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS Logos (
+        id TEXT PRIMARY KEY,
+        image_data TEXT,
+        width INTEGER,
+        height INTEGER,
+        hardness INTEGER
+      )
+    `).run();
+
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO Settings (key, value) VALUES ('turn_time', '30')
+    `).run();
+
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS Maps (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        image_data TEXT NOT NULL,
+        width INTEGER NOT NULL DEFAULT 1500,
+        height INTEGER NOT NULL DEFAULT 800,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS Users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE,
+        username TEXT UNIQUE,
+        password_hash TEXT,
+        is_active BOOLEAN DEFAULT FALSE,
+        is_admin BOOLEAN DEFAULT FALSE,
+        verification_token TEXT,
+        play_time_balance INTEGER DEFAULT 3600,
+        access_allowed BOOLEAN DEFAULT TRUE,
+        last_login DATETIME,
+        last_daily_reset DATETIME DEFAULT CURRENT_TIMESTAMP,
+        referred_by TEXT,
+        matches_played INTEGER DEFAULT 0,
+        matches_won INTEGER DEFAULT 0,
+        total_damage_dealt INTEGER DEFAULT 0,
+        total_kills INTEGER DEFAULT 0,
+        premium_until INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS MatchmakingQueue (
+        room_id TEXT PRIMARY KEY,
+        host_id TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    try {
+      await env.DB.exec(`ALTER TABLE Users ADD COLUMN premium_until INTEGER DEFAULT 0;`);
+    } catch {}
+  })();
+  dbInitDb = env.DB;
+  return dbInitPromise;
+}
+
 export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     // Run daily balance reset
@@ -93,75 +179,7 @@ export default {
     const url = new URL(request.url);
 
     try {
-      await env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS Settings (
-          key TEXT PRIMARY KEY,
-          value TEXT
-        )
-      `).run();
-      
-      await env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS Logos (
-          id TEXT PRIMARY KEY,
-          image_data TEXT,
-          width INTEGER,
-          height INTEGER,
-          hardness INTEGER
-        )
-      `).run();
-      
-      // Insert default turn time if not exists
-      await env.DB.prepare(`
-        INSERT OR IGNORE INTO Settings (key, value) VALUES ('turn_time', '30')
-      `).run();
-
-      await env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS Maps (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          image_data TEXT NOT NULL,
-          width INTEGER NOT NULL DEFAULT 1500,
-          height INTEGER NOT NULL DEFAULT 800,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `).run();
-
-      await env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS Users (
-          id TEXT PRIMARY KEY,
-          email TEXT UNIQUE,
-          username TEXT UNIQUE,
-          password_hash TEXT,
-          is_active BOOLEAN DEFAULT FALSE,
-          is_admin BOOLEAN DEFAULT FALSE,
-          verification_token TEXT,
-          play_time_balance INTEGER DEFAULT 3600,
-          access_allowed BOOLEAN DEFAULT TRUE,
-          last_login DATETIME,
-          last_daily_reset DATETIME DEFAULT CURRENT_TIMESTAMP,
-          referred_by TEXT,
-          matches_played INTEGER DEFAULT 0,
-          matches_won INTEGER DEFAULT 0,
-          total_damage_dealt INTEGER DEFAULT 0,
-          total_kills INTEGER DEFAULT 0,
-          premium_until INTEGER DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `).run();
-
-      await env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS MatchmakingQueue (
-          room_id TEXT PRIMARY KEY,
-          host_id TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `).run();
-
-      try {
-        await env.DB.exec(`ALTER TABLE Users ADD COLUMN premium_until INTEGER DEFAULT 0;`);
-      } catch (e) {
-        // Column probably already exists, ignore
-      }
+      await ensureDbInitialized(env);
 
       let response: Response;
 

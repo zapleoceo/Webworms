@@ -184,9 +184,8 @@ export class MultiplayerSync {
     const type = this.isHost ? 'ice-host' : 'ice-client';
     const batch = this.localIceCandidates.slice(this.lastSentIceIndex);
     this.lastSentIceIndex = this.localIceCandidates.length;
-    batch.forEach((c) => {
-      this.sendSignal(type, c);
-    });
+    if (batch.length === 0) return;
+    this.sendSignal(type, batch);
   }
 
   private startPollingSignaling() {
@@ -196,7 +195,7 @@ export class MultiplayerSync {
     const poll = async () => {
       if (!this.roomId || !this.peerConnection) return;
       try {
-        const res = await fetch(`/api/rooms/${this.roomId}/snapshot?t=${Date.now()}`, { method: 'GET' });
+        const res = await fetch(`/api/rooms/${this.roomId}/snapshot`, { method: 'GET' });
         if (!res.ok) return;
         const data = await res.json();
         const str = JSON.stringify(data || {});
@@ -217,7 +216,7 @@ export class MultiplayerSync {
         }
       } catch {}
     };
-    this.pollingTimer = window.setInterval(poll, 500);
+    this.pollingTimer = window.setInterval(poll, 2000);
     poll();
     this.signalingReady = true;
     this.flushLocalIce();
@@ -422,6 +421,7 @@ export class MultiplayerSync {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     APIClient.heartbeatRoom(this.roomId, this.localPlayerId);
     this.heartbeatInterval = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
       APIClient.heartbeatRoom(this.roomId!, this.localPlayerId!).then((res: any) => {
         if (res && res.matched) {
           this.stopHeartbeat();
@@ -432,7 +432,7 @@ export class MultiplayerSync {
           if (this.onMatchmakingExpired) this.onMatchmakingExpired();
         }
       });
-    }, 5000);
+    }, 15000);
   }
 
   private stopHeartbeat() {

@@ -1,5 +1,9 @@
 export class SignalingDO {
   private sockets = new Set<WebSocket>();
+  private offer: any = null;
+  private answer: any = null;
+  private iceHost: any[] = [];
+  private iceClient: any[] = [];
   constructor(private state: DurableObjectState, private env: any) {}
 
   async fetch(request: Request): Promise<Response> {
@@ -11,11 +15,10 @@ export class SignalingDO {
     if (!type) return new Response('Bad Request', { status: 400 });
 
     if (type === 'snapshot') {
-      const offer = await this.getJson('offer');
-      const answer = await this.getJson('answer');
-      const iceHost = await this.getJson('ice-host');
-      const iceClient = await this.getJson('ice-client');
-      return new Response(JSON.stringify({ offer, answer, iceHost, iceClient }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(
+        JSON.stringify({ offer: this.offer, answer: this.answer, iceHost: this.iceHost, iceClient: this.iceClient }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
     if (type === 'signal' && request.method === 'POST') {
@@ -70,22 +73,15 @@ export class SignalingDO {
     if (msgType !== 'offer' && msgType !== 'answer' && msgType !== 'ice-host' && msgType !== 'ice-client') return;
 
     if (msgType === 'ice-host' || msgType === 'ice-client') {
-      if (!Array.isArray(payload) && payload && typeof payload === 'object') {
-        const existing = await this.state.storage.get<string>(msgType);
-        let arr: any[] = [];
-        if (typeof existing === 'string') {
-          try {
-            const parsed = JSON.parse(existing);
-            if (Array.isArray(parsed)) arr = parsed;
-          } catch {}
-        }
-        arr.push(payload);
-        await this.state.storage.put(msgType, JSON.stringify(arr));
-      } else {
-        await this.state.storage.put(msgType, JSON.stringify(payload ?? []));
+      const list = msgType === 'ice-host' ? this.iceHost : this.iceClient;
+      if (Array.isArray(payload)) {
+        for (const c of payload) list.push(c);
+      } else if (payload) {
+        list.push(payload);
       }
     } else {
-      await this.state.storage.put(msgType, JSON.stringify(payload ?? null));
+      if (msgType === 'offer') this.offer = payload ?? null;
+      else this.answer = payload ?? null;
     }
 
     if (msgType === 'answer' && roomId) {
@@ -116,22 +112,8 @@ export class SignalingDO {
   }
 
   private async sendSnapshot(ws: WebSocket) {
-    const offer = await this.getJson('offer');
-    const answer = await this.getJson('answer');
-    const iceHost = await this.getJson('ice-host');
-    const iceClient = await this.getJson('ice-client');
     try {
-      ws.send(JSON.stringify({ type: 'snapshot', payload: { offer, answer, iceHost, iceClient } }));
+      ws.send(JSON.stringify({ type: 'snapshot', payload: { offer: this.offer, answer: this.answer, iceHost: this.iceHost, iceClient: this.iceClient } }));
     } catch {}
-  }
-
-  private async getJson(key: string): Promise<any> {
-    const data = await this.state.storage.get<string>(key);
-    if (typeof data !== 'string') return null;
-    try {
-      return JSON.parse(data);
-    } catch {
-      return null;
-    }
   }
 }

@@ -77,15 +77,11 @@ export class BrandLogo {
       const baseW = Math.max(10, (this.spriteCrop.w / this.spriteSourceW) * this.width);
       const baseH = Math.max(10, (this.spriteCrop.h / this.spriteSourceH) * this.height);
 
-      const cosA = Math.abs(Math.cos(this.angle));
-      const sinA = Math.abs(Math.sin(this.angle));
-      this.collisionWidth = baseW * cosA + baseH * sinA;
-      this.collisionHeight = baseW * sinA + baseH * cosA;
+      this.collisionWidth = baseW;
+      this.collisionHeight = baseH;
     } else {
-      const cosA = Math.abs(Math.cos(this.angle));
-      const sinA = Math.abs(Math.sin(this.angle));
-      this.collisionWidth = this.width * cosA + this.height * sinA;
-      this.collisionHeight = this.width * sinA + this.height * cosA;
+      this.collisionWidth = this.width;
+      this.collisionHeight = this.height;
     }
 
     const newHy = this.collisionHeight / 2;
@@ -165,7 +161,11 @@ export class BrandLogo {
 
     if (img && img.complete && img.naturalWidth !== 0) {
       if (crop) {
-        ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, -this.width / 2, -this.height / 2, this.width, this.height);
+        const sw = this.spriteSourceW || img.naturalWidth;
+        const sh = this.spriteSourceH || img.naturalHeight;
+        const dw = (crop.w / sw) * this.width;
+        const dh = (crop.h / sh) * this.height;
+        ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, -dw / 2, -dh / 2, dw, dh);
       } else {
         ctx.drawImage(img, -this.width / 2, -this.height / 2, this.width, this.height);
       }

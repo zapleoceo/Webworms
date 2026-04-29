@@ -164,7 +164,7 @@ export class PhysicsEngine {
         if (hitWorm) continue;
 
         AudioManager.playLand();
-        state.landscape.stampImage(logo.sprite, logo.x, logo.y, logo.width, logo.height, logo.angle, (logo as any).spriteCrop);
+        state.landscape.stampImage(logo.sprite, logo.x, logo.y, logo.collisionWidth, logo.collisionHeight, logo.angle, (logo as any).spriteCrop);
         stamped.push(logo);
         // Shake camera slightly
         if (this.onHeavyImpact) {
@@ -331,8 +331,8 @@ export class PhysicsEngine {
       if (worm.health <= 0) continue;
 
       for (const logo of state.brandLogos) {
-        const halfW = logo.width / 2;
-        const halfH = logo.height / 2;
+        const halfW = logo.collisionWidth / 2;
+        const halfH = logo.collisionHeight / 2;
         
         // Use a simple AABB collision check
         const inX = worm.x + worm.width / 2 > logo.x - halfW && worm.x - worm.width / 2 < logo.x + halfW;
@@ -732,8 +732,8 @@ export class PhysicsEngine {
       // 3. Check BrandLogos
       if (state.brandLogos) {
         for (const logo of state.brandLogos) {
-          const halfW = logo.width / 2;
-          const halfH = logo.height / 2;
+          const halfW = logo.collisionWidth / 2;
+          const halfH = logo.collisionHeight / 2;
 
           // Transform checkX, checkY into logo's local space to account for its rotation
           const dx = checkX - logo.x;
