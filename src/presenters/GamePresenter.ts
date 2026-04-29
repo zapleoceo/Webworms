@@ -490,7 +490,7 @@ export class GamePresenter {
       const dir = isMovingLeft ? -1 : isMovingRight ? 1 : 0;
       if (dir !== 0) {
         player.facingRight = dir > 0;
-        const pump = 420 * analogSpeedMod * (player.speedMultiplier || 1);
+        const pump = 240 * analogSpeedMod * (player.speedMultiplier || 1);
         RopeTool.pump(player, dir, pump, dt);
       }
     } else if (isMovingLeft) {

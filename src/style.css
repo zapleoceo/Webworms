@@ -905,6 +905,7 @@ canvas {
   padding: 0;
   position: relative;
   transition: all 0.2s ease;
+  overflow: hidden;
 }
 
 .worm-btn.active {
@@ -927,7 +928,7 @@ canvas {
   image-rendering: pixelated;
   background: transparent;
   display: block;
-  transform: translateY(-18px);
+  transform: translateY(-10px);
 }
 
 .worm-btn .hp {

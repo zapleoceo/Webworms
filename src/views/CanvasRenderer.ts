@@ -111,13 +111,28 @@ export class CanvasRenderer {
       offsetY = 16;
     } else {
       const equipmentId = player.getCurrentEquipmentId?.() || 'bazooka';
-      const equip = getEquipmentDefinition(equipmentId);
-      animKey = equip?.aimAnimKey || 'bazooka';
-      frameIndex = 15;
-      offsetY = 24;
+      if (equipmentId === 'rope') {
+        animKey = 'idle';
+        frameIndex = 0;
+        offsetY = 24;
+      } else {
+        const equip = getEquipmentDefinition(equipmentId);
+        animKey = equip?.aimAnimKey || 'bazooka';
+        frameIndex = 15;
+        offsetY = 24;
+      }
     }
 
     this.animCtrl.drawFrame(ctx, animKey, frameIndex, size / 2, size - offsetY - offsetUp, scale, flipX, offsetY);
+    const imgData = ctx.getImageData(0, 0, size, size);
+    const data = imgData.data;
+    const bgR = data[0], bgG = data[1], bgB = data[2];
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.abs(data[i] - bgR) < 10 && Math.abs(data[i + 1] - bgG) < 10 && Math.abs(data[i + 2] - bgB) < 10) {
+        data[i + 3] = 0;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
     return canvas.toDataURL('image/png');
   }
 
@@ -654,6 +669,19 @@ export class CanvasRenderer {
         this.ctx.lineTo(ex, ey);
         this.ctx.stroke();
 
+        this.animCtrl.drawFrame(this.ctx, 'ropecuff', 0, sx, sy, 0.35, false, 30);
+        this.animCtrl.drawFrame(this.ctx, 'ropetip', 0, ex, ey, 0.35, false, 30);
+      } else if ((player as any).ropeCastTime && (player as any).ropeCastTime > 0) {
+        const sx = 0;
+        const sy = -player.height / 2;
+        const ex = (player as any).ropeCastX - player.x;
+        const ey = (player as any).ropeCastY - player.y;
+        this.ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(sx, sy);
+        this.ctx.lineTo(ex, ey);
+        this.ctx.stroke();
         this.animCtrl.drawFrame(this.ctx, 'ropecuff', 0, sx, sy, 0.35, false, 30);
         this.animCtrl.drawFrame(this.ctx, 'ropetip', 0, ex, ey, 0.35, false, 30);
       }

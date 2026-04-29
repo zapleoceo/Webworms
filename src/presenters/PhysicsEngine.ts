@@ -604,6 +604,11 @@ export class PhysicsEngine {
     if (worm.ropeActive && worm.ropeLength > 0) {
       RopeTool.applyConstraint(worm, state, dt);
     }
+
+    if (worm.ropeCastTime && worm.ropeCastTime > 0) {
+      worm.ropeCastTime -= dt;
+      if (worm.ropeCastTime < 0) worm.ropeCastTime = 0;
+    }
   }
 
   private getTerrainNormal(state: GameState, x: number, y: number): { nx: number; ny: number } {
