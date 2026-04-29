@@ -69,12 +69,35 @@ export class BrandLogo {
       if (a < 0) a += TAU;
       return a - Math.PI;
     };
+    let oldHy = this.collisionHeight / 2;
+
     if (this.spriteCrop && this.spriteSourceW && this.spriteSourceH) {
-      this.collisionWidth = Math.max(10, (this.spriteCrop.w / this.spriteSourceW) * this.width);
-      this.collisionHeight = Math.max(10, (this.spriteCrop.h / this.spriteSourceH) * this.height);
+      const baseW = Math.max(10, (this.spriteCrop.w / this.spriteSourceW) * this.width);
+      const baseH = Math.max(10, (this.spriteCrop.h / this.spriteSourceH) * this.height);
+
+      const cosA = Math.abs(Math.cos(this.angle));
+      const sinA = Math.abs(Math.sin(this.angle));
+      this.collisionWidth = baseW * cosA + baseH * sinA;
+      this.collisionHeight = baseW * sinA + baseH * cosA;
+    } else {
+      const cosA = Math.abs(Math.cos(this.angle));
+      const sinA = Math.abs(Math.sin(this.angle));
+      this.collisionWidth = this.width * cosA + this.height * sinA;
+      this.collisionHeight = this.width * sinA + this.height * cosA;
+    }
+
+    let newHy = this.collisionHeight / 2;
+    if (newHy > oldHy && this.touchedGround) {
+      this.y -= (newHy - oldHy);
     }
 
     integrateAirdrop(this, dt, gravity, landscape);
+
+    if (this.touchedGround) {
+      this.angularVelocity *= Math.pow(0.5, dt);
+    } else {
+      this.angularVelocity *= Math.pow(0.98, dt);
+    }
 
     this.angle += this.angularVelocity * dt;
     this.angle = norm(this.angle);

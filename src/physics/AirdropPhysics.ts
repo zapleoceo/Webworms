@@ -7,6 +7,12 @@ export function integrateAirdrop(
   gravity: number,
   landscape: Landscape
 ): void {
+  let unstickSteps = 0;
+  while (aabbHits(landscape, logo.x, logo.y, logo.collisionWidth / 2, logo.collisionHeight / 2) && unstickSteps < 20) {
+    logo.y -= 1;
+    unstickSteps++;
+  }
+
   logo.vy += gravity * dt;
 
   const step = 4;
@@ -49,6 +55,23 @@ export function integrateAirdrop(
     const friction = 18;
     if (logo.vx > 0) logo.vx = Math.max(0, logo.vx - friction * dt);
     else logo.vx = Math.min(0, logo.vx + friction * dt);
+
+    const targetAngle = Math.atan(slope);
+    const TAU = Math.PI * 2;
+    const norm = (a: number) => {
+      a = (a + Math.PI) % TAU;
+      if (a < 0) a += TAU;
+      return a - Math.PI;
+    };
+    
+    const a0 = norm(targetAngle);
+    const a1 = norm(targetAngle + Math.PI);
+    const cur = logo.angle;
+    const d0 = Math.abs(norm(cur - a0));
+    const d1 = Math.abs(norm(cur - a1));
+    const bestAngle = d0 <= d1 ? a0 : a1;
+
+    logo.angularVelocity += norm(bestAngle - logo.angle) * 15 * dt;
   } else {
     logo.vx *= Math.pow(0.995, dt);
   }
