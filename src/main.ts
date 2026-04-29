@@ -872,10 +872,7 @@ function bindPresenterEvents() {
     // Update Turn Timer & Wind
     if (turnTimer) {
       let timeStr = '';
-      if (state.projectiles && state.projectiles.length > 0) {
-        timeStr = 'FLIGHT';
-        turnTimer.style.fontSize = '12px';
-      } else if (state.turnTimeLeft === Infinity) {
+      if (state.turnTimeLeft === Infinity) {
         timeStr = '∞';
         turnTimer.style.fontSize = '18px';
       } else {

@@ -238,11 +238,13 @@ export class GamePresenter {
   public loop(time: number): void {
     if (!this.isRunning) return;
     
-    const dt = (time - this.lastTime) / 1000;
+    const dtReal = (time - this.lastTime) / 1000;
     this.lastTime = time;
 
     try {
-      this.update(Math.min(dt, 0.1)); // cap dt
+      const dtSim = Math.min(dtReal, 0.1);
+      const dtTimer = Math.min(dtReal, 0.25);
+      this.update(dtSim, dtTimer);
       this.render();
       this.postRender();
     } catch (e) {
@@ -252,11 +254,11 @@ export class GamePresenter {
     requestAnimationFrame(this.loop.bind(this));
   }
 
-  public update(dt: number): void {
+  public update(dt: number, dtTimer: number = dt): void {
     if (this.isPaused) return;
 
     if (this.isRunning) {
-      this.matchDuration += dt;
+      this.matchDuration += dtTimer;
     }
 
     // Only host computes physics and updates timers
@@ -271,23 +273,30 @@ export class GamePresenter {
       this.physics.update(this.state, dt);
       
       const isMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0;
+      const hasProjectiles = this.state.projectiles.length > 0;
+      const isStable = !hasProjectiles;
 
-      // Handle Turn Timers (only if game isn't resolving physics)
-      if (!isMoving && !wasMoving) {
-        // Decrease timer only when nobody is moving
-        if (this.turnTimeLeft > 0 && this.state.mode !== 'training') {
-          this.turnTimeLeft -= dt;
-          if (this.turnTimeLeft <= 0) {
-            this.turnTimeLeft = 0;
-            this.nextTurn();
-          }
+      if (this.turnTimeLeft > 0 && this.state.mode !== 'training') {
+        this.turnTimeLeft -= dtTimer;
+        if (this.turnTimeLeft <= 0) {
+          this.turnTimeLeft = 0;
         }
       }
       this.state.turnTimeLeft = this.turnTimeLeft;
       this.state.hasFiredThisTurn = this.hasFiredThisTurn;
 
+      if (this.state.mode !== 'training' && this.hasFiredThisTurn && isStable) {
+        this.nextTurn();
+        return;
+      }
+
+      if (this.turnTimeLeft <= 0 && this.state.mode !== 'training' && isStable) {
+        this.nextTurn();
+        return;
+      }
+
       // Airdrop Logic
-      this.state.airdropTimer -= dt;
+      this.state.airdropTimer -= dtTimer;
       if (this.state.airdropTimer <= 0) {
         this.spawnAirdrop();
         this.state.airdropTimer = 20 + Random.next() * 25; // 20 to 45 seconds
@@ -882,6 +891,10 @@ export class GamePresenter {
   public nextTurn() {
     const totalPlayers = this.state.players.length;
     if (totalPlayers === 0) return;
+
+    this.activeInputs.clear();
+    this.analogX = 0;
+    this.analogY = 0;
 
     this.hasFiredThisTurn = false;
     this.state.hasFiredThisTurn = false;

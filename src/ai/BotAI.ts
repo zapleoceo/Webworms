@@ -19,6 +19,7 @@ export interface BotWormSnapshot {
   y: number;
   height: number;
   health: number;
+  speedMultiplier?: number;
   equipmentIds: string[];
   weaponCooldowns: Record<string, number>;
 }
@@ -29,6 +30,11 @@ export interface BotAction {
   aimAngle: number;
   power: number;
   targetId: string;
+}
+
+export interface BotPlan {
+  moveTo?: { x: number; y: number };
+  action: BotAction;
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -119,13 +125,16 @@ function pickWeaponByRange(weapons: Array<{ index: number; weapon: Weapon; id: s
   return pick(['grenade', 'triple', 'blaster', 'bazooka', 'minigun', 'rocket']).concat(weapons);
 }
 
-export function chooseBotAction(
+type ScoredAction = { action: BotAction; score: number; impact: { x: number; y: number } };
+
+function chooseBotActionScored(
   difficulty: AIDifficulty,
   rng: Rng,
   world: BotWorldSnapshot,
   shooter: BotWormSnapshot,
-  enemies: BotWormSnapshot[]
-): BotAction | null {
+  enemies: BotWormSnapshot[],
+  allies: BotWormSnapshot[]
+): ScoredAction | null {
   const cfg = AI_DIFFICULTY[difficulty] || AI_DIFFICULTY.medium;
   const target = chooseTarget(difficulty, rng, shooter, enemies);
   if (!target) return null;
@@ -141,7 +150,7 @@ export function chooseBotAction(
 
   const targetRadius = 10;
 
-  let best: { score: number; global: number; power: number; weaponIndex: number } | null = null;
+  let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weapon: Weapon } | null = null;
 
   for (let wIdx = 0; wIdx < ordered.length; wIdx++) {
     const w = ordered[wIdx];
@@ -173,10 +182,17 @@ export function chooseBotAction(
         const hitBonus = res.hitTarget ? 2000 : 0;
         const splash = weapon.explosionRadius * 0.75;
         const splashScore = Math.max(0, splash - miss) * 4;
-        const score = hitBonus + splashScore - miss;
+        let score = hitBonus + splashScore - miss;
+
+        const safeRadius = weapon.explosionRadius + 14;
+        for (const ally of allies) {
+          if (ally.health <= 0) continue;
+          const d = Math.hypot(res.end.x - ally.x, res.end.y - ally.y);
+          if (d < safeRadius) score -= 100000;
+        }
 
         if (!best || score > best.score) {
-          best = { score, global, power, weaponIndex: w.index };
+          best = { score, global, power, weaponIndex: w.index, impact: res.end, weapon };
         }
       }
     }
@@ -196,11 +212,15 @@ export function chooseBotAction(
   const local = localAimFromGlobal(noisyGlobal);
 
   return {
-    weaponIndex: best.weaponIndex,
-    facingRight: local.facingRight,
-    aimAngle: local.aimAngle,
-    power: noisyPower,
-    targetId: target.id
+    action: {
+      weaponIndex: best.weaponIndex,
+      facingRight: local.facingRight,
+      aimAngle: local.aimAngle,
+      power: noisyPower,
+      targetId: target.id
+    },
+    score: best.score,
+    impact: best.impact
   };
 }
 
@@ -216,6 +236,7 @@ export function buildSnapshotFromState(
     y: p.y,
     height: p.height || 10,
     health: p.health || 0,
+    speedMultiplier: p.speedMultiplier || 1,
     equipmentIds: Array.isArray(p.equipmentIds) ? p.equipmentIds : [],
     weaponCooldowns: p.weaponCooldowns || {}
   }));
@@ -234,4 +255,68 @@ export function terrainFromLandscape(landscape: any): TerrainQuery {
       return landscape.getMaterial(x, y) > 0;
     }
   };
+}
+
+function surfaceY(terrain: TerrainQuery, x: number): number | null {
+  const px = Math.floor(x);
+  if (px < 0 || px >= terrain.width) return null;
+  for (let y = 0; y < terrain.height; y++) {
+    if (terrain.isSolid(px, y)) return y;
+  }
+  return null;
+}
+
+export function chooseBotAction(
+  difficulty: AIDifficulty,
+  rng: Rng,
+  world: BotWorldSnapshot,
+  shooter: BotWormSnapshot,
+  enemies: BotWormSnapshot[]
+): BotAction | null {
+  const allies = [shooter];
+  return chooseBotActionScored(difficulty, rng, world, shooter, enemies, allies)?.action || null;
+}
+
+export function chooseBotPlan(
+  difficulty: AIDifficulty,
+  rng: Rng,
+  world: BotWorldSnapshot,
+  shooter: BotWormSnapshot,
+  enemies: BotWormSnapshot[],
+  allies: BotWormSnapshot[]
+): BotPlan | null {
+  const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
+  const maxMoveDist = Math.max(0, maxSpeed * 25);
+  const xs = [
+    shooter.x,
+    shooter.x - maxMoveDist * 0.9,
+    shooter.x - maxMoveDist * 0.6,
+    shooter.x - maxMoveDist * 0.3,
+    shooter.x + maxMoveDist * 0.3,
+    shooter.x + maxMoveDist * 0.6,
+    shooter.x + maxMoveDist * 0.9
+  ].map(x => clamp(x, 30, world.terrain.width - 30));
+
+  const uniq: number[] = [];
+  for (const x of xs) {
+    if (uniq.every(u => Math.abs(u - x) > 24)) uniq.push(x);
+  }
+
+  let best: { plan: BotPlan; score: number } | null = null;
+
+  for (const x of uniq) {
+    const ySolid = surfaceY(world.terrain, x);
+    const y = ySolid === null ? shooter.y : (ySolid - 1 - shooter.height / 2);
+    const moveDist = Math.hypot(x - shooter.x, y - shooter.y);
+    const movePenalty = moveDist * 0.35;
+    const s2: BotWormSnapshot = { ...shooter, x, y };
+    const scored = chooseBotActionScored(difficulty, rng, world, s2, enemies, allies);
+    if (!scored) continue;
+    const totalScore = scored.score - movePenalty;
+    if (!best || totalScore > best.score) {
+      best = { score: totalScore, plan: { moveTo: moveDist > 20 ? { x, y } : undefined, action: scored.action } };
+    }
+  }
+
+  return best?.plan || null;
 }
