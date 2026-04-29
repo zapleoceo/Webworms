@@ -40,6 +40,10 @@ export class BotTurnController {
   private lastCostAt: number = -999;
   private lastCost: number = Infinity;
   private lastReplanAt: number = -999;
+  private lastMoveDir: 'left' | 'right' | null = null;
+  private dirFlipWindowAt: number = -999;
+  private dirFlipCount: number = 0;
+  private lastDx: number = 0;
   private lastMovementCfg: { maxStrategyAttemptsPerTurn: number; maxStrategyFailuresPerTurn: number; replanWhenBannedAtLeast: number; replanCooldownSeconds: number } = {
     maxStrategyAttemptsPerTurn: 3,
     maxStrategyFailuresPerTurn: 3,
@@ -91,6 +95,10 @@ export class BotTurnController {
       this.lastCostAt = -999;
       this.lastCost = Infinity;
       this.lastReplanAt = -999;
+      this.lastMoveDir = null;
+      this.dirFlipWindowAt = -999;
+      this.dirFlipCount = 0;
+      this.lastDx = 0;
       presenter.handleInput?.('left', false, true);
       presenter.handleInput?.('right', false, true);
       presenter.handleInput?.('up', false, true);
@@ -259,10 +267,32 @@ export class BotTurnController {
     const dir: 'left' | 'right' = dx < 0 ? 'left' : 'right';
     const dxAbs = Math.abs(dx);
 
-    if (dxAbs < 24 && Math.abs(dy) < 26) return false;
+    const prevDx = this.lastDx;
+    this.lastDx = dx;
+    if ((dxAbs < 24 && Math.abs(dy) < 26) || (Math.sign(prevDx) !== 0 && Math.sign(prevDx) !== Math.sign(dx) && dxAbs < 90)) return false;
 
     if (player.ropeActive) {
       this.executeRope(presenter, player, moveTo, dir, now, dt);
+      return true;
+    }
+
+    if (this.lastMoveDir && this.lastMoveDir !== dir) {
+      if (this.dirFlipWindowAt < 0 || now - this.dirFlipWindowAt > 1.4) {
+        this.dirFlipWindowAt = now;
+        this.dirFlipCount = 0;
+      }
+      this.dirFlipCount += 1;
+    }
+    this.lastMoveDir = dir;
+
+    if (this.dirFlipCount >= 4 && (now - this.lastReplanAt) > this.lastMovementCfg.replanCooldownSeconds) {
+      this.lastReplanAt = now;
+      this.dirFlipWindowAt = now;
+      this.dirFlipCount = 0;
+      this.bannedTurn.add('walk');
+      this.strategy = null;
+      this.plannedThisTurn = false;
+      this.plan = null;
       return true;
     }
 
