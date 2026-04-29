@@ -251,6 +251,240 @@ function surfaceY(terrain: TerrainQuery, x: number): number | null {
   return null;
 }
 
+type PathPlan = { reachable: boolean; cost: number; next?: { x: number; y: number } };
+
+function buildSurfacePathPlanner(
+  terrain: TerrainQuery,
+  shooter: BotWormSnapshot,
+  moveSeconds: number,
+  ropeAttachBudget: number
+): (targetX: number) => PathPlan {
+  const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
+  const maxMoveDist = Math.max(0, maxSpeed * Math.max(0, moveSeconds));
+  const hasRope = Array.isArray(shooter.equipmentIds) && shooter.equipmentIds.includes('rope') && ropeAttachBudget > 0;
+  const ropeRange = 252 * 0.85;
+  const ropeBoost = hasRope ? (ropeRange * Math.min(2, Math.max(0, ropeAttachBudget))) : 0;
+
+  const step = 24;
+  const span = Math.min(terrain.width, maxMoveDist + ropeBoost + 260);
+  const minX = clamp(shooter.x - span, 30, terrain.width - 30);
+  const maxX = clamp(shooter.x + span, 30, terrain.width - 30);
+  const n = Math.max(2, Math.floor((maxX - minX) / step) + 1);
+
+  const xs: number[] = new Array(n);
+  const ys: Array<number | null> = new Array(n);
+  const syCache = new Map<number, number | null>();
+  const getSY = (x: number): number | null => {
+    const k = Math.floor(x);
+    const c = syCache.get(k);
+    if (c !== undefined) return c;
+    const v = surfaceY(terrain, x);
+    syCache.set(k, v);
+    return v;
+  };
+
+  for (let i = 0; i < n; i++) {
+    const x = clamp(minX + i * step, 30, terrain.width - 30);
+    xs[i] = x;
+    const sy = getSY(x);
+    ys[i] = sy === null ? null : (sy - 1 - shooter.height / 2);
+  }
+
+  const startIdx = Math.max(0, Math.min(n - 1, Math.round((shooter.x - minX) / step)));
+  const isValid = (i: number) => ys[i] !== null;
+  const headClear = (x: number, y: number, dx: number): boolean => {
+    const dir = dx >= 0 ? 1 : -1;
+    const checksX = [x, x + dir * (shooter.height + 8)];
+    const checksY = [y - shooter.height * 0.6, y - shooter.height * 1.2];
+    for (const cx of checksX) {
+      const px = Math.floor(cx);
+      if (px < 0 || px >= terrain.width) return false;
+      for (const cy of checksY) {
+        const py = Math.floor(cy);
+        if (py < 0) continue;
+        if (terrain.isSolid(px, py)) return false;
+      }
+    }
+    return true;
+  };
+
+  const walkMaxStepUp = 26;
+  const walkMaxStepDown = 46;
+  const jumpMaxDx = 160;
+  const ropeMaxDx = 320;
+  const jumpPenalty = 160;
+  const ropePenalty = 220;
+  const cliffPenalty = 240;
+
+  const neighbors = (i: number): Array<{ j: number; w: number }> => {
+    const out: Array<{ j: number; w: number }> = [];
+    if (!isValid(i)) return out;
+    const xi = xs[i];
+    const yi = ys[i] as number;
+
+    const addWalk = (j: number) => {
+      if (j < 0 || j >= n) return;
+      if (!isValid(j)) return;
+      const xj = xs[j];
+      const yj = ys[j] as number;
+      const dy = yj - yi;
+      if (dy < -walkMaxStepUp || dy > walkMaxStepDown) return;
+      if (!headClear(xj, yj, xj - xi)) return;
+      out.push({ j, w: Math.abs(xj - xi) + Math.abs(dy) * 0.6 });
+    };
+
+    addWalk(i - 1);
+    addWalk(i + 1);
+
+    const addJumpOrRope = (j: number, penalty: number) => {
+      if (j < 0 || j >= n) return;
+      if (!isValid(j)) return;
+      const xj = xs[j];
+      const yj = ys[j] as number;
+      const dx = xj - xi;
+      if (!headClear(xj, yj, dx)) return;
+      out.push({ j, w: Math.abs(dx) + penalty + Math.abs(yj - yi) * 0.25 });
+    };
+
+    const maxJumpSteps = Math.max(2, Math.floor(jumpMaxDx / step));
+    for (let k = 2; k <= maxJumpSteps; k++) {
+      const j = i + k;
+      if (j >= n) break;
+      if (!isValid(j)) continue;
+      const mid = i + Math.floor(k / 2);
+      const midSy = mid >= 0 && mid < n ? ys[mid] : null;
+      if (midSy !== null) continue;
+      addJumpOrRope(j, jumpPenalty);
+      break;
+    }
+    for (let k = 2; k <= maxJumpSteps; k++) {
+      const j = i - k;
+      if (j < 0) break;
+      if (!isValid(j)) continue;
+      const mid = i - Math.floor(k / 2);
+      const midSy = mid >= 0 && mid < n ? ys[mid] : null;
+      if (midSy !== null) continue;
+      addJumpOrRope(j, jumpPenalty);
+      break;
+    }
+
+    if (hasRope) {
+      const maxRopeSteps = Math.max(3, Math.floor(ropeMaxDx / step));
+      for (let k = 3; k <= maxRopeSteps; k++) {
+        const j = i + k;
+        if (j >= n) break;
+        if (!isValid(j)) continue;
+        let gap = false;
+        for (let t = i + 1; t < j; t++) {
+          if (!isValid(t)) {
+            gap = true;
+            break;
+          }
+        }
+        if (!gap) continue;
+        addJumpOrRope(j, ropePenalty);
+        break;
+      }
+      for (let k = 3; k <= maxRopeSteps; k++) {
+        const j = i - k;
+        if (j < 0) break;
+        if (!isValid(j)) continue;
+        let gap = false;
+        for (let t = j + 1; t < i; t++) {
+          if (!isValid(t)) {
+            gap = true;
+            break;
+          }
+        }
+        if (!gap) continue;
+        addJumpOrRope(j, ropePenalty);
+        break;
+      }
+    }
+
+    const belowIdx = i + 1;
+    if (belowIdx < n && isValid(belowIdx)) {
+      const yj = ys[belowIdx] as number;
+      if (yj - yi > 170) out.push({ j: belowIdx, w: cliffPenalty });
+    }
+
+    return out;
+  };
+
+  const dist: number[] = new Array(n).fill(Infinity);
+  const prev: number[] = new Array(n).fill(-1);
+  const visited: boolean[] = new Array(n).fill(false);
+
+  if (isValid(startIdx)) dist[startIdx] = 0;
+
+  for (let iter = 0; iter < n; iter++) {
+    let u = -1;
+    let best = Infinity;
+    for (let i = 0; i < n; i++) {
+      if (visited[i]) continue;
+      const d = dist[i];
+      if (d < best) {
+        best = d;
+        u = i;
+      }
+    }
+    if (u < 0 || best === Infinity) break;
+    visited[u] = true;
+    for (const { j, w } of neighbors(u)) {
+      const nd = best + w;
+      if (nd < dist[j]) {
+        dist[j] = nd;
+        prev[j] = u;
+      }
+    }
+  }
+
+  const toIdx = (x: number): number => {
+    const i = Math.round((x - minX) / step);
+    return Math.max(0, Math.min(n - 1, i));
+  };
+
+  return (targetX: number): PathPlan => {
+    const ti = toIdx(targetX);
+    if (!isValid(startIdx) || !isValid(ti) || dist[ti] === Infinity) return { reachable: false, cost: Infinity };
+    if (ti === startIdx || prev[ti] === -1) return { reachable: true, cost: dist[ti] };
+    let cur = ti;
+    let parent = prev[cur];
+    while (parent !== -1 && parent !== startIdx) {
+      cur = parent;
+      parent = prev[cur];
+    }
+    const nx = xs[cur];
+    const ny = ys[cur] as number;
+    return { reachable: true, cost: dist[ti], next: { x: nx, y: ny } };
+  };
+}
+
+export function debugSurfacePathMatrix(
+  terrain: TerrainQuery,
+  xs: number[],
+  shooterTemplate: Omit<BotWormSnapshot, 'x' | 'y' | 'id'>,
+  moveSeconds: number,
+  ropeAttachBudget: number
+): { unreachable: Array<{ from: number; to: number }>; costs: number[][] } {
+  const costs: number[][] = [];
+  const unreachable: Array<{ from: number; to: number }> = [];
+  for (let i = 0; i < xs.length; i++) {
+    const sy = surfaceY(terrain, xs[i]);
+    const y = sy === null ? 0 : (sy - 1 - shooterTemplate.height / 2);
+    const shooter: BotWormSnapshot = { ...shooterTemplate, id: String(i), x: xs[i], y };
+    const plan = buildSurfacePathPlanner(terrain, shooter, moveSeconds, ropeAttachBudget);
+    const row: number[] = [];
+    for (let j = 0; j < xs.length; j++) {
+      const r = plan(xs[j]);
+      row.push(r.cost);
+      if (!r.reachable) unreachable.push({ from: i, to: j });
+    }
+    costs.push(row);
+  }
+  return { unreachable, costs };
+}
+
 export function pickDigPoint(
   terrain: TerrainQuery,
   shooter: { x: number; y: number; height: number },
@@ -346,13 +580,16 @@ export function chooseBotPlan(
   const nearDist = 170;
   const retreatPenaltyPerPx = 2.0;
 
+  const planPathToX = buildSurfacePathPlanner(world.terrain, shooter, moveSeconds, ropeAttachBudget);
+
   let best: { plan: BotPlan; score: number } | null = null;
 
   for (const x of uniq) {
     const ySolid = surfaceY(world.terrain, x);
     const y = ySolid === null ? shooter.y : (ySolid - 1 - shooter.height / 2);
-    const moveDist = Math.hypot(x - shooter.x, y - shooter.y);
-    const movePenalty = moveDist * botCfg.scoring.movePenaltyPerPx;
+    const path = planPathToX(x);
+    if (!path.reachable) continue;
+    const movePenalty = path.cost * botCfg.scoring.movePenaltyPerPx;
     const s2: BotWormSnapshot = { ...shooter, x, y };
     const scored = chooseBotActionScored(rng, world, s2, enemies, allies, botCfg);
     if (!scored) continue;
@@ -360,7 +597,7 @@ export function chooseBotPlan(
     const retreatPenalty = (d0 < nearDist && d1 > d0) ? ((d1 - d0) * retreatPenaltyPerPx) : 0;
     const totalScore = scored.score - movePenalty - retreatPenalty;
     if (!best || totalScore > best.score) {
-      best = { score: totalScore, plan: { moveTo: moveDist > 20 ? { x, y } : undefined, action: scored.action } };
+      best = { score: totalScore, plan: { moveTo: path.next, action: scored.action } };
     }
   }
 

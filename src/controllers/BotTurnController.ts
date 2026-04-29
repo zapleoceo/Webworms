@@ -52,6 +52,23 @@ export class BotTurnController {
     replanCooldownSeconds: 1.2
   };
 
+  private debugEnabled(): boolean {
+    try {
+      const loc = (globalThis as any)?.location?.search || '';
+      if (typeof loc === 'string' && loc.includes('bot_debug=1')) return true;
+      return (globalThis as any)?.localStorage?.getItem('bot_debug') === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  private debug(event: string, data: any) {
+    if (!this.debugEnabled()) return;
+    try {
+      console.log('[BOT]', event, data);
+    } catch {}
+  }
+
   public update(presenter: any, isWorldBusy: boolean): void {
     if (!presenter?.isRunning) return;
     if (!presenter?.isHost) return;
@@ -101,6 +118,7 @@ export class BotTurnController {
       this.dirFlipCount = 0;
       this.lastDx = 0;
       this.ropeStallCount = 0;
+      this.debug('turn_start', { idx: curIdx, name: player.name, x: Math.round(player.x), y: Math.round(player.y) });
       presenter.handleInput?.('left', false, true);
       presenter.handleInput?.('right', false, true);
       presenter.handleInput?.('up', false, true);
@@ -156,6 +174,7 @@ export class BotTurnController {
         if (plan) {
           this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power } };
           this.moveStartedAt = now;
+          this.debug('plan', { moveTo: plan.moveTo ? { x: Math.round(plan.moveTo.x), y: Math.round(plan.moveTo.y) } : null, weaponIndex: plan.action.weaponIndex, targetId: plan.action.targetId, ropeRemaining });
         } else if (botCfg.dig.enabled && this.digShotsThisTurn < botCfg.dig.maxShotsPerTurn) {
           const dig = chooseDigAction(rng, snap.world, shooter, enemies, allies, botCfg);
           if (dig) {
@@ -163,6 +182,7 @@ export class BotTurnController {
             this.fireAction(presenter, noisy);
             this.firedThisTurn = true;
             this.digShotsThisTurn += 1;
+            this.debug('dig_fire', { weaponIndex: noisy.weaponIndex });
           }
         }
       }
@@ -295,6 +315,7 @@ export class BotTurnController {
       this.strategy = null;
       this.plannedThisTurn = false;
       this.plan = null;
+      this.debug('replan', { reason: 'dir_flip', banned: Array.from(this.bannedTurn) });
       return true;
     }
 
@@ -309,6 +330,7 @@ export class BotTurnController {
         this.lastReplanAt = now;
         this.plannedThisTurn = false;
         this.plan = null;
+        this.debug('replan', { reason: 'box_stuck', banned: Array.from(this.bannedTurn) });
       }
       return true;
     }
@@ -364,6 +386,7 @@ export class BotTurnController {
     this.strategyCost0 = this.estimateCost(presenter, player, moveTo, now);
     this.strategyAttemptsTurn[strategy] = (this.strategyAttemptsTurn[strategy] || 0) + 1;
     this.matchAttempts[strategy] = (this.matchAttempts[strategy] || 0) + 1;
+    this.debug('strategy', { strategy, attemptsTurn: this.strategyAttemptsTurn[strategy], banned: Array.from(this.bannedTurn) });
   }
 
   private evaluateStrategyProgress(presenter: any, player: any, moveTo: { x: number; y: number }, now: number) {
@@ -399,6 +422,7 @@ export class BotTurnController {
       this.lastReplanAt = now;
       this.plannedThisTurn = false;
       this.plan = null;
+      this.debug('replan', { reason: 'banned_threshold', banned: Array.from(this.bannedTurn) });
     }
   }
 

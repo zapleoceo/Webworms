@@ -16,12 +16,14 @@ import { BotTurnController } from './controllers/BotTurnController';
 import { getAIDifficulty, setAIDifficulty } from './ai/AIStorage';
 import { normalizeBotConfig } from './ai/BotConfig';
 import type { AIDifficulty } from './ai/AIDifficulty';
+import { debugSurfacePathMatrix, terrainFromLandscape } from './ai/BotAI';
 
 declare global {
   interface Window {
     presenter: GamePresenter;
     renderer: CanvasRenderer;
     inputHandler: InputHandler;
+    botDebugMatrix?: () => any;
   }
 }
 
@@ -32,7 +34,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260428_0802';
+  const buildVersion = '20260429_1838';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -290,6 +292,50 @@ canvas.height = GAME_HEIGHT;
 // Set up global game objects
 const presenter = new GamePresenter(GAME_WIDTH, GAME_HEIGHT);
 window.presenter = presenter;
+
+window.botDebugMatrix = () => {
+  const state: any = window.presenter?.state;
+  const landscape = state?.landscape;
+  if (!landscape) return null;
+  const terrain = terrainFromLandscape(landscape);
+  const seed = state.mapSeed || 1;
+  const rng = (() => {
+    let s = (seed ^ 0x9e3779b9) >>> 0;
+    return () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  })();
+  const surfaceY = (x: number): number | null => {
+    const px = Math.floor(x);
+    if (px < 0 || px >= landscape.width) return null;
+    for (let y = 0; y < landscape.height; y++) {
+      if (landscape.getMaterial(px, y) > 0) return y;
+    }
+    return null;
+  };
+  const xs: number[] = [];
+  for (let tries = 0; tries < 600 && xs.length < 10; tries++) {
+    const x = 40 + rng() * (landscape.width - 80);
+    const sy = surfaceY(x);
+    if (sy === null) continue;
+    if (xs.every(v => Math.abs(v - x) > 90)) xs.push(x);
+  }
+  const shooterTemplate = {
+    team: 'team2' as const,
+    x: 0,
+    y: 0,
+    height: 10,
+    health: 100,
+    speedMultiplier: 1,
+    equipmentIds: ['rope', 'grenade', 'bazooka'],
+    weaponCooldowns: {}
+  };
+  const res = debugSurfacePathMatrix(terrain, xs, shooterTemplate, 20, 4);
+  return { xs: xs.map(v => Math.round(v)), unreachable: res.unreachable.length, unreachablePairs: res.unreachable.slice(0, 20) };
+};
 
 window.addEventListener('resize', () => {
   // We no longer change internal canvas resolution. CSS object-fit handles responsive scaling.
