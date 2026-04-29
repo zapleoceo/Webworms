@@ -398,15 +398,16 @@ export class GamePresenter {
     else if (Math.abs(preVx) > 1) dir = Math.sign(preVx);
 
     const runRatio = Math.min(1, Math.abs(preVx) / Math.max(1, maxSpeed));
-    const minAngle = 6 * (Math.PI / 180);
-    const maxAngle = 55 * (Math.PI / 180);
+    const minAngle = 10 * (Math.PI / 180);
+    const maxAngle = 72 * (Math.PI / 180);
     const theta = minAngle + (maxAngle - minAngle) * runRatio;
 
-    const baseSpeed = Math.abs(player.jumpForce) * 1.7;
-    const speedScale = 1 + 0.35 * runRatio;
+    const baseSpeed = Math.abs(player.jumpForce) * 1.2;
+    const speedScale = 1 + 0.25 * runRatio;
     const jumpSpeed = baseSpeed * speedScale;
 
-    const vx = preVx * 0.9 + dir * jumpSpeed * Math.sin(theta);
+    const horizontalBoost = 1.25;
+    const vx = preVx * 0.95 + dir * jumpSpeed * Math.sin(theta) * horizontalBoost;
     const vy = -jumpSpeed * Math.cos(theta);
     return { vx, vy };
   }
