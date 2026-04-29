@@ -151,6 +151,8 @@ export class CanvasRenderer {
         if (bounds) {
           crop = bounds;
           logo.spriteCrop = bounds;
+          logo.spriteSourceW = img.naturalWidth;
+          logo.spriteSourceH = img.naturalHeight;
           const scaleX = logo.width / img.naturalWidth;
           const scaleY = logo.height / img.naturalHeight;
           logo.collisionWidth = Math.max(10, bounds.w * scaleX);
@@ -655,17 +657,21 @@ export class CanvasRenderer {
       );
 
       if (player.ropeActive) {
-        const ax = player.ropeAnchorX - player.x;
-        const ay = player.ropeAnchorY - player.y;
         const sx = 0;
         const sy = -player.height / 2;
-        const ex = ax;
-        const ey = ay;
-
         this.ctx.strokeStyle = 'rgba(255,255,255,0.8)';
         this.ctx.lineWidth = 2;
         this.ctx.beginPath();
         this.ctx.moveTo(sx, sy);
+
+        const nodes = (player as any).ropeNodes as Array<{ x: number; y: number }> | undefined;
+        if (Array.isArray(nodes)) {
+          for (const n of nodes) {
+            this.ctx.lineTo(n.x - player.x, n.y - player.y);
+          }
+        }
+        const ex = player.ropeAnchorX - player.x;
+        const ey = player.ropeAnchorY - player.y;
         this.ctx.lineTo(ex, ey);
         this.ctx.stroke();
 
@@ -674,8 +680,12 @@ export class CanvasRenderer {
       } else if ((player as any).ropeCastTime && (player as any).ropeCastTime > 0) {
         const sx = 0;
         const sy = -player.height / 2;
-        const ex = (player as any).ropeCastX - player.x;
-        const ey = (player as any).ropeCastY - player.y;
+        const dur = (player as any).ropeCastDuration || 0.18;
+        const t = Math.max(0, Math.min(1, 1 - ((player as any).ropeCastTime / dur)));
+        const tx = (player as any).ropeCastX;
+        const ty = (player as any).ropeCastY;
+        const ex = (tx - player.x) * t;
+        const ey = (ty - player.y) * t;
         this.ctx.strokeStyle = 'rgba(255,255,255,0.8)';
         this.ctx.lineWidth = 2;
         this.ctx.beginPath();

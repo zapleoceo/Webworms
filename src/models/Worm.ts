@@ -43,8 +43,10 @@ export class Worm {
   public ropeAnchorY: number = 0;
   public ropeLength: number = 0;
   public ropeCastTime: number = 0;
+  public ropeCastDuration: number = 0;
   public ropeCastX: number = 0;
   public ropeCastY: number = 0;
+  public ropeNodes: Array<{ x: number; y: number }> = [];
 
   constructor(
     x: number,

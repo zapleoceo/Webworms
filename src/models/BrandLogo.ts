@@ -1,4 +1,5 @@
 import { Landscape } from './Landscape';
+import { integrateAirdrop } from '../physics/AirdropPhysics';
 
 export class BrandLogo {
   public sprite: string;
@@ -23,6 +24,8 @@ export class BrandLogo {
   public age: number = 0;
   public touchedGround: boolean = false;
   public spriteCrop?: { x: number; y: number; w: number; h: number };
+  public spriteSourceW?: number;
+  public spriteSourceH?: number;
   public stationaryTime: number = 0;
   public lastX: number = 0;
   public lastY: number = 0;
@@ -51,7 +54,7 @@ export class BrandLogo {
     if (this.health < 0) this.health = 0;
   }
 
-  public update(dt: number, gravity: number, landscape: Landscape, otherLogos: BrandLogo[]): void {
+  public update(dt: number, gravity: number, landscape: Landscape, _otherLogos: BrandLogo[]): void {
     // Shake and bounce decay
     if (this.hitShake > 0) this.hitShake -= dt * 2;
     if (this.bounceTime > 0) this.bounceTime -= dt * 3;
@@ -60,112 +63,21 @@ export class BrandLogo {
 
     this.age += dt;
 
-    this.vy += gravity * dt;
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
-    this.angle += this.angularVelocity * dt;
     const TAU = Math.PI * 2;
     const norm = (a: number) => {
       a = (a + Math.PI) % TAU;
       if (a < 0) a += TAU;
       return a - Math.PI;
     };
+    if (this.spriteCrop && this.spriteSourceW && this.spriteSourceH) {
+      this.collisionWidth = Math.max(10, (this.spriteCrop.w / this.spriteSourceW) * this.width);
+      this.collisionHeight = Math.max(10, (this.spriteCrop.h / this.spriteSourceH) * this.height);
+    }
+
+    integrateAirdrop(this, dt, gravity, landscape);
+
+    this.angle += this.angularVelocity * dt;
     this.angle = norm(this.angle);
-
-    // Check collision with landscape (simple rect check)
-    let collision = false;
-    let collisionY = this.y;
-
-    const halfW = this.collisionWidth / 2;
-    const halfH = this.collisionHeight / 2;
-
-    // Check bottom edge
-    for (let dx = -halfW; dx <= halfW; dx += 10) {
-      const testX = Math.floor(this.x + dx);
-      const testY = Math.floor(this.y + halfH);
-
-      if (testY < 0) continue;
-      if (landscape.isSolid(testX, testY)) {
-        collision = true;
-        // Find exact surface
-        let searchY = testY;
-        while (landscape.isSolid(testX, searchY) && searchY > 0) {
-          searchY--;
-        }
-        if (searchY < collisionY) {
-          collisionY = searchY;
-        }
-      }
-    }
-
-    // Check collision with other settled logos
-    for (const other of otherLogos) {
-      if (other !== this && !other.isDynamic) {
-        // AABB collision
-        if (this.x - halfW < other.x + other.width/2 &&
-            this.x + halfW > other.x - other.width/2 &&
-            this.y + halfH > other.y - other.height/2 &&
-            this.y - halfH < other.y + other.height/2) {
-          collision = true;
-          collisionY = other.y - other.height/2 - halfH;
-        }
-      }
-    }
-
-    if (collision) {
-      this.touchedGround = true;
-      const supportY = (sx: number): number | null => {
-        const ix = Math.floor(sx);
-        const startY = Math.floor(this.y + halfH);
-        for (let y = startY; y < Math.min(landscape.height - 1, startY + 40); y++) {
-          if (landscape.isSolid(ix, y)) {
-            let yy = y;
-            let steps = 0;
-            while (landscape.isSolid(ix, yy) && yy > 0 && steps < 80) {
-              yy--;
-              steps++;
-            }
-            return yy;
-          }
-        }
-        return null;
-      };
-
-      const yL = supportY(this.x - halfW);
-      const yR = supportY(this.x + halfW);
-      const hasL = yL !== null;
-      const hasR = yR !== null;
-
-      const baseAngle = (hasL && hasR)
-        ? Math.max(-0.6, Math.min(0.6, Math.atan2((yR as number) - (yL as number), Math.max(1, halfW * 2))))
-        : 0;
-      const a0 = norm(baseAngle);
-      const a1 = norm(baseAngle + Math.PI);
-      const cur = this.angle;
-      const d0 = Math.abs(norm(cur - a0));
-      const d1 = Math.abs(norm(cur - a1));
-      const targetAngle = d0 <= d1 ? a0 : a1;
-
-      if (Math.abs(this.vy) > 50) {
-        this.vy = -this.vy * 0.12;
-      } else {
-        this.vy = 0;
-      }
-      if (hasL && hasR) {
-        const slope = ((yR as number) - (yL as number)) / Math.max(1, halfW * 2);
-        this.vx += slope * gravity * dt * 0.22;
-      } else if (hasL !== hasR) {
-        const dir = hasL ? 1 : -1;
-        this.angularVelocity += dir * 2.2 * dt;
-        this.vx += dir * 40 * dt;
-      }
-
-      this.vx *= 0.9;
-      this.y = collisionY;
-      
-      this.angularVelocity += norm(targetAngle - this.angle) * 6 * dt;
-      this.angularVelocity *= 0.96;
-    }
 
     const moved = Math.hypot(this.x - this.lastX, this.y - this.lastY);
     const spun = Math.abs(norm(this.angle - this.lastAngle));
