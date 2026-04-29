@@ -23,6 +23,10 @@ export class BrandLogo {
   public age: number = 0;
   public touchedGround: boolean = false;
   public spriteCrop?: { x: number; y: number; w: number; h: number };
+  public stationaryTime: number = 0;
+  public lastX: number = 0;
+  public lastY: number = 0;
+  public lastAngle: number = 0;
 
   constructor(sprite: string, x: number, y: number, vx: number, vy: number, angle: number, angularVelocity: number) {
     this.sprite = sprite;
@@ -37,6 +41,9 @@ export class BrandLogo {
     this.height = 50;
     this.collisionWidth = this.width;
     this.collisionHeight = this.height;
+    this.lastX = x;
+    this.lastY = y;
+    this.lastAngle = angle;
   }
 
   public takeDamage(amount: number): void {
@@ -107,19 +114,31 @@ export class BrandLogo {
 
     if (collision) {
       this.touchedGround = true;
-      const sampleY = (sx: number): number => {
+      const supportY = (sx: number): number | null => {
         const ix = Math.floor(sx);
-        let y = Math.floor(this.y + halfH);
-        let steps = 0;
-        while (landscape.isSolid(ix, y) && y > 0 && steps < 60) {
-          y--;
-          steps++;
+        const startY = Math.floor(this.y + halfH);
+        for (let y = startY; y < Math.min(landscape.height - 1, startY + 40); y++) {
+          if (landscape.isSolid(ix, y)) {
+            let yy = y;
+            let steps = 0;
+            while (landscape.isSolid(ix, yy) && yy > 0 && steps < 80) {
+              yy--;
+              steps++;
+            }
+            return yy;
+          }
         }
-        return y;
+        return null;
       };
-      const yL = sampleY(this.x - halfW);
-      const yR = sampleY(this.x + halfW);
-      const baseAngle = Math.max(-0.6, Math.min(0.6, Math.atan2(yR - yL, Math.max(1, halfW * 2))));
+
+      const yL = supportY(this.x - halfW);
+      const yR = supportY(this.x + halfW);
+      const hasL = yL !== null;
+      const hasR = yR !== null;
+
+      const baseAngle = (hasL && hasR)
+        ? Math.max(-0.6, Math.min(0.6, Math.atan2((yR as number) - (yL as number), Math.max(1, halfW * 2))))
+        : 0;
       const a0 = norm(baseAngle);
       const a1 = norm(baseAngle + Math.PI);
       const cur = this.angle;
@@ -132,27 +151,37 @@ export class BrandLogo {
       } else {
         this.vy = 0;
       }
-      const slope = (yR - yL) / Math.max(1, halfW * 2);
-      this.vx += slope * gravity * dt * 0.18;
-      this.vx *= 0.85;
+      if (hasL && hasR) {
+        const slope = ((yR as number) - (yL as number)) / Math.max(1, halfW * 2);
+        this.vx += slope * gravity * dt * 0.22;
+      } else if (hasL !== hasR) {
+        const dir = hasL ? 1 : -1;
+        this.angularVelocity += dir * 2.2 * dt;
+        this.vx += dir * 40 * dt;
+      }
+
+      this.vx *= 0.9;
       this.y = collisionY;
       
       this.angularVelocity += norm(targetAngle - this.angle) * 6 * dt;
       this.angularVelocity *= 0.96;
+    }
 
-      const shouldForceSettle = this.touchedGround && this.age >= 8;
-      const isSlow = Math.abs(this.vx) < 3 && Math.abs(this.vy) < 3 && Math.abs(this.angularVelocity) < 0.05 && Math.abs(norm(this.angle - targetAngle)) < 0.15;
+    const moved = Math.hypot(this.x - this.lastX, this.y - this.lastY);
+    const spun = Math.abs(norm(this.angle - this.lastAngle));
+    const still = moved < 0.35 && spun < 0.01 && Math.abs(this.vx) < 6 && Math.abs(this.vy) < 6 && Math.abs(this.angularVelocity) < 0.08;
+    if (still) this.stationaryTime += dt;
+    else this.stationaryTime = 0;
+    this.lastX = this.x;
+    this.lastY = this.y;
+    this.lastAngle = this.angle;
 
-      if (shouldForceSettle || isSlow) {
-        this.isDynamic = false;
-        this.vx = 0;
-        this.vy = 0;
-        this.angularVelocity = 0;
-        this.angle = targetAngle;
-        this.bounceTime = 1.0; // Trigger small bounce effect when settling
-        
-        // Trigger dust and camera shake (handled in GamePresenter or PhysicsEngine via callbacks)
-      }
+    if (this.touchedGround && this.stationaryTime >= 2.0) {
+      this.isDynamic = false;
+      this.vx = 0;
+      this.vy = 0;
+      this.angularVelocity = 0;
+      this.bounceTime = 1.0;
     }
   }
 
