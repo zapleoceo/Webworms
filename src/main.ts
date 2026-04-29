@@ -84,7 +84,7 @@ function setLoaderDifficultyWorm(mode: 'training' | 'ai' | 'friend' | 'random') 
   }
   const d = currentAIDifficultyForMatch || getAIDifficulty();
   const src = d === 'easy' ? '/assets/ai-worms/e3.png' : d === 'medium' ? '/assets/ai-worms/m3.png' : '/assets/ai-worms/h3.png';
-  loaderWormImageEl.style.display = '';
+  loaderWormImageEl.style.display = 'block';
   loaderWormImageEl.src = src;
 }
 

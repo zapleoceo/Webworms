@@ -14,6 +14,11 @@ export class BotTurnController {
   private ropeStartedAt: number = 0;
   private lastRopeAttemptAt: number = -999;
   private digShotsThisTurn: number = 0;
+  private lastJumpAt: number = -999;
+  private lastX: number = 0;
+  private stuckTime: number = 0;
+  private ropeLastDxAbs: number = Infinity;
+  private ropeNoProgressTime: number = 0;
 
   public update(presenter: any, isWorldBusy: boolean): void {
     if (!presenter?.isRunning) return;
@@ -37,6 +42,11 @@ export class BotTurnController {
       this.ropeStartedAt = 0;
       this.lastRopeAttemptAt = -999;
       this.digShotsThisTurn = 0;
+      this.lastJumpAt = -999;
+      this.lastX = player.x;
+      this.stuckTime = 0;
+      this.ropeLastDxAbs = Infinity;
+      this.ropeNoProgressTime = 0;
       presenter.handleInput?.('left', false, true);
       presenter.handleInput?.('right', false, true);
       presenter.handleInput?.('up', false, true);
@@ -59,6 +69,7 @@ export class BotTurnController {
     const reserveSeconds = botCfg.reserveSeconds;
     const executeSeconds = Math.max(0, maxTurn - planSeconds - reserveSeconds);
     const ropeBudget = botCfg.ropeAttachLimit[difficulty] ?? 0;
+    const ropeRemaining = Math.max(0, ropeBudget - this.ropeAttachUsed);
 
     if (timeLeft <= reserveSeconds) {
       if (!isWorldBusy) {
@@ -83,7 +94,7 @@ export class BotTurnController {
       if (shooter) {
         const enemies = snap.worms.filter(w => w.team === 'team1' && w.health > 0);
         const allies = snap.worms.filter(w => w.team === 'team2' && w.health > 0);
-        const plan = chooseBotPlan(rng, snap.world, shooter, enemies, allies, botCfg, executeSeconds, ropeBudget);
+        const plan = chooseBotPlan(rng, snap.world, shooter, enemies, allies, botCfg, executeSeconds, ropeRemaining);
         if (plan) {
           this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power } };
           this.moveStartedAt = presenter.matchDuration || 0;
@@ -104,15 +115,20 @@ export class BotTurnController {
     const moveTo = this.plan.moveTo;
     const now = presenter.matchDuration || 0;
     const moveElapsed = Math.max(0, now - this.moveStartedAt);
+    const dt = Number.isFinite(presenter.deltaTime) ? presenter.deltaTime : (1 / 60);
 
     if (moveTo && moveElapsed < executeSeconds) {
       const dx = moveTo.x - player.x;
       if (Math.abs(dx) > 24) {
-        if (this.tryRopeMove(presenter, player, dx, now, ropeBudget)) return;
+        if (this.tryRopeMove(presenter, player, dx, now, ropeBudget, dt)) return;
         const dir = dx < 0 ? 'left' : 'right';
+        if (this.shouldJump(presenter, player, dir, now)) {
+          presenter.handleInput?.('jump', true, true);
+        }
         presenter.handleInput?.('left', false, true);
         presenter.handleInput?.('right', false, true);
         presenter.handleInput?.(dir, true, true);
+        this.trackStuck(player, dt);
         return;
       }
     }
@@ -120,6 +136,7 @@ export class BotTurnController {
     presenter.handleInput?.('left', false, true);
     presenter.handleInput?.('right', false, true);
     presenter.handleInput?.('up', false, true);
+    this.trackStuck(player, dt);
 
     if (!isWorldBusy) {
       const action = this.computeActionFromCurrent(presenter, botCfg) || this.plan.action;
@@ -182,23 +199,94 @@ export class BotTurnController {
     presenter.handleInput?.('fire', false, true);
   }
 
-  private tryRopeMove(presenter: any, player: any, dx: number, now: number, ropeBudget: number): boolean {
+  private shouldJump(presenter: any, player: any, dir: 'left' | 'right', now: number): boolean {
+    if (player.isJumping) return false;
+    if (now - this.lastJumpAt < 0.85) return false;
+    const ahead = (player.width || 10) + 10;
+    const x = player.x + (dir === 'right' ? 1 : -1) * ahead;
+    const yTop = player.y - (player.height || 10) / 2;
+    const yMid = player.y;
+    const yHead = yTop - 2;
+    const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
+    const solid = (xx: number, yy: number) => mat(Math.floor(xx), Math.floor(yy)) > 0;
+    const obstacle = solid(x, yMid) || solid(x, yTop) || solid(x, yHead);
+    if (obstacle) {
+      this.lastJumpAt = now;
+      return true;
+    }
+    if (this.stuckTime > 0.35) {
+      this.lastJumpAt = now;
+      this.stuckTime = 0;
+      return true;
+    }
+    return false;
+  }
+
+  private trackStuck(player: any, dt: number) {
+    const dx = Math.abs(player.x - this.lastX);
+    this.lastX = player.x;
+    if (dx < 0.08) {
+      this.stuckTime += dt;
+    } else {
+      this.stuckTime = 0;
+    }
+  }
+
+  private ropeRaycast(player: any, maxDist: number): { hit: boolean; dist: number } {
+    const baseY = player.y - player.height / 2;
+    let globalAimAngle = player.aimAngle;
+    if (!player.facingRight) globalAimAngle = Math.PI - player.aimAngle;
+    const step = 4;
+    for (let d = 12; d <= maxDist; d += step) {
+      const x = player.x + Math.cos(globalAimAngle) * d;
+      const y = baseY + Math.sin(globalAimAngle) * d;
+      if (x <= 30 || x >= this.lastLandscapeWidth - 30 || y <= 0 || y >= this.lastLandscapeHeight - 30) break;
+      if (this.lastLandscapeGetMaterial(Math.floor(x), Math.floor(y)) > 0) {
+        return { hit: true, dist: d };
+      }
+    }
+    return { hit: false, dist: maxDist };
+  }
+
+  private lastLandscapeGetMaterial: (x: number, y: number) => number = () => 0;
+  private lastLandscapeWidth: number = 0;
+  private lastLandscapeHeight: number = 0;
+
+  private tryRopeMove(presenter: any, player: any, dx: number, now: number, ropeBudget: number, dt: number): boolean {
     const equipmentIds: string[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
     const ropeIndex = equipmentIds.findIndex((id: string) => id === 'rope');
     if (ropeIndex < 0) return false;
     if (this.ropeAttachUsed >= ropeBudget) return false;
 
     const dir = dx < 0 ? 'left' : 'right';
-    const wantAttach = Math.abs(dx) > 210 && !player.ropeActive && (now - this.lastRopeAttemptAt) > 0.5;
+    this.lastLandscapeGetMaterial = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
+    this.lastLandscapeWidth = presenter.state.width;
+    this.lastLandscapeHeight = presenter.state.height;
+
+    const wantAttach = Math.abs(dx) > 190 && !player.ropeActive && (now - this.lastRopeAttemptAt) > 0.55;
     if (wantAttach) {
       presenter.handleInput?.('switch', true, true, ropeIndex);
+      const angles = dir === 'right' ? [-Math.PI / 4, -Math.PI / 3, -Math.PI * 0.42] : [Math.PI / 4, Math.PI / 3, Math.PI * 0.42];
+      let best: { aimAngle: number; dist: number } | null = null;
       player.facingRight = dir === 'right';
-      player.aimAngle = dir === 'right' ? (-Math.PI / 3) : (Math.PI / 3);
+      for (const a of angles) {
+        player.aimAngle = a;
+        const res = this.ropeRaycast(player, 252);
+        if (!res.hit) continue;
+        if (!best || res.dist > best.dist) best = { aimAngle: a, dist: res.dist };
+      }
+      if (!best) {
+        this.lastRopeAttemptAt = now;
+        return false;
+      }
+      player.aimAngle = best.aimAngle;
       presenter.handleInput?.('fire', true, true);
       this.lastRopeAttemptAt = now;
       if (player.ropeActive) {
         this.ropeAttachUsed += 1;
         this.ropeStartedAt = now;
+        this.ropeLastDxAbs = Math.abs(dx);
+        this.ropeNoProgressTime = 0;
       }
       return true;
     }
@@ -216,7 +304,16 @@ export class BotTurnController {
       presenter.handleInput?.('up', false, true);
     }
 
-    if (Math.abs(dx) < 65 || ropeElapsed > 2.6) {
+    const dxAbs = Math.abs(dx);
+    if (dxAbs > this.ropeLastDxAbs - 0.5) {
+      this.ropeNoProgressTime += dt;
+    } else {
+      this.ropeNoProgressTime = 0;
+    }
+    this.ropeLastDxAbs = dxAbs;
+
+    const shouldDetach = dxAbs < 65 || ropeElapsed > 2.8 || this.ropeNoProgressTime > 0.7;
+    if (shouldDetach) {
       presenter.handleInput?.('up', false, true);
       presenter.handleInput?.(dir, false, true);
       presenter.handleInput?.('fire', true, true);
