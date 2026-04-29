@@ -7,15 +7,17 @@ export function integrateAirdrop(
   gravity: number,
   landscape: Landscape
 ): void {
+  logo.touchedGround = false;
+
+  logo.vy += gravity * dt;
+
   let unstickSteps = 0;
-  while (aabbHits(landscape, logo.x, logo.y, logo.collisionWidth / 2, logo.collisionHeight / 2) && unstickSteps < 20) {
+  while (aabbHits(landscape, logo.x, logo.y, logo.collisionWidth / 2, logo.collisionHeight / 2) && unstickSteps < 6) {
     logo.y -= 1;
     unstickSteps++;
   }
 
-  logo.vy += gravity * dt;
-
-  const step = 4;
+  const step = 1;
   const dx = logo.vx * dt;
   const dy = logo.vy * dt;
 
@@ -104,11 +106,11 @@ export function aabbHits(landscape: Landscape, cx: number, cy: number, hx: numbe
   const top = Math.floor(cy - hy);
   const bottom = Math.floor(cy + hy);
 
-  for (let x = left; x <= right; x += 2) {
+  for (let x = left; x <= right; x += 1) {
     if (top >= 0 && landscape.getMaterial(x, top) > 0) return true;
     if (bottom >= 0 && landscape.getMaterial(x, bottom) > 0) return true;
   }
-  for (let y = Math.max(0, top); y <= bottom; y += 2) {
+  for (let y = Math.max(0, top); y <= bottom; y += 1) {
     if (landscape.getMaterial(left, y) > 0) return true;
     if (landscape.getMaterial(right, y) > 0) return true;
   }

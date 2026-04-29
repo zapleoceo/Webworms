@@ -153,10 +153,6 @@ export class CanvasRenderer {
           logo.spriteCrop = bounds;
           logo.spriteSourceW = img.naturalWidth;
           logo.spriteSourceH = img.naturalHeight;
-          const scaleX = logo.width / img.naturalWidth;
-          const scaleY = logo.height / img.naturalHeight;
-          logo.collisionWidth = Math.max(10, bounds.w * scaleX);
-          logo.collisionHeight = Math.max(10, bounds.h * scaleY);
         }
       }
       logo.draw(this.ctx, img, crop);

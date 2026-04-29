@@ -69,7 +69,9 @@ export class BrandLogo {
       if (a < 0) a += TAU;
       return a - Math.PI;
     };
-    let oldHy = this.collisionHeight / 2;
+    const wasGrounded = this.touchedGround;
+    const oldHy = this.collisionHeight / 2;
+    const oldBottom = this.y + oldHy;
 
     if (this.spriteCrop && this.spriteSourceW && this.spriteSourceH) {
       const baseW = Math.max(10, (this.spriteCrop.w / this.spriteSourceW) * this.width);
@@ -86,9 +88,9 @@ export class BrandLogo {
       this.collisionHeight = this.width * sinA + this.height * cosA;
     }
 
-    let newHy = this.collisionHeight / 2;
-    if (newHy > oldHy && this.touchedGround) {
-      this.y -= (newHy - oldHy);
+    const newHy = this.collisionHeight / 2;
+    if (wasGrounded) {
+      this.y = oldBottom - newHy;
     }
 
     integrateAirdrop(this, dt, gravity, landscape);
