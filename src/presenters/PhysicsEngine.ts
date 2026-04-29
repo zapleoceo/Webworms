@@ -602,7 +602,7 @@ export class PhysicsEngine {
     }
 
     if (worm.ropeActive && worm.ropeLength > 0) {
-      RopeTool.applyConstraint(worm, state);
+      RopeTool.applyConstraint(worm, state, dt);
     }
   }
 

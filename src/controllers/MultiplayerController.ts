@@ -6,6 +6,8 @@ import { Projectile } from '../models/Projectile';
 import { WEAPONS } from '../models/Weapon';
 import { GrenadeProjectile } from '../models/GrenadeProjectile';
 import type { GamePresenter } from '../presenters/GamePresenter';
+import { getLoadoutForWorm } from '../equipment/LoadoutGenerator';
+import { findSafeWormSpawn } from '../gameplay/SpawnSelector';
 
 export type MultiplayerMode = 'friend' | 'random';
 
@@ -154,15 +156,17 @@ export class MultiplayerController {
     ];
 
     for (let i = 0; i < 3; i++) {
-      const s = this.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, mapSeed);
+      const s = findSafeWormSpawn(this.presenter.state.landscape, mapSeed || 1, `team1:${i}`, spawnPoints, 150);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, ['bazooka', 'grenade', 'rope'], 'team1');
+      const loadout = getLoadoutForWorm(this.presenter.state.mode as any, mapSeed || 1, 'team1', i);
+      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, loadout, 'team1');
       this.presenter.state.addPlayer(p);
     }
     for (let i = 0; i < 3; i++) {
-      const s = this.presenter.state.landscape.getSafeSpawn(spawnPoints, 150, mapSeed);
+      const s = findSafeWormSpawn(this.presenter.state.landscape, mapSeed || 1, `team2:${i}`, spawnPoints, 150);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, false, `Enemy ${i+1}`, t2Classes[i] as any, ['bazooka', 'grenade', 'rope'], 'team2');
+      const loadout = getLoadoutForWorm(this.presenter.state.mode as any, mapSeed || 1, 'team2', i);
+      const p = new Worm(s.x, s.y, false, `Enemy ${i+1}`, t2Classes[i] as any, loadout, 'team2');
       this.presenter.state.addPlayer(p);
     }
   }

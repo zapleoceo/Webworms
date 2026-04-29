@@ -8,6 +8,8 @@ import { AudioManager } from '../utils/AudioManager';
 import { RopeTool } from '../equipment/items/RopeTool';
 import { GrenadeWeapon } from '../equipment/items/GrenadeWeapon';
 import { getEquipmentDefinition } from '../equipment/EquipmentRegistry';
+import { getLoadoutForWorm } from '../equipment/LoadoutGenerator';
+import { findSafeWormSpawn } from '../gameplay/SpawnSelector';
 
 import { BrandLogo } from '../models/BrandLogo';
 
@@ -147,6 +149,7 @@ export class GamePresenter {
     Random.setSeed(this.state.mapSeed!);
 
     this.state.airdropTimer = 20 + Random.next() * 25; // First airdrop in 20-45s
+    this.state.airdropIndex = 0;
     this.state.cameraX = Math.max(0, (worldWidth - this.initialWidth) / 2);
     this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
@@ -166,19 +169,6 @@ export class GamePresenter {
     // Add teams of 3 worms
     const spawnPoints: {x: number, y: number}[] = [];
     const availableClasses: ('soldier'|'heavy'|'scout')[] = ['soldier', 'heavy', 'scout'];
-    const defaultLoadout = settings?.mode === 'training'
-      ? ['bazooka', 'triple', 'rocket', 'minigun', 'grenade', 'blaster', 'rope']
-      : ['bazooka', 'grenade', 'rope'];
-    const loadoutTeam1 = Array.isArray(settings?.loadout)
-      ? settings.loadout
-      : Array.isArray(settings?.loadouts?.team1)
-        ? settings.loadouts.team1
-        : defaultLoadout;
-    const loadoutTeam2 = Array.isArray(settings?.loadout)
-      ? settings.loadout
-      : Array.isArray(settings?.loadouts?.team2)
-        ? settings.loadouts.team2
-        : defaultLoadout;
 
     // Generate team classes deterministically from seed so both clients agree
     const t1Classes = [
@@ -194,17 +184,19 @@ export class GamePresenter {
 
     // Team 1 (Player 1)
     for (let i = 0; i < 3; i++) {
-      const s = this.state.landscape.getSafeSpawn(spawnPoints, 150, this.state.mapSeed);
+      const s = findSafeWormSpawn(this.state.landscape, this.state.mapSeed || 1, `team1:${i}`, spawnPoints, 150);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, loadoutTeam1, 'team1');
+      const loadout = Array.isArray(settings?.loadout) ? settings.loadout : getLoadoutForWorm(settings.mode, this.state.mapSeed || 1, 'team1', i);
+      const p = new Worm(s.x, s.y, false, `Worm ${i+1}`, t1Classes[i] as any, loadout, 'team1');
       this.state.addPlayer(p);
     }
 
     // Team 2 (Player 2 or AI)
     for (let i = 0; i < 3; i++) {
-      const s = this.state.landscape.getSafeSpawn(spawnPoints, 150, this.state.mapSeed);
+      const s = findSafeWormSpawn(this.state.landscape, this.state.mapSeed || 1, `team2:${i}`, spawnPoints, 150);
       spawnPoints.push(s);
-      const p = new Worm(s.x, s.y, this.state.mode === 'training', `Enemy ${i+1}`, t2Classes[i] as any, loadoutTeam2, 'team2');
+      const loadout = Array.isArray(settings?.loadout) ? settings.loadout : getLoadoutForWorm(settings.mode, this.state.mapSeed || 1, 'team2', i);
+      const p = new Worm(s.x, s.y, this.state.mode === 'training', `Enemy ${i+1}`, t2Classes[i] as any, loadout, 'team2');
       this.state.addPlayer(p);
     }
 
@@ -452,8 +444,9 @@ export class GamePresenter {
     if (player.ropeActive) {
       const ropeRate = 220;
       if (Math.abs(this.analogY) > 0.1) {
-        RopeTool.adjustLength(player, Math.max(0, this.analogY) * ropeRate * dt);
+        RopeTool.adjustLength(player, this.analogY * ropeRate * dt);
       } else {
+        if (this.activeInputs.has('up')) RopeTool.adjustLength(player, -ropeRate * dt);
         if (this.activeInputs.has('down')) RopeTool.adjustLength(player, ropeRate * dt);
       }
     } else if (Math.abs(this.analogY) > 0.1) {
@@ -829,7 +822,11 @@ export class GamePresenter {
       sprite = logos[Random.nextInt(0, logos.length - 1)];
     }
 
-    const spawnX = 150 + Random.next() * (this.state.landscape.width - 300);
+    const phi = 0.61803398875;
+    const i = (this.state.airdropIndex || 0) + 1;
+    this.state.airdropIndex = i;
+    const u = (i * phi) % 1;
+    const spawnX = 150 + u * (this.state.landscape.width - 300);
     const spawnY = -100; // Above screen
     
     const vx = (Random.next() - 0.5) * 60; // -30 to +30

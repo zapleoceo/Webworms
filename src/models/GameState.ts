@@ -54,6 +54,7 @@ export class GameState {
   public mode: string = 'training';
   public availableLogos: any[] = [];
   public airdropTimer: number = 60;
+  public airdropIndex: number = 0;
   public cameraShakeTime: number = 0;
   public lastPlayedIndex?: { [team: string]: number };
 

@@ -29,7 +29,6 @@ export class RopeTool {
   }
 
   public static adjustLength(player: Worm, delta: number): void {
-    if (delta <= 0) return;
     player.ropeLength = Math.max(40, Math.min(700, player.ropeLength + delta));
   }
 
@@ -43,7 +42,7 @@ export class RopeTool {
     player.vy += ty * dir * strength * dt;
   }
 
-  public static applyConstraint(player: Worm, state: GameState): void {
+  public static applyConstraint(player: Worm, state: GameState, dt: number): void {
     const ax = player.ropeAnchorX;
     const ay = player.ropeAnchorY;
     if (state.landscape.getMaterial(Math.floor(ax), Math.floor(ay)) <= 0) {
@@ -54,13 +53,27 @@ export class RopeTool {
     const dx = player.x - ax;
     const dy = player.y - ay;
     const dist = Math.hypot(dx, dy) || 1;
-    if (dist <= player.ropeLength) return;
+    player.isJumping = true;
 
     const nx = dx / dist;
     const ny = dy / dist;
+    const tx = -ny;
+    const ty = nx;
+
+    const vRad = player.vx * nx + player.vy * ny;
+    const vTan = player.vx * tx + player.vy * ty;
+    const tanDamp = Math.pow(0.82, dt);
+    const nextVTan = vTan * tanDamp;
+
+    player.vx = nx * vRad + tx * nextVTan;
+    player.vy = ny * vRad + ty * nextVTan;
+
+    if (dist <= player.ropeLength) return;
+
     const diff = dist - player.ropeLength;
-    player.x -= nx * diff;
-    player.y -= ny * diff;
+    const pull = Math.min(diff, 240 * dt);
+    player.x -= nx * pull;
+    player.y -= ny * pull;
 
     const vDot = player.vx * nx + player.vy * ny;
     if (vDot > 0) {
