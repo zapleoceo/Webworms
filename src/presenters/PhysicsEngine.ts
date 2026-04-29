@@ -160,6 +160,13 @@ export class PhysicsEngine {
       prop.x += prop.vx * dt;
       prop.y += prop.vy * dt;
       prop.rotation += prop.angularVelocity * dt;
+      const TAU = Math.PI * 2;
+      const norm = (a: number) => {
+        a = (a + Math.PI) % TAU;
+        if (a < 0) a += TAU;
+        return a - Math.PI;
+      };
+      prop.rotation = norm(prop.rotation);
 
       // Ground collision
       const cx = Math.floor(prop.x);
@@ -224,7 +231,13 @@ export class PhysicsEngine {
         const yR = sample(prop.x + halfW);
         const dx = Math.max(1, halfW * 2);
         const slope = (((yR - yC) / (dx / 2)) + ((yC - yL) / (dx / 2))) * 0.5;
-        const targetAngle = Math.max(-0.8, Math.min(0.8, Math.atan(slope)));
+        const baseAngle = Math.max(-0.8, Math.min(0.8, Math.atan(slope)));
+        const a0 = norm(baseAngle);
+        const a1 = norm(baseAngle + Math.PI);
+        const cur = prop.rotation;
+        const d0 = Math.abs(norm(cur - a0));
+        const d1 = Math.abs(norm(cur - a1));
+        const targetAngle = d0 <= d1 ? a0 : a1;
 
         const cosA = Math.cos(targetAngle);
         const sinA = Math.sin(targetAngle);
@@ -241,7 +254,7 @@ export class PhysicsEngine {
         prop.vx = along * cosA - perp * sinA;
         prop.vy = along * sinA + perp * cosA;
 
-        prop.angularVelocity += (targetAngle - prop.rotation) * 18 * dt;
+        prop.angularVelocity += norm(targetAngle - prop.rotation) * 18 * dt;
         prop.angularVelocity *= 0.9;
 
         const shouldSettle =
@@ -249,7 +262,7 @@ export class PhysicsEngine {
           Math.abs(prop.vx) < 8 &&
           Math.abs(prop.vy) < 8 &&
           Math.abs(prop.angularVelocity) < 0.4 &&
-          Math.abs(prop.rotation - targetAngle) < 0.2;
+          Math.abs(norm(prop.rotation - targetAngle)) < 0.2;
 
         if (shouldSettle) {
           const imgKey = prop.brandImage?.split('/').pop()?.split('.')[0] || 'brand_apple';

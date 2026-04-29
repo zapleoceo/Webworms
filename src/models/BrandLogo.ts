@@ -56,6 +56,13 @@ export class BrandLogo {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.angle += this.angularVelocity * dt;
+    const TAU = Math.PI * 2;
+    const norm = (a: number) => {
+      a = (a + Math.PI) % TAU;
+      if (a < 0) a += TAU;
+      return a - Math.PI;
+    };
+    this.angle = norm(this.angle);
 
     // Check collision with landscape (simple rect check)
     let collision = false;
@@ -111,7 +118,13 @@ export class BrandLogo {
       };
       const yL = sampleY(this.x - halfW);
       const yR = sampleY(this.x + halfW);
-      const targetAngle = Math.max(-0.6, Math.min(0.6, Math.atan2(yR - yL, Math.max(1, halfW * 2))));
+      const baseAngle = Math.max(-0.6, Math.min(0.6, Math.atan2(yR - yL, Math.max(1, halfW * 2))));
+      const a0 = norm(baseAngle);
+      const a1 = norm(baseAngle + Math.PI);
+      const cur = this.angle;
+      const d0 = Math.abs(norm(cur - a0));
+      const d1 = Math.abs(norm(cur - a1));
+      const targetAngle = d0 <= d1 ? a0 : a1;
 
       if (Math.abs(this.vy) > 50) {
         this.vy = -this.vy * 0.12;
@@ -121,11 +134,11 @@ export class BrandLogo {
       this.vx *= 0.7;
       this.y = collisionY;
       
-      this.angularVelocity += (targetAngle - this.angle) * 6 * dt;
+      this.angularVelocity += norm(targetAngle - this.angle) * 6 * dt;
       this.angularVelocity *= 0.96;
 
       const shouldForceSettle = this.touchedGround && this.age >= 8;
-      const isSlow = Math.abs(this.vx) < 3 && Math.abs(this.vy) < 3 && Math.abs(this.angularVelocity) < 0.05 && Math.abs(this.angle - targetAngle) < 0.15;
+      const isSlow = Math.abs(this.vx) < 3 && Math.abs(this.vy) < 3 && Math.abs(this.angularVelocity) < 0.05 && Math.abs(norm(this.angle - targetAngle)) < 0.15;
 
       if (shouldForceSettle || isSlow) {
         this.isDynamic = false;
