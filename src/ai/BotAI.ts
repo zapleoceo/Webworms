@@ -307,7 +307,8 @@ export function chooseBotPlan(
   const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
   const maxMoveDist = Math.max(0, maxSpeed * Math.max(0, moveSeconds));
   const ropeRange = 252 * 0.85;
-  const ropeBoost = ropeRange * Math.min(2, Math.max(0, ropeAttachBudget));
+  const hasRope = Array.isArray(shooter.equipmentIds) && shooter.equipmentIds.includes('rope');
+  const ropeBoost = hasRope ? (ropeRange * Math.min(2, Math.max(0, ropeAttachBudget))) : 0;
 
   const xs = [
     shooter.x,

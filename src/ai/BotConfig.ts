@@ -6,6 +6,12 @@ export type BotConfig = {
   ropeAttachLimit: Record<AIDifficulty, number>;
   aimErrorPct: Record<AIDifficulty, number>;
   powerErrorPct: Record<AIDifficulty, number>;
+  movement: {
+    maxStrategyAttemptsPerTurn: number;
+    maxStrategyFailuresPerTurn: number;
+    replanWhenBannedAtLeast: number;
+    replanCooldownSeconds: number;
+  };
   dig: {
     enabled: boolean;
     maxShotsPerTurn: number;
@@ -38,6 +44,7 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   ropeAttachLimit: { easy: 3, medium: 4, hard: 5 },
   aimErrorPct: { easy: 0.3, medium: 0.15, hard: 0.05 },
   powerErrorPct: { easy: 0.3, medium: 0.15, hard: 0.05 },
+  movement: { maxStrategyAttemptsPerTurn: 3, maxStrategyFailuresPerTurn: 3, replanWhenBannedAtLeast: 3, replanCooldownSeconds: 1.2 },
   dig: { enabled: true, maxShotsPerTurn: 1, distances: [80, 120, 160], depthMin: 10, depthMax: 40 },
   grenade: { fuseSeconds: 3, restitution: 0.35, friction: 0.85, stopSpeed: 28 },
   scoring: { killBonus: 4000, damageWeight: 1, missWeight: 1, movePenaltyPerPx: 0.35, safeExtraRadius: 14 }
@@ -48,6 +55,7 @@ export function normalizeBotConfig(raw: any): BotConfig {
   const rope = r.ropeAttachLimit && typeof r.ropeAttachLimit === 'object' ? r.ropeAttachLimit : {};
   const aim = r.aimErrorPct && typeof r.aimErrorPct === 'object' ? r.aimErrorPct : {};
   const power = r.powerErrorPct && typeof r.powerErrorPct === 'object' ? r.powerErrorPct : {};
+  const movement = r.movement && typeof r.movement === 'object' ? r.movement : {};
   const dig = r.dig && typeof r.dig === 'object' ? r.dig : {};
   const grenade = r.grenade && typeof r.grenade === 'object' ? r.grenade : {};
   const scoring = r.scoring && typeof r.scoring === 'object' ? r.scoring : {};
@@ -75,6 +83,12 @@ export function normalizeBotConfig(raw: any): BotConfig {
       easy: clamp(num(power.easy, DEFAULT_BOT_CONFIG.powerErrorPct.easy), 0, 0.8),
       medium: clamp(num(power.medium, DEFAULT_BOT_CONFIG.powerErrorPct.medium), 0, 0.8),
       hard: clamp(num(power.hard, DEFAULT_BOT_CONFIG.powerErrorPct.hard), 0, 0.8)
+    },
+    movement: {
+      maxStrategyAttemptsPerTurn: clamp(int(movement.maxStrategyAttemptsPerTurn, DEFAULT_BOT_CONFIG.movement.maxStrategyAttemptsPerTurn), 1, 10),
+      maxStrategyFailuresPerTurn: clamp(int(movement.maxStrategyFailuresPerTurn, DEFAULT_BOT_CONFIG.movement.maxStrategyFailuresPerTurn), 1, 10),
+      replanWhenBannedAtLeast: clamp(int(movement.replanWhenBannedAtLeast, DEFAULT_BOT_CONFIG.movement.replanWhenBannedAtLeast), 0, 10),
+      replanCooldownSeconds: clamp(num(movement.replanCooldownSeconds, DEFAULT_BOT_CONFIG.movement.replanCooldownSeconds), 0, 10)
     },
     dig: {
       enabled: Boolean(dig.enabled ?? DEFAULT_BOT_CONFIG.dig.enabled),

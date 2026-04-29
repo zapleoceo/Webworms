@@ -233,6 +233,22 @@ export class AdminPanel {
                       <span class="bot-setting-label">Глубина копания max</span>
                       <input type="number" id="bot-dig-depth-max" class="retro-input bot-setting-input" step="1">
                     </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Повторы стратегии/ход</span>
+                      <input type="number" id="bot-move-max-attempts" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Провалы стратегии/ход</span>
+                      <input type="number" id="bot-move-max-fails" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Replan при бане ≥</span>
+                      <input type="number" id="bot-move-replan-banned" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Replan cooldown, сек</span>
+                      <input type="number" id="bot-move-replan-cooldown" class="retro-input bot-setting-input" step="0.1">
+                    </label>
                   </div>
                 </div>
                 <div class="bot-settings-actions">
@@ -1259,6 +1275,11 @@ export class AdminPanel {
       this.setTextInput('bot-dig-dist', dist);
       this.setNumberInput('bot-dig-depth-min', cfg.dig?.depthMin);
       this.setNumberInput('bot-dig-depth-max', cfg.dig?.depthMax);
+
+      this.setNumberInput('bot-move-max-attempts', cfg.movement?.maxStrategyAttemptsPerTurn);
+      this.setNumberInput('bot-move-max-fails', cfg.movement?.maxStrategyFailuresPerTurn);
+      this.setNumberInput('bot-move-replan-banned', cfg.movement?.replanWhenBannedAtLeast);
+      this.setNumberInput('bot-move-replan-cooldown', cfg.movement?.replanCooldownSeconds);
     } catch {}
   }
 
@@ -1303,6 +1324,12 @@ export class AdminPanel {
           distances: dist,
           depthMin: this.getNumberInput('bot-dig-depth-min', 10),
           depthMax: this.getNumberInput('bot-dig-depth-max', 40)
+        },
+        movement: {
+          maxStrategyAttemptsPerTurn: this.getNumberInput('bot-move-max-attempts', 3),
+          maxStrategyFailuresPerTurn: this.getNumberInput('bot-move-max-fails', 3),
+          replanWhenBannedAtLeast: this.getNumberInput('bot-move-replan-banned', 3),
+          replanCooldownSeconds: this.getNumberInput('bot-move-replan-cooldown', 1.2)
         }
       };
 
@@ -1353,7 +1380,13 @@ export class AdminPanel {
         'Копание включено (0/1) — включить режим “копать под движение”, если нет хорошего плана выстрела.',
         'Копаний за ход — максимум копающих выстрелов за ход (обычно 1).',
         'Дистанции копания — расстояния по X от бота для точек копания (через запятую).',
-        'Глубина копания min/max — насколько глубоко в грунт целиться относительно поверхности (пиксели).'
+        'Глубина копания min/max — насколько глубоко в грунт целиться относительно поверхности (пиксели).',
+        '',
+        'Movement (анти-зацикливание):',
+        'Повторы стратегии/ход — сколько раз за ход можно выбрать одну и ту же стратегию (walk/jump/rope_*).',
+        'Провалы стратегии/ход — сколько раз стратегия может не дать прогресса, после чего она банится до конца хода.',
+        'Replan при бане ≥ — если забанено не меньше этого числа стратегий, бот сбрасывает план и ищет новый.',
+        'Replan cooldown, сек — минимальная пауза между перепланированиями.'
       ].join('\\n')
     );
   }

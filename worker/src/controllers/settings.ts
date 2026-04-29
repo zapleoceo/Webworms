@@ -66,6 +66,7 @@ function normalizeBotSettings(raw: any): any {
   const ropeAttachLimit = r.ropeAttachLimit && typeof r.ropeAttachLimit === 'object' ? r.ropeAttachLimit : {};
   const aimErrorPct = r.aimErrorPct && typeof r.aimErrorPct === 'object' ? r.aimErrorPct : {};
   const powerErrorPct = r.powerErrorPct && typeof r.powerErrorPct === 'object' ? r.powerErrorPct : {};
+  const movement = r.movement && typeof r.movement === 'object' ? r.movement : {};
   const dig = r.dig && typeof r.dig === 'object' ? r.dig : {};
   const grenade = r.grenade && typeof r.grenade === 'object' ? r.grenade : {};
   const scoring = r.scoring && typeof r.scoring === 'object' ? r.scoring : {};
@@ -93,6 +94,12 @@ function normalizeBotSettings(raw: any): any {
       easy: clamp(num(powerErrorPct.easy, 0.3), 0, 0.8),
       medium: clamp(num(powerErrorPct.medium, 0.15), 0, 0.8),
       hard: clamp(num(powerErrorPct.hard, 0.05), 0, 0.8)
+    },
+    movement: {
+      maxStrategyAttemptsPerTurn: Math.floor(clamp(num(movement.maxStrategyAttemptsPerTurn, 3), 1, 10)),
+      maxStrategyFailuresPerTurn: Math.floor(clamp(num(movement.maxStrategyFailuresPerTurn, 3), 1, 10)),
+      replanWhenBannedAtLeast: Math.floor(clamp(num(movement.replanWhenBannedAtLeast, 3), 0, 10)),
+      replanCooldownSeconds: clamp(num(movement.replanCooldownSeconds, 1.2), 0, 10)
     },
     dig: {
       enabled: Boolean(dig.enabled ?? true),

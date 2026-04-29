@@ -4,21 +4,48 @@ import type { AIDifficulty, BotConfig } from '../ai/BotConfig';
 import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
 import { buildSnapshotFromState, chooseBotAction, chooseBotPlan, chooseDigAction, terrainFromLandscape } from '../ai/BotAI';
 
+type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
+type RopeMode = 'climb' | 'swing' | 'descend';
+
 export class BotTurnController {
   private lastTurnIndex: number = -1;
   private firedThisTurn: boolean = false;
   private plannedThisTurn: boolean = false;
   private plan: { moveTo?: { x: number; y: number }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number } } | null = null;
   private moveStartedAt: number = 0;
+
   private ropeAttachUsed: number = 0;
   private ropeStartedAt: number = 0;
   private lastRopeAttemptAt: number = -999;
   private digShotsThisTurn: number = 0;
+
+  private matchKey: string = '';
+  private matchAttempts: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+  private matchSuccess: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+  private matchFailStreak: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+
+  private strategy: MoveStrategy | null = null;
+  private ropeMode: RopeMode | null = null;
+  private strategyCost0: number = Infinity;
+  private strategyEvalAt: number = 0;
+  private strategyAttemptsTurn: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+  private strategyFailTurn: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+  private bannedTurn: Set<MoveStrategy> = new Set();
+
   private lastJumpAt: number = -999;
+  private jumpHoldUntil: number = 0;
   private lastX: number = 0;
   private stuckTime: number = 0;
-  private ropeLastDxAbs: number = Infinity;
-  private ropeNoProgressTime: number = 0;
+
+  private lastCostAt: number = -999;
+  private lastCost: number = Infinity;
+  private lastReplanAt: number = -999;
+  private lastMovementCfg: { maxStrategyAttemptsPerTurn: number; maxStrategyFailuresPerTurn: number; replanWhenBannedAtLeast: number; replanCooldownSeconds: number } = {
+    maxStrategyAttemptsPerTurn: 3,
+    maxStrategyFailuresPerTurn: 3,
+    replanWhenBannedAtLeast: 3,
+    replanCooldownSeconds: 1.2
+  };
 
   public update(presenter: any, isWorldBusy: boolean): void {
     if (!presenter?.isRunning) return;
@@ -29,6 +56,14 @@ export class BotTurnController {
     const curIdx = presenter.state.currentPlayerIndex ?? -1;
     const player = presenter.state.getCurrentPlayer?.();
     if (!player || curIdx < 0) return;
+
+    const nextMatchKey = `${presenter.state.mode}:${presenter.state.mapSeed}:${presenter.state.players?.length || 0}`;
+    if (this.matchKey !== nextMatchKey) {
+      this.matchKey = nextMatchKey;
+      this.matchAttempts = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+      this.matchSuccess = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+      this.matchFailStreak = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+    }
 
     const isBotTurn = player.team === 'team2';
 
@@ -42,15 +77,25 @@ export class BotTurnController {
       this.ropeStartedAt = 0;
       this.lastRopeAttemptAt = -999;
       this.digShotsThisTurn = 0;
+      this.strategy = null;
+      this.ropeMode = null;
+      this.strategyCost0 = Infinity;
+      this.strategyEvalAt = presenter.matchDuration || 0;
+      this.strategyAttemptsTurn = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+      this.strategyFailTurn = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+      this.bannedTurn = new Set();
       this.lastJumpAt = -999;
+      this.jumpHoldUntil = 0;
       this.lastX = player.x;
       this.stuckTime = 0;
-      this.ropeLastDxAbs = Infinity;
-      this.ropeNoProgressTime = 0;
+      this.lastCostAt = -999;
+      this.lastCost = Infinity;
+      this.lastReplanAt = -999;
       presenter.handleInput?.('left', false, true);
       presenter.handleInput?.('right', false, true);
       presenter.handleInput?.('up', false, true);
       presenter.handleInput?.('down', false, true);
+      presenter.handleInput?.('jump', false, true);
       presenter.handleInput?.('fire', false, true);
     }
 
@@ -70,6 +115,9 @@ export class BotTurnController {
     const executeSeconds = Math.max(0, maxTurn - planSeconds - reserveSeconds);
     const ropeBudget = botCfg.ropeAttachLimit[difficulty] ?? 0;
     const ropeRemaining = Math.max(0, ropeBudget - this.ropeAttachUsed);
+    const now = presenter.matchDuration || 0;
+    const dt = Number.isFinite(presenter.deltaTime) ? presenter.deltaTime : (1 / 60);
+    this.lastMovementCfg = botCfg.movement || this.lastMovementCfg;
 
     if (timeLeft <= reserveSeconds) {
       if (!isWorldBusy) {
@@ -97,7 +145,7 @@ export class BotTurnController {
         const plan = chooseBotPlan(rng, snap.world, shooter, enemies, allies, botCfg, executeSeconds, ropeRemaining);
         if (plan) {
           this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power } };
-          this.moveStartedAt = presenter.matchDuration || 0;
+          this.moveStartedAt = now;
         } else if (botCfg.dig.enabled && this.digShotsThisTurn < botCfg.dig.maxShotsPerTurn) {
           const dig = chooseDigAction(rng, snap.world, shooter, enemies, allies, botCfg);
           if (dig) {
@@ -113,29 +161,17 @@ export class BotTurnController {
     if (!this.plan) return;
 
     const moveTo = this.plan.moveTo;
-    const now = presenter.matchDuration || 0;
     const moveElapsed = Math.max(0, now - this.moveStartedAt);
-    const dt = Number.isFinite(presenter.deltaTime) ? presenter.deltaTime : (1 / 60);
 
     if (moveTo && moveElapsed < executeSeconds) {
-      const dx = moveTo.x - player.x;
-      if (Math.abs(dx) > 24) {
-        if (this.tryRopeMove(presenter, player, dx, now, ropeBudget, dt)) return;
-        const dir = dx < 0 ? 'left' : 'right';
-        if (this.shouldJump(presenter, player, dir, now)) {
-          presenter.handleInput?.('jump', true, true);
-        }
-        presenter.handleInput?.('left', false, true);
-        presenter.handleInput?.('right', false, true);
-        presenter.handleInput?.(dir, true, true);
-        this.trackStuck(player, dt);
-        return;
-      }
+      if (this.executeMovement(presenter, player, moveTo, now, dt, ropeBudget, ropeRemaining)) return;
     }
 
     presenter.handleInput?.('left', false, true);
     presenter.handleInput?.('right', false, true);
     presenter.handleInput?.('up', false, true);
+    presenter.handleInput?.('down', false, true);
+    presenter.handleInput?.('jump', false, true);
     this.trackStuck(player, dt);
 
     if (!isWorldBusy) {
@@ -199,29 +235,6 @@ export class BotTurnController {
     presenter.handleInput?.('fire', false, true);
   }
 
-  private shouldJump(presenter: any, player: any, dir: 'left' | 'right', now: number): boolean {
-    if (player.isJumping) return false;
-    if (now - this.lastJumpAt < 0.85) return false;
-    const ahead = (player.width || 10) + 10;
-    const x = player.x + (dir === 'right' ? 1 : -1) * ahead;
-    const yTop = player.y - (player.height || 10) / 2;
-    const yMid = player.y;
-    const yHead = yTop - 2;
-    const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
-    const solid = (xx: number, yy: number) => mat(Math.floor(xx), Math.floor(yy)) > 0;
-    const obstacle = solid(x, yMid) || solid(x, yTop) || solid(x, yHead);
-    if (obstacle) {
-      this.lastJumpAt = now;
-      return true;
-    }
-    if (this.stuckTime > 0.35) {
-      this.lastJumpAt = now;
-      this.stuckTime = 0;
-      return true;
-    }
-    return false;
-  }
-
   private trackStuck(player: any, dt: number) {
     const dx = Math.abs(player.x - this.lastX);
     this.lastX = player.x;
@@ -232,92 +245,395 @@ export class BotTurnController {
     }
   }
 
-  private ropeRaycast(player: any, maxDist: number): { hit: boolean; dist: number } {
+  private executeMovement(
+    presenter: any,
+    player: any,
+    moveTo: { x: number; y: number },
+    now: number,
+    dt: number,
+    ropeBudget: number,
+    ropeRemaining: number
+  ): boolean {
+    const dx = moveTo.x - player.x;
+    const dy = moveTo.y - player.y;
+    const dir: 'left' | 'right' = dx < 0 ? 'left' : 'right';
+    const dxAbs = Math.abs(dx);
+
+    if (dxAbs < 24 && Math.abs(dy) < 26) return false;
+
+    if (player.ropeActive) {
+      this.executeRope(presenter, player, moveTo, dir, now, dt);
+      return true;
+    }
+
+    const strategy = this.selectStrategy(presenter, player, moveTo, dir, ropeRemaining);
+    this.ensureStrategy(strategy, presenter, player, moveTo, now);
+
+    if (this.strategy === 'rope_climb' || this.strategy === 'rope_swing' || this.strategy === 'rope_descend') {
+      const ok = this.tryAttachRope(presenter, player, moveTo, dir, ropeBudget, now, this.strategy);
+      if (ok) return true;
+      this.recordStrategyFailure(this.strategy, now);
+      this.strategy = null;
+      return true;
+    }
+
+    if (this.strategy === 'jump') {
+      if (this.tryJump(presenter, player, now)) {
+        presenter.handleInput?.('left', false, true);
+        presenter.handleInput?.('right', false, true);
+        presenter.handleInput?.(dir, true, true);
+        this.trackStuck(player, dt);
+        this.evaluateStrategyProgress(presenter, player, moveTo, now);
+        return true;
+      }
+      this.recordStrategyFailure('jump', now);
+      this.strategy = null;
+    }
+
+    presenter.handleInput?.('left', false, true);
+    presenter.handleInput?.('right', false, true);
+    presenter.handleInput?.('jump', false, true);
+    if (now < this.jumpHoldUntil) {
+      presenter.handleInput?.(dir, true, true);
+    } else {
+      presenter.handleInput?.(dir, true, true);
+    }
+    this.trackStuck(player, dt);
+    this.evaluateStrategyProgress(presenter, player, moveTo, now);
+    return true;
+  }
+
+  private ensureStrategy(strategy: MoveStrategy, presenter: any, player: any, moveTo: { x: number; y: number }, now: number) {
+    if (this.strategy === strategy) return;
+    this.strategy = strategy;
+    this.ropeMode = null;
+    this.strategyEvalAt = now + 0.65;
+    this.strategyCost0 = this.estimateCost(presenter, player, moveTo, now);
+    this.strategyAttemptsTurn[strategy] = (this.strategyAttemptsTurn[strategy] || 0) + 1;
+    this.matchAttempts[strategy] = (this.matchAttempts[strategy] || 0) + 1;
+  }
+
+  private evaluateStrategyProgress(presenter: any, player: any, moveTo: { x: number; y: number }, now: number) {
+    if (!this.strategy) return;
+    if (now < this.strategyEvalAt) return;
+    const costNow = this.estimateCost(presenter, player, moveTo, now);
+    const improved = costNow + 6 < this.strategyCost0;
+    if (improved) {
+      this.recordStrategySuccess(this.strategy);
+      this.strategyCost0 = costNow;
+      this.strategyEvalAt = now + 0.65;
+      return;
+    }
+
+    this.recordStrategyFailure(this.strategy, now);
+    this.strategy = null;
+  }
+
+  private recordStrategySuccess(strategy: MoveStrategy) {
+    this.matchSuccess[strategy] = (this.matchSuccess[strategy] || 0) + 1;
+    this.matchFailStreak[strategy] = 0;
+    this.strategyFailTurn[strategy] = 0;
+  }
+
+  private recordStrategyFailure(strategy: MoveStrategy, now: number) {
+    const cfg = this.lastMovementCfg;
+    this.matchFailStreak[strategy] = (this.matchFailStreak[strategy] || 0) + 1;
+    this.strategyFailTurn[strategy] = (this.strategyFailTurn[strategy] || 0) + 1;
+    if (this.strategyFailTurn[strategy] >= cfg.maxStrategyFailuresPerTurn || this.strategyAttemptsTurn[strategy] >= cfg.maxStrategyAttemptsPerTurn) {
+      this.bannedTurn.add(strategy);
+    }
+    if (now - this.lastReplanAt > cfg.replanCooldownSeconds && this.bannedTurn.size >= cfg.replanWhenBannedAtLeast) {
+      this.lastReplanAt = now;
+      this.plannedThisTurn = false;
+      this.plan = null;
+    }
+  }
+
+  private selectStrategy(
+    presenter: any,
+    player: any,
+    moveTo: { x: number; y: number },
+    dir: 'left' | 'right',
+    ropeRemaining: number
+  ): MoveStrategy {
+    const dy = moveTo.y - player.y;
+    const needUp = dy < -30;
+    const needDown = dy > 30;
+    const obstacle = this.detectObstacle(presenter, player, dir);
+    const gap = this.detectGap(presenter, player, dir);
+    const hasRope = Array.isArray(player.equipmentIds) && player.equipmentIds.includes('rope') && ropeRemaining > 0;
+
+    const candidates: MoveStrategy[] = [];
+    if (hasRope && needUp) candidates.push('rope_climb');
+    if (hasRope && gap) candidates.push('rope_swing');
+    if (hasRope && needDown) candidates.push('rope_descend');
+    if (obstacle) candidates.push('jump');
+    candidates.push('walk');
+
+    let best: { s: MoveStrategy; score: number } | null = null;
+    for (const s of candidates) {
+      if (this.bannedTurn.has(s)) continue;
+      let score = 0;
+      if (s === 'walk') score += 0.2;
+      if (s === 'jump') score += obstacle ? 1.4 : 0;
+      if (s === 'rope_climb') score += needUp ? 1.8 : 0.3;
+      if (s === 'rope_swing') score += gap ? 1.9 : 0.2;
+      if (s === 'rope_descend') score += needDown ? 1.3 : 0.2;
+
+      const att = this.matchAttempts[s] || 0;
+      const suc = this.matchSuccess[s] || 0;
+      const rate = (suc + 1) / (att + 2);
+      score += (rate - 0.5) * 1.2;
+      if ((this.matchFailStreak[s] || 0) >= 3) score -= 1.4;
+
+      score -= (this.strategyAttemptsTurn[s] || 0) * 0.55;
+      score -= (this.strategyFailTurn[s] || 0) * 0.85;
+
+      if (!best || score > best.score) best = { s, score };
+    }
+
+    if (!best) return 'walk';
+    return best.s;
+  }
+
+  private detectObstacle(presenter: any, player: any, dir: 'left' | 'right'): boolean {
+    const ahead = (player.width || 10) + 10;
+    const x = player.x + (dir === 'right' ? 1 : -1) * ahead;
+    const yTop = player.y - (player.height || 10) / 2;
+    const yMid = player.y;
+    const yHead = yTop - 2;
+    const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
+    const solid = (xx: number, yy: number) => mat(Math.floor(xx), Math.floor(yy)) > 0;
+    return solid(x, yMid) || solid(x, yTop) || solid(x, yHead);
+  }
+
+  private detectGap(presenter: any, player: any, dir: 'left' | 'right'): boolean {
+    const ahead = (player.width || 10) + 18;
+    const x = player.x + (dir === 'right' ? 1 : -1) * ahead;
+    const yFoot = player.y + (player.height || 10) / 2 + 2;
+    const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
+    return mat(Math.floor(x), Math.floor(yFoot)) <= 0;
+  }
+
+  private tryJump(presenter: any, player: any, now: number): boolean {
+    if (player.isJumping) return false;
+    if (now - this.lastJumpAt < 0.85) return false;
+    this.lastJumpAt = now;
+    this.jumpHoldUntil = now + 0.35;
+    presenter.handleInput?.('jump', true, true);
+    return true;
+  }
+
+  private ropeRaycast(
+    presenter: any,
+    player: any,
+    maxDist: number
+  ): { hit: boolean; x: number; y: number; dist: number } {
     const baseY = player.y - player.height / 2;
     let globalAimAngle = player.aimAngle;
     if (!player.facingRight) globalAimAngle = Math.PI - player.aimAngle;
+
     const step = 4;
     for (let d = 12; d <= maxDist; d += step) {
       const x = player.x + Math.cos(globalAimAngle) * d;
       const y = baseY + Math.sin(globalAimAngle) * d;
-      if (x <= 30 || x >= this.lastLandscapeWidth - 30 || y <= 0 || y >= this.lastLandscapeHeight - 30) break;
-      if (this.lastLandscapeGetMaterial(Math.floor(x), Math.floor(y)) > 0) {
-        return { hit: true, dist: d };
+      if (x <= 30 || x >= presenter.state.width - 30 || y <= 0 || y >= presenter.state.height - 30) break;
+      if (presenter.state.landscape.getMaterial(Math.floor(x), Math.floor(y)) > 0) {
+        return { hit: true, x, y, dist: d };
       }
     }
-    return { hit: false, dist: maxDist };
+    const x = player.x + Math.cos(globalAimAngle) * maxDist;
+    const y = baseY + Math.sin(globalAimAngle) * maxDist;
+    return { hit: false, x, y, dist: maxDist };
   }
 
-  private lastLandscapeGetMaterial: (x: number, y: number) => number = () => 0;
-  private lastLandscapeWidth: number = 0;
-  private lastLandscapeHeight: number = 0;
-
-  private tryRopeMove(presenter: any, player: any, dx: number, now: number, ropeBudget: number, dt: number): boolean {
+  private tryAttachRope(
+    presenter: any,
+    player: any,
+    moveTo: { x: number; y: number },
+    dir: 'left' | 'right',
+    ropeBudget: number,
+    now: number,
+    strategy: MoveStrategy
+  ): boolean {
     const equipmentIds: string[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
     const ropeIndex = equipmentIds.findIndex((id: string) => id === 'rope');
     if (ropeIndex < 0) return false;
     if (this.ropeAttachUsed >= ropeBudget) return false;
+    if (player.ropeActive) return true;
+    if (now - this.lastRopeAttemptAt < 0.55) return false;
 
-    const dir = dx < 0 ? 'left' : 'right';
-    this.lastLandscapeGetMaterial = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
-    this.lastLandscapeWidth = presenter.state.width;
-    this.lastLandscapeHeight = presenter.state.height;
+    const dx = moveTo.x - player.x;
+    if (Math.abs(dx) < 110) return false;
 
-    const wantAttach = Math.abs(dx) > 190 && !player.ropeActive && (now - this.lastRopeAttemptAt) > 0.55;
-    if (wantAttach) {
-      presenter.handleInput?.('switch', true, true, ropeIndex);
-      const angles = dir === 'right' ? [-Math.PI / 4, -Math.PI / 3, -Math.PI * 0.42] : [Math.PI / 4, Math.PI / 3, Math.PI * 0.42];
-      let best: { aimAngle: number; dist: number } | null = null;
-      player.facingRight = dir === 'right';
-      for (const a of angles) {
-        player.aimAngle = a;
-        const res = this.ropeRaycast(player, 252);
-        if (!res.hit) continue;
-        if (!best || res.dist > best.dist) best = { aimAngle: a, dist: res.dist };
+    presenter.handleInput?.('switch', true, true, ropeIndex);
+
+    const baseY = player.y - player.height / 2;
+    const dirSign = dir === 'right' ? 1 : -1;
+    const isClimb = strategy === 'rope_climb';
+    const isSwing = strategy === 'rope_swing';
+    const isDescend = strategy === 'rope_descend';
+
+    let best: { aimAngle: number; score: number } | null = null;
+    const globalAngles: number[] = [];
+    if (isClimb || isSwing) {
+      const mags = [Math.PI / 4, Math.PI / 3, Math.PI * 0.42, Math.PI * 0.55];
+      if (dir === 'right') globalAngles.push(...mags.map(v => -v));
+      else globalAngles.push(...mags.map(v => Math.PI - v));
+    } else if (isDescend) {
+      const up = [Math.PI / 6, Math.PI / 4, Math.PI / 3];
+      const down = [0.18, 0.35];
+      if (dir === 'right') {
+        globalAngles.push(...up.map(v => -v), ...down);
+      } else {
+        globalAngles.push(...up.map(v => Math.PI - v), ...down.map(v => Math.PI + v));
       }
-      if (!best) {
-        this.lastRopeAttemptAt = now;
-        return false;
-      }
-      player.aimAngle = best.aimAngle;
-      presenter.handleInput?.('fire', true, true);
+    }
+
+    for (const global of globalAngles) {
+      const facingRight = Math.cos(global) >= 0;
+      const aimAngle = facingRight ? global : (Math.PI - global);
+      player.facingRight = facingRight;
+      player.aimAngle = aimAngle;
+      const res = this.ropeRaycast(presenter, player, 252);
+      if (!res.hit) continue;
+      const forward = (res.x - player.x) * dirSign;
+      if (forward < 24) continue;
+      const above = baseY - res.y;
+      if (isClimb && above < 14) continue;
+      if (isSwing && (above < 18 || res.dist < 130)) continue;
+      if (!isDescend && res.y > player.y - 6) continue;
+      if (isDescend && res.dist < 70) continue;
+
+      const score = above * (isDescend ? 0.35 : 1.15) + forward * 0.65 + res.dist * (isSwing ? 0.5 : 0.22);
+      if (!best || score > best.score) best = { aimAngle: aimAngle, score };
+    }
+
+    if (!best) {
       this.lastRopeAttemptAt = now;
-      if (player.ropeActive) {
-        this.ropeAttachUsed += 1;
-        this.ropeStartedAt = now;
-        this.ropeLastDxAbs = Math.abs(dx);
-        this.ropeNoProgressTime = 0;
-      }
+      return false;
+    }
+
+    player.aimAngle = best.aimAngle;
+    presenter.handleInput?.('fire', true, true);
+    this.lastRopeAttemptAt = now;
+    if (player.ropeActive) {
+      this.ropeAttachUsed += 1;
+      this.ropeStartedAt = now;
+      this.ropeMode = isClimb ? 'climb' : isSwing ? 'swing' : 'descend';
+      this.strategyCost0 = this.estimateCost(presenter, player, moveTo, now);
+      this.strategyEvalAt = now + 0.65;
       return true;
     }
 
-    if (!player.ropeActive) return false;
+    return false;
+  }
 
+  private executeRope(
+    presenter: any,
+    player: any,
+    moveTo: { x: number; y: number },
+    dir: 'left' | 'right',
+    now: number,
+    dt: number
+  ) {
+    const dx = moveTo.x - player.x;
+    const dy = moveTo.y - player.y;
+    const dist2 = Math.hypot(dx, dy);
     const ropeElapsed = now - this.ropeStartedAt;
+    const s: MoveStrategy = this.ropeMode === 'climb' ? 'rope_climb' : this.ropeMode === 'descend' ? 'rope_descend' : 'rope_swing';
+
     presenter.handleInput?.('left', false, true);
     presenter.handleInput?.('right', false, true);
-    presenter.handleInput?.(dir, true, true);
+    presenter.handleInput?.('up', false, true);
+    presenter.handleInput?.('down', false, true);
 
-    if (ropeElapsed < 0.85) {
+    if (this.ropeMode === 'climb') {
       presenter.handleInput?.('up', true, true);
+    } else if (this.ropeMode === 'descend') {
+      presenter.handleInput?.('down', true, true);
     } else {
-      presenter.handleInput?.('up', false, true);
+      presenter.handleInput?.(dir, true, true);
+      if (dy < -20) presenter.handleInput?.('up', true, true);
+      if (dy > 35) presenter.handleInput?.('down', true, true);
     }
 
-    const dxAbs = Math.abs(dx);
-    if (dxAbs > this.ropeLastDxAbs - 0.5) {
-      this.ropeNoProgressTime += dt;
-    } else {
-      this.ropeNoProgressTime = 0;
+    if (now >= this.strategyEvalAt) {
+      const costNow = this.estimateCost(presenter, player, moveTo, now);
+      const improved = costNow + 6 < this.strategyCost0;
+      if (improved) {
+        this.recordStrategySuccess(s);
+        this.strategyCost0 = costNow;
+        this.strategyEvalAt = now + 0.65;
+      } else {
+        this.recordStrategyFailure(s, now);
+        presenter.handleInput?.('fire', true, true);
+        this.ropeMode = null;
+        this.strategy = null;
+        return;
+      }
     }
-    this.ropeLastDxAbs = dxAbs;
 
-    const shouldDetach = dxAbs < 65 || ropeElapsed > 2.8 || this.ropeNoProgressTime > 0.7;
+    const shouldDetach =
+      dist2 < 70 ||
+      ropeElapsed > 3.2 ||
+      (this.ropeMode === 'climb' && dy > -10) ||
+      (this.ropeMode === 'descend' && dy < 10);
+
     if (shouldDetach) {
-      presenter.handleInput?.('up', false, true);
-      presenter.handleInput?.(dir, false, true);
       presenter.handleInput?.('fire', true, true);
+      this.ropeMode = null;
+      this.strategy = null;
     }
-    return true;
+
+    this.trackStuck(player, dt);
+  }
+
+  private estimateCost(presenter: any, player: any, moveTo: { x: number; y: number }, now: number): number {
+    if (now - this.lastCostAt < 0.12) return this.lastCost;
+    this.lastCostAt = now;
+
+    const dx = moveTo.x - player.x;
+    const dy = moveTo.y - player.y;
+    const dir = dx >= 0 ? 1 : -1;
+    const dist = Math.abs(dx);
+    const step = 12;
+    const steps = Math.max(1, Math.min(60, Math.floor(dist / step)));
+
+    const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
+    const w = presenter.state.width;
+    const h = presenter.state.height;
+    const surfaceY = (x: number): number | null => {
+      const px = Math.floor(x);
+      if (px < 0 || px >= w) return null;
+      const y0 = Math.max(0, Math.floor(player.y) - 140);
+      const y1 = Math.min(h - 1, Math.floor(player.y) + 260);
+      for (let y = y0; y <= y1; y++) {
+        if (mat(px, y) > 0) return y;
+      }
+      return null;
+    };
+
+    let cost = 0;
+    let lastSY = surfaceY(player.x);
+    for (let i = 1; i <= steps; i++) {
+      const x = player.x + dir * i * step;
+      const sy = surfaceY(x);
+      if (sy === null || lastSY === null) {
+        cost += step + 220;
+        lastSY = sy;
+        continue;
+      }
+      const dY = sy - lastSY;
+      cost += step + Math.abs(dY) * 0.75;
+      if (dY < -16) cost += 120;
+      if (dY > 18) cost += 55;
+      lastSY = sy;
+    }
+
+    cost += Math.abs(dy) * 0.6;
+    if (this.detectObstacle(presenter, player, dx >= 0 ? 'right' : 'left')) cost += 80;
+    this.lastCost = cost;
+    return cost;
   }
 }
