@@ -487,7 +487,8 @@ export class MultiplayerSync {
           y: p.y,
           vx: p.vx,
           vy: p.vy,
-          weaponId: p.weaponId
+          weaponId: p.weaponId,
+          fuseRemaining: p.fuseRemaining
         })),
         craters: state.landscape.syncCraters // Sync newly formed craters precisely
       };

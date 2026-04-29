@@ -4,6 +4,7 @@ import { GamePresenter } from './presenters/GamePresenter';
 import { CanvasRenderer } from './views/CanvasRenderer';
 import { InputHandler } from './views/InputHandler';
 import { APIClient } from './network/APIClient';
+import { getEquipmentDefinition } from './equipment/EquipmentRegistry';
 import { MultiplayerSync } from './network/MultiplayerSync';
 import { AudioManager } from './utils/AudioManager';
 import { PaymentController } from './controllers/PaymentController';
@@ -299,6 +300,7 @@ if (joystickMove) {
 const touchActions = [
   { id: 'btn-jump', action: 'jump' },
   { id: 'btn-fire', action: 'fire' },
+  { id: 'btn-equip', action: 'switch' },
   { id: 'btn-switch', action: 'switchWormCycle' }
 ];
 
@@ -366,6 +368,7 @@ let currentMatchToken: string | null = null;
     { id: 'btn-down', action: 'down' },
     { id: 'btn-jump', action: 'jump' },
     { id: 'btn-fire', action: 'fire' },
+    { id: 'btn-equip', action: 'switch' },
     { id: 'btn-switch', action: 'switchWormCycle' }
   ]);
 
@@ -765,12 +768,17 @@ function updateWormSelectionUI(state: any) {
     
     const hpStr = Math.ceil(Math.max(0, item.p.health)).toString();
     const thumb = (window.renderer as any)?.getWormThumbnail?.(item.p, 160) || '/sprites/Worms/wbrth1.png';
-    btn.innerHTML = `<img src="${thumb}" alt="W${i+1}" style="background: transparent;"><span class="hp">${hpStr}</span>`;
+    const equipmentId = item.p.getCurrentEquipmentId?.() || 'bazooka';
+    const def = getEquipmentDefinition(equipmentId);
+    const iconUrl = def?.icon ? (def.icon.endsWith('.1.png') ? def.icon.replace('.1.png', '.2.png') : def.icon) : '';
+    const iconHtml = iconUrl ? `<img class="equip-icon" src="${iconUrl}" alt="" />` : '';
+    btn.innerHTML = `<img src="${thumb}" alt="W${i+1}" style="background: transparent;">${iconHtml}<span class="hp">${hpStr}</span>`;
 
   // Use both touchstart and click to ensure it works on mobile
   const handleSwitch = (e: Event) => {
     e.preventDefault();
-    if (item.p.health > 0 && !window.presenter.hasFiredThisTurn) {
+    const allowAfterFire = window.presenter?.state?.mode === 'training';
+    if (item.p.health > 0 && (!window.presenter.hasFiredThisTurn || allowAfterFire)) {
       window.presenter.handleInput('switchWorm', true, false, item.index);
       updateWormSelectionUI(window.presenter.state); // Force re-render immediately
     }

@@ -166,7 +166,9 @@ export class GamePresenter {
     // Add teams of 3 worms
     const spawnPoints: {x: number, y: number}[] = [];
     const availableClasses: ('soldier'|'heavy'|'scout')[] = ['soldier', 'heavy', 'scout'];
-    const defaultLoadout = ['bazooka', 'grenade', 'rope'];
+    const defaultLoadout = settings?.mode === 'training'
+      ? ['bazooka', 'triple', 'rocket', 'minigun', 'grenade', 'blaster', 'rope']
+      : ['bazooka', 'grenade', 'rope'];
     const loadoutTeam1 = Array.isArray(settings?.loadout)
       ? settings.loadout
       : Array.isArray(settings?.loadouts?.team1)
@@ -655,8 +657,9 @@ export class GamePresenter {
           player.setEquipmentIndex(payload);
           this.updateMobileWeaponIcon(player);
         } else if (isActive) {
+          const allowAfterFire = this.state.mode === 'training';
           if (player.ropeActive) RopeTool.detach(player);
-          if (this.hasFiredThisTurn) break
+          if (this.hasFiredThisTurn && !allowAfterFire) break
 
           player.switchEquipment();
           this.updateMobileWeaponIcon(player);

@@ -712,6 +712,7 @@ export class CanvasRenderer {
       if (def?.projectileSpriteSrc) {
         const img = this.getImg(def.projectileSpriteSrc);
         if (img.complete && img.naturalWidth > 0) {
+          this.ctx.save();
           const angle = Math.atan2(proj.vy, proj.vx);
           this.ctx.rotate(angle);
           const scale = def.projectileSpriteScale ?? 0.4;
@@ -719,7 +720,6 @@ export class CanvasRenderer {
           const h = img.naturalHeight * scale;
           this.ctx.drawImage(img, -w / 2, -h / 2, w, h);
           this.ctx.restore();
-          continue;
         }
       }
 
@@ -757,6 +757,18 @@ export class CanvasRenderer {
         this.ctx.beginPath();
         this.ctx.arc(0, 0, proj.radius, 0, Math.PI * 2);
         this.ctx.fill();
+      }
+
+      const fuse = (proj as any).fuseRemaining;
+      if (typeof fuse === 'number' && fuse > 0) {
+        const secs = Math.max(0, Math.ceil(fuse));
+        this.ctx.fillStyle = '#fff';
+        this.ctx.strokeStyle = '#000';
+        this.ctx.lineWidth = 3;
+        this.ctx.font = 'bold 16px "Bangers", cursive';
+        this.ctx.textAlign = 'center';
+        this.ctx.strokeText(secs.toString(), 0, -18);
+        this.ctx.fillText(secs.toString(), 0, -18);
       }
 
       this.ctx.restore();

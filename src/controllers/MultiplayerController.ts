@@ -4,6 +4,7 @@ import { Random } from '../utils/Random';
 import { Worm } from '../models/Worm';
 import { Projectile } from '../models/Projectile';
 import { WEAPONS } from '../models/Weapon';
+import { GrenadeProjectile } from '../models/GrenadeProjectile';
 import type { GamePresenter } from '../presenters/GamePresenter';
 
 export type MultiplayerMode = 'friend' | 'random';
@@ -120,6 +121,11 @@ export class MultiplayerController {
 
     this.presenter.state.projectiles = stateData.projectiles.map((projData: any) => {
       const weapon = WEAPONS[projData.weaponId] || WEAPONS['bazooka'];
+      if (projData.weaponId === 'grenade') {
+        const p = new GrenadeProjectile(projData.x, projData.y, projData.vx, projData.vy, weapon, 3);
+        if (typeof projData.fuseRemaining === 'number') p.fuseRemaining = projData.fuseRemaining;
+        return p;
+      }
       return new Projectile(projData.x, projData.y, projData.vx, projData.vy, weapon);
     });
 
