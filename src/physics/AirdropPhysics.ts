@@ -150,7 +150,8 @@ export function integrateAirdrop(
 
     for (const ctc of contacts) {
       if (ctc.n.y < -0.35) logo.touchedGround = true;
-      const corr = clamp((ctc.pen - 0.5) * cfg.penetrationCorrection, 0, cfg.maxPenetration);
+      const slop = 1.0;
+      const corr = clamp((ctc.pen - slop) * cfg.penetrationCorrection, 0, cfg.maxPenetration);
       logo.x += ctc.n.x * corr;
       logo.y += ctc.n.y * corr;
     }
@@ -190,11 +191,14 @@ export function integrateAirdrop(
       }
     }
 
-    if (logo.touchedGround) {
-      const ground = Math.exp(-cfg.linearDampingGround * h);
-      logo.vx *= ground;
-      logo.vy *= ground;
-      logo.angularVelocity *= Math.exp(-cfg.angularDampingGround * h);
+    const hasContact = contacts.length > 0;
+    if (logo.touchedGround || hasContact) {
+      const scale = logo.touchedGround ? 1 : 0.55;
+      const dampLin = Math.exp(-(cfg.linearDampingGround * scale) * h);
+      const dampAng = Math.exp(-(cfg.angularDampingGround * scale) * h);
+      logo.vx *= dampLin;
+      logo.vy *= dampLin;
+      logo.angularVelocity *= dampAng;
     } else {
       const air = Math.exp(-cfg.linearDampingAir * h);
       logo.vx *= air;
@@ -204,7 +208,7 @@ export function integrateAirdrop(
 
     const speed = Math.hypot(logo.vx, logo.vy);
     const aw = Math.abs(logo.angularVelocity);
-    if (logo.touchedGround && speed < cfg.sleepLinear && aw < cfg.sleepAngular) {
+    if (hasContact && speed < cfg.sleepLinear && aw < cfg.sleepAngular) {
       logo.sleepAccum += h;
     } else {
       logo.sleepAccum = 0;
@@ -216,6 +220,12 @@ export function integrateAirdrop(
       logo.vy = 0;
       logo.angularVelocity = 0;
       logo.bounceTime = 1.0;
+    } else if (hasContact && logo.sleepAccum >= cfg.sleepTime * 0.45) {
+      const vSnap = cfg.sleepLinear * 0.22;
+      const wSnap = cfg.sleepAngular * 0.22;
+      if (Math.abs(logo.vx) < vSnap) logo.vx = 0;
+      if (Math.abs(logo.vy) < vSnap) logo.vy = 0;
+      if (Math.abs(logo.angularVelocity) < wSnap) logo.angularVelocity = 0;
     }
   };
 
