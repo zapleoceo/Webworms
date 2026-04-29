@@ -108,3 +108,4 @@
 - grenade.fuseSeconds / restitution / friction / stopSpeed
 - scoring.killBonus / damageWeight / missWeight / movePenaltyPerPx / safeExtraRadius
 - dig.enabled / dig.maxShotsPerTurn / dig.distances / dig.depthMin / dig.depthMax
+- movement.maxStrategyAttemptsPerTurn / maxStrategyFailuresPerTurn / replanWhenBannedAtLeast / replanCooldownSeconds
