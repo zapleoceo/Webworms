@@ -150,6 +150,7 @@ export class GamePresenter {
 
     this.state.airdropTimer = 20 + Random.next() * 25; // First airdrop in 20-45s
     this.state.airdropIndex = 0;
+    this.state.airdropOffset = Random.next();
     this.state.cameraX = Math.max(0, (worldWidth - this.initialWidth) / 2);
     this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
@@ -825,7 +826,7 @@ export class GamePresenter {
     const phi = 0.61803398875;
     const i = (this.state.airdropIndex || 0) + 1;
     this.state.airdropIndex = i;
-    const u = (i * phi) % 1;
+    const u = (this.state.airdropOffset + i * phi) % 1;
     const spawnX = 150 + u * (this.state.landscape.width - 300);
     const spawnY = -100; // Above screen
     

@@ -2,12 +2,16 @@ import type { GameState } from '../../models/GameState';
 import type { Worm } from '../../models/Worm';
 
 export class RopeTool {
+  public static readonly MAX_DISTANCE = 420;
+  public static readonly MIN_LENGTH = 40;
+  public static readonly MAX_LENGTH = 420;
+
   public static tryAttach(player: Worm, state: GameState): void {
     const baseY = player.y - player.height / 2;
     let globalAimAngle = player.aimAngle;
     if (!player.facingRight) globalAimAngle = Math.PI - player.aimAngle;
 
-    const maxDist = 700;
+    const maxDist = RopeTool.MAX_DISTANCE;
     const step = 4;
     for (let d = 12; d <= maxDist; d += step) {
       const x = player.x + Math.cos(globalAimAngle) * d;
@@ -17,7 +21,7 @@ export class RopeTool {
         player.ropeActive = true;
         player.ropeAnchorX = x;
         player.ropeAnchorY = y;
-        player.ropeLength = Math.max(40, Math.hypot(player.x - x, player.y - y));
+        player.ropeLength = Math.max(RopeTool.MIN_LENGTH, Math.min(RopeTool.MAX_LENGTH, Math.hypot(player.x - x, player.y - y)));
         player.isJumping = true;
         return;
       }
@@ -29,7 +33,7 @@ export class RopeTool {
   }
 
   public static adjustLength(player: Worm, delta: number): void {
-    player.ropeLength = Math.max(40, Math.min(700, player.ropeLength + delta));
+    player.ropeLength = Math.max(RopeTool.MIN_LENGTH, Math.min(RopeTool.MAX_LENGTH, player.ropeLength + delta));
   }
 
   public static pump(player: Worm, dir: number, strength: number, dt: number): void {

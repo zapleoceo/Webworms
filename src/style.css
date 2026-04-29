@@ -951,6 +951,19 @@ canvas {
   pointer-events: none;
 }
 
+.worm-btn .equip-name {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  font-family: 'Bangers', cursive;
+  font-size: 14px;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* === ANIMATIONS === */
 .turn-notification {
   position: absolute;

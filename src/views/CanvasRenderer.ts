@@ -999,29 +999,12 @@ export class CanvasRenderer {
     const player = state.getCurrentPlayer();
     if (!player) return;
 
-    // Weapon Info
     const weapon = player.getCurrentWeapon();
     let cd = 0;
     let maxCd = 1;
     if (weapon) {
       cd = player.weaponCooldowns[weapon.id] || 0;
       maxCd = player.maxWeaponCooldowns[weapon.id] || 1;
-      
-      // Also update the DOM button text to always show the current weapon name
-      const btnSwitchDisplay = document.getElementById('weapon-name-display');
-      if (btnSwitchDisplay && btnSwitchDisplay.innerText !== weapon.name) {
-        btnSwitchDisplay.innerText = weapon.name;
-        const btnSwitch = document.getElementById('btn-switch');
-        if (btnSwitch) btnSwitch.style.color = weapon.color;
-      }
-
-      // Draw weapon name at bottom center (near switch button)
-      this.ctx.fillStyle = weapon.color;
-      this.ctx.textAlign = 'center';
-      this.ctx.font = 'bold 18px Courier New';
-      this.ctx.fillText(`WEAPON: ${weapon.name}`, this.canvas.width / 2, this.canvas.height - 20);
-      this.ctx.textAlign = 'left';
-      this.ctx.font = '14px Courier New';
     }
 
     // Base background bar (Power/Cooldown)

@@ -772,7 +772,8 @@ function updateWormSelectionUI(state: any) {
     const def = getEquipmentDefinition(equipmentId);
     const iconUrl = def?.icon ? (def.icon.endsWith('.1.png') ? def.icon.replace('.1.png', '.2.png') : def.icon) : '';
     const iconHtml = iconUrl ? `<img class="equip-icon" src="${iconUrl}" alt="" />` : '';
-    btn.innerHTML = `<img src="${thumb}" alt="W${i+1}" style="background: transparent;">${iconHtml}<span class="hp">${hpStr}</span>`;
+    const nameHtml = def?.name ? `<div class="equip-name">${def.name}</div>` : '';
+    btn.innerHTML = `<img src="${thumb}" alt="W${i+1}" style="background: transparent;">${iconHtml}${nameHtml}<span class="hp">${hpStr}</span>`;
 
   // Use both touchstart and click to ensure it works on mobile
   const handleSwitch = (e: Event) => {
