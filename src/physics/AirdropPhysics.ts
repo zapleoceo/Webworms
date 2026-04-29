@@ -80,6 +80,14 @@ export function integrateAirdrop(
   sweepAxis('x', dx);
   sweepAxis('y', dy);
 
+  if (hitWall) {
+    const av = Math.abs(logo.angularVelocity);
+    const slow = Math.max(0, (av - 0.4) * 4) + 1;
+    logo.vx *= Math.pow(0.4, dt * slow);
+    logo.vy *= Math.pow(0.4, dt * slow);
+    logo.angularVelocity *= Math.pow(0.15, dt);
+  }
+
   if (logo.touchedGround && !hitWall) {
     const leftTouch = obbPointSolid(landscape, logo.x, logo.y, -hw, hh + 2, logo.angle);
     const rightTouch = obbPointSolid(landscape, logo.x, logo.y, hw, hh + 2, logo.angle);

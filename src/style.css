@@ -944,10 +944,10 @@ canvas {
 
 .worm-btn .equip-icon {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 22px;
-  height: 22px;
+  top: 2px;
+  right: 2px;
+  width: 44px;
+  height: 44px;
   image-rendering: pixelated;
   pointer-events: none;
 }

@@ -108,6 +108,47 @@ export class PhysicsEngine {
     if (!state.brandLogos) return;
 
     const stamped: BrandLogo[] = [];
+    const dynamic = state.brandLogos.filter(l => l.isDynamic);
+    if (dynamic.length > 1) {
+      for (let i = 0; i < dynamic.length; i++) {
+        const a = dynamic[i];
+        if (!a) continue;
+        for (let j = i + 1; j < dynamic.length; j++) {
+          const b = dynamic[j];
+          if (!b) continue;
+          const ax = a.collisionWidth / 2;
+          const ay = a.collisionHeight / 2;
+          const bx = b.collisionWidth / 2;
+          const by = b.collisionHeight / 2;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const overlapX = ax + bx - Math.abs(dx);
+          const overlapY = ay + by - Math.abs(dy);
+          if (overlapX <= 0 || overlapY <= 0) continue;
+
+          if (overlapX < overlapY) {
+            const sx = Math.sign(dx) || 1;
+            a.x -= sx * overlapX * 0.5;
+            b.x += sx * overlapX * 0.5;
+            const rv = a.vx - b.vx;
+            a.vx -= rv * 0.5;
+            b.vx += rv * 0.5;
+            a.angularVelocity *= 0.6;
+            b.angularVelocity *= 0.6;
+          } else {
+            const sy = Math.sign(dy) || 1;
+            a.y -= sy * overlapY * 0.5;
+            b.y += sy * overlapY * 0.5;
+            const rv = a.vy - b.vy;
+            a.vy -= rv * 0.5;
+            b.vy += rv * 0.5;
+            a.angularVelocity *= 0.6;
+            b.angularVelocity *= 0.6;
+          }
+        }
+      }
+    }
+
     for (const logo of state.brandLogos) {
       const wasDynamic = logo.isDynamic;
       const touchedBefore = logo.touchedGround;

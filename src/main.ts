@@ -698,11 +698,12 @@ function getTransparentSprite(url: string, fw: number, fh: number, callback: (ne
     }
     ctx.putImageData(imgData, 0, 0);
     
-    // Crop first frame
+    const outW = fw || canvas.width;
+    const outH = fh || canvas.height;
     const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = fw;
-    cropCanvas.height = fh;
-    cropCanvas.getContext('2d')?.drawImage(canvas, 0, 0, fw, fh, 0, 0, fw, fh);
+    cropCanvas.width = outW;
+    cropCanvas.height = outH;
+    cropCanvas.getContext('2d')?.drawImage(canvas, 0, 0, outW, outH, 0, 0, outW, outH);
     
     const newUrl = cropCanvas.toDataURL('image/png');
     transparentSprites[url] = newUrl;
@@ -771,9 +772,34 @@ function updateWormSelectionUI(state: any) {
     const equipmentId = item.p.getCurrentEquipmentId?.() || 'bazooka';
     const def = getEquipmentDefinition(equipmentId);
     const iconUrl = def?.icon ? (def.icon.endsWith('.1.png') ? def.icon.replace('.1.png', '.2.png') : def.icon) : '';
-    const iconHtml = iconUrl ? `<img class="equip-icon" src="${iconUrl}" alt="" />` : '';
-    const nameHtml = def?.name ? `<div class="equip-name">${def.name}</div>` : '';
-    btn.innerHTML = `<img src="${thumb}" alt="W${i+1}" style="background: transparent;">${iconHtml}${nameHtml}<span class="hp">${hpStr}</span>`;
+    const thumbEl = document.createElement('img');
+    thumbEl.src = thumb;
+    thumbEl.alt = `W${i + 1}`;
+    (thumbEl.style as any).background = 'transparent';
+    btn.appendChild(thumbEl);
+
+    if (iconUrl) {
+      const iconEl = document.createElement('img');
+      iconEl.className = 'equip-icon';
+      iconEl.src = iconUrl;
+      iconEl.alt = '';
+      btn.appendChild(iconEl);
+      getTransparentSprite(iconUrl, 0, 0, (newUrl) => {
+        iconEl.src = newUrl;
+      });
+    }
+
+    if (def?.name) {
+      const nameEl = document.createElement('div');
+      nameEl.className = 'equip-name';
+      nameEl.innerText = def.name;
+      btn.appendChild(nameEl);
+    }
+
+    const hpEl = document.createElement('span');
+    hpEl.className = 'hp';
+    hpEl.innerText = hpStr;
+    btn.appendChild(hpEl);
 
   // Use both touchstart and click to ensure it works on mobile
   const handleSwitch = (e: Event) => {
@@ -816,8 +842,6 @@ function bindPresenterEvents() {
     const enemyHp = enemyWorms.reduce((sum: number, w: any) => sum + w.health, 0);
     hpEnemyEl.style.width = `${Math.min(100, Math.max(0, (enemyHp / 100) * 100))}%`;
 
-    const windIndicatorEl = document.getElementById('wind-indicator');
-
     // Update Turn Timer & Wind
     if (turnTimer) {
       let timeStr = '';
@@ -840,9 +864,6 @@ function bindPresenterEvents() {
       } else {
         turnTimer.classList.remove('ticking');
       }
-    }
-    if (windIndicatorEl) {
-      windIndicatorEl.innerText = `Wind: ${state.wind > 0 ? '→' : state.wind < 0 ? '←' : '0'}`;
     }
 
     // Turn Change Notification

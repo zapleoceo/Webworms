@@ -718,6 +718,37 @@ export class CanvasRenderer {
         this.ctx.lineTo(5, -player.height - 40);
         this.ctx.lineTo(0, -player.height - 35);
         this.ctx.fill();
+
+        const weapon = player.getCurrentWeapon?.();
+        const cd = weapon ? (player.weaponCooldowns?.[weapon.id] || 0) : 0;
+        const maxCd = weapon ? (player.maxWeaponCooldowns?.[weapon.id] || 1) : 1;
+        const showReload = cd > 0;
+        const showPower = !showReload && player.aimPower > 0;
+        if (showReload || showPower) {
+          const barW = 60;
+          const barH = 7;
+          const bx = -barW / 2;
+          const by = -player.height - 62;
+          this.ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+          this.ctx.fillRect(bx, by, barW, barH);
+          if (showReload) {
+            const ratio = Math.max(0, Math.min(1, cd / maxCd));
+            this.ctx.fillStyle = '#FFA500';
+            this.ctx.fillRect(bx, by, barW * ratio, barH);
+          } else {
+            const ratio = Math.max(0, Math.min(1, player.aimPower / 100));
+            this.ctx.fillStyle = 'red';
+            this.ctx.fillRect(bx, by, barW * ratio, barH);
+          }
+          this.ctx.font = '12px "Bangers", cursive';
+          this.ctx.textAlign = 'center';
+          this.ctx.strokeStyle = '#000';
+          this.ctx.lineWidth = 2;
+          const text = showReload ? `${cd.toFixed(1)}s` : `${Math.round(player.aimPower)}`;
+          this.ctx.strokeText(text, 0, by - 4);
+          this.ctx.fillStyle = '#fff';
+          this.ctx.fillText(text, 0, by - 4);
+        }
       }
 
       // Aiming Reticle (only for current player and alive)
@@ -1095,36 +1126,6 @@ export class CanvasRenderer {
       this.ctx.textAlign = 'center';
       const timeStr = Math.ceil(state.turnTimeLeft).toString();
       this.ctx.fillText(`TIME: ${timeStr}`, this.canvas.width / 2, 30);
-    }
-
-    const player = state.getCurrentPlayer();
-    if (!player) return;
-
-    const weapon = player.getCurrentWeapon();
-    let cd = 0;
-    let maxCd = 1;
-    if (weapon) {
-      cd = player.weaponCooldowns[weapon.id] || 0;
-      maxCd = player.maxWeaponCooldowns[weapon.id] || 1;
-    }
-
-    // Base background bar (Power/Cooldown)
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    this.ctx.fillRect(20, 50, 100, 10);
-
-    if (cd > 0) {
-      // Cooldown UI (Reverse charging bar)
-      this.ctx.fillStyle = '#FFA500'; // Orange for reload
-      const ratio = cd / maxCd;
-      this.ctx.fillRect(20, 50, 100 * ratio, 10); // shrinks to the left as cd approaches 0
-      
-      this.ctx.fillStyle = 'red';
-      this.ctx.fillText(`RELOADING: ${cd.toFixed(1)}s`, 20, 75);
-    } else {
-      // Power bar (Forward charging bar)
-      this.ctx.fillStyle = 'red';
-      this.ctx.fillRect(20, 50, player.aimPower, 10);
-      this.ctx.fillText(`POWER: ${Math.floor(player.aimPower)}`, 20, 75);
     }
   }
 }

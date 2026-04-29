@@ -839,8 +839,6 @@ export class GamePresenter {
     const brandLogo = new BrandLogo(sprite, spawnX, spawnY, vx, vy, angle, angularVelocity);
     brandLogo.width = width * 2;
     brandLogo.height = height * 2;
-    brandLogo.collisionWidth = brandLogo.width;
-    brandLogo.collisionHeight = brandLogo.height;
     brandLogo.hardness = hardness;
     brandLogo.maxHealth = Math.max(10, hardness * 10);
     brandLogo.health = brandLogo.maxHealth;
