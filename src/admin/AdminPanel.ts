@@ -129,42 +129,116 @@ export class AdminPanel {
                 <span>Bot</span>
                 <button id="bot-help" class="secondary-btn small-btn" style="width: 34px; height: 34px; padding: 0;">I</button>
               </h2>
-              <div class="upload-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
-                <h3>AI Bot Settings</h3>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-                  <input type="number" id="bot-plan" placeholder="Plan seconds" class="retro-input" step="0.1">
-                  <input type="number" id="bot-reserve" placeholder="Reserve seconds" class="retro-input" step="0.1">
-                  <input type="number" id="bot-rope-easy" placeholder="Rope attaches (easy)" class="retro-input" step="1">
-                  <input type="number" id="bot-rope-medium" placeholder="Rope attaches (medium)" class="retro-input" step="1">
-                  <input type="number" id="bot-rope-hard" placeholder="Rope attaches (hard)" class="retro-input" step="1">
-                  <input type="number" id="bot-aim-easy" placeholder="Aim error % (easy)" class="retro-input" step="1">
-                  <input type="number" id="bot-aim-medium" placeholder="Aim error % (medium)" class="retro-input" step="1">
-                  <input type="number" id="bot-aim-hard" placeholder="Aim error % (hard)" class="retro-input" step="1">
-                  <input type="number" id="bot-power-easy" placeholder="Power error % (easy)" class="retro-input" step="1">
-                  <input type="number" id="bot-power-medium" placeholder="Power error % (medium)" class="retro-input" step="1">
-                  <input type="number" id="bot-power-hard" placeholder="Power error % (hard)" class="retro-input" step="1">
-                  <input type="number" id="bot-grenade-fuse" placeholder="Grenade fuse (s)" class="retro-input" step="0.1">
-                  <input type="number" id="bot-grenade-rest" placeholder="Grenade restitution" class="retro-input" step="0.05">
-                  <input type="number" id="bot-grenade-fric" placeholder="Grenade friction" class="retro-input" step="0.05">
-                  <input type="number" id="bot-grenade-stop" placeholder="Grenade stop speed" class="retro-input" step="1">
-                  <input type="number" id="bot-kill-bonus" placeholder="Kill bonus" class="retro-input" step="100">
-                  <input type="number" id="bot-damage-weight" placeholder="Damage weight" class="retro-input" step="0.1">
-                  <input type="number" id="bot-miss-weight" placeholder="Miss weight" class="retro-input" step="0.1">
-                  <input type="number" id="bot-move-penalty" placeholder="Move penalty per px" class="retro-input" step="0.05">
-                  <input type="number" id="bot-safe-extra" placeholder="Safe extra radius" class="retro-input" step="1">
-                  <input type="number" id="bot-dig-enabled" placeholder="Dig enabled (0/1)" class="retro-input" step="1">
-                  <input type="number" id="bot-dig-max" placeholder="Dig shots/turn" class="retro-input" step="1">
-                  <input type="text" id="bot-dig-dist" placeholder="Dig distances (e.g. 80,120,160)" class="retro-input">
-                  <input type="number" id="bot-dig-depth-min" placeholder="Dig depth min" class="retro-input" step="1">
-                  <input type="number" id="bot-dig-depth-max" placeholder="Dig depth max" class="retro-input" step="1">
+              <div class="upload-form bot-settings-card">
+                <h3>Настройки бота</h3>
+                <div class="bot-settings-scroll">
+                  <div class="bot-settings-grid">
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Планирование, сек</span>
+                      <input type="number" id="bot-plan" class="retro-input bot-setting-input" step="0.1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Резерв, сек</span>
+                      <input type="number" id="bot-reserve" class="retro-input bot-setting-input" step="0.1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Лимит верёвки (easy)</span>
+                      <input type="number" id="bot-rope-easy" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Лимит верёвки (medium)</span>
+                      <input type="number" id="bot-rope-medium" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Лимит верёвки (hard)</span>
+                      <input type="number" id="bot-rope-hard" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Ошибка прицеливания % (easy)</span>
+                      <input type="number" id="bot-aim-easy" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Ошибка прицеливания % (medium)</span>
+                      <input type="number" id="bot-aim-medium" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Ошибка прицеливания % (hard)</span>
+                      <input type="number" id="bot-aim-hard" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Ошибка силы % (easy)</span>
+                      <input type="number" id="bot-power-easy" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Ошибка силы % (medium)</span>
+                      <input type="number" id="bot-power-medium" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Ошибка силы % (hard)</span>
+                      <input type="number" id="bot-power-hard" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Фитиль гранаты, сек</span>
+                      <input type="number" id="bot-grenade-fuse" class="retro-input bot-setting-input" step="0.1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Отскок гранаты</span>
+                      <input type="number" id="bot-grenade-rest" class="retro-input bot-setting-input" step="0.05">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Трение гранаты</span>
+                      <input type="number" id="bot-grenade-fric" class="retro-input bot-setting-input" step="0.05">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Стоп-скорость гранаты</span>
+                      <input type="number" id="bot-grenade-stop" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Бонус за добивание</span>
+                      <input type="number" id="bot-kill-bonus" class="retro-input bot-setting-input" step="100">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Вес урона</span>
+                      <input type="number" id="bot-damage-weight" class="retro-input bot-setting-input" step="0.1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Штраф за промах</span>
+                      <input type="number" id="bot-miss-weight" class="retro-input bot-setting-input" step="0.1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Штраф за движение (на пиксель)</span>
+                      <input type="number" id="bot-move-penalty" class="retro-input bot-setting-input" step="0.05">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Запас безопасности (радиус)</span>
+                      <input type="number" id="bot-safe-extra" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Копание включено (0/1)</span>
+                      <input type="number" id="bot-dig-enabled" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Копаний за ход</span>
+                      <input type="number" id="bot-dig-max" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting bot-setting-wide">
+                      <span class="bot-setting-label">Дистанции копания (пример: 80,120,160)</span>
+                      <input type="text" id="bot-dig-dist" class="retro-input bot-setting-input">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Глубина копания min</span>
+                      <input type="number" id="bot-dig-depth-min" class="retro-input bot-setting-input" step="1">
+                    </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Глубина копания max</span>
+                      <input type="number" id="bot-dig-depth-max" class="retro-input bot-setting-input" step="1">
+                    </label>
+                  </div>
                 </div>
-                <div style="display:flex; gap:10px; margin-top:10px;">
-                  <button id="bot-load" class="secondary-btn small-btn">Load</button>
-                  <button id="bot-save" class="primary-btn small-btn">Save</button>
+                <div class="bot-settings-actions">
+                  <button id="bot-load" class="secondary-btn small-btn">Загрузить</button>
+                  <button id="bot-save" class="primary-btn small-btn">Сохранить</button>
                 </div>
-                <p style="font-size: 12px; color: #ccc; margin-top: 10px;">
-                  Plan seconds controls how long the bot searches for the best plan. Execution time is 30 - plan - reserve.
-                </p>
               </div>
             </section>
 
@@ -1257,29 +1331,29 @@ export class AdminPanel {
       [
         'Параметры бота (BOT):',
         '',
-        'Plan seconds — сколько секунд бот тратит на поиск плана (в это время не двигается и не стреляет).',
-        'Reserve seconds — сколько секунд оставляем в конце хода на резервный выстрел.',
+        'Планирование, сек — сколько секунд бот тратит на поиск плана (в это время не двигается и не стреляет).',
+        'Резерв, сек — сколько секунд оставляем в конце хода на резервный выстрел.',
         'Execution time считается автоматически: 30 - plan - reserve.',
         '',
-        'Rope attaches (easy/medium/hard) — лимит успешных attach верёвки за один ход на каждой сложности.',
+        'Лимит верёвки (easy/medium/hard) — лимит успешных attach верёвки за один ход на каждой сложности.',
         '',
-        'Aim/Power error % — погрешность перед выстрелом. Например 30% означает шум до ±30% по углу/силе.',
+        'Ошибка прицеливания / силы % — погрешность перед выстрелом. Например 30% означает шум до ±30% по углу/силе.',
         '',
-        'Grenade fuse — время до взрыва гранаты (сек).',
-        'Grenade restitution — “прыгучесть” при отскоках (0..1).',
-        'Grenade friction — трение/гашение скорости при касании поверхности.',
-        'Grenade stop speed — скорость, ниже которой граната считается остановившейся.',
+        'Фитиль гранаты, сек — время до взрыва гранаты.',
+        'Отскок гранаты — “прыгучесть” при отскоках (0..1).',
+        'Трение гранаты — трение/гашение скорости при касании поверхности.',
+        'Стоп-скорость гранаты — скорость, ниже которой граната считается остановившейся.',
         '',
-        'Kill bonus — бонус к оценке, если выстрел (по оценке) добивает врага.',
-        'Damage weight — вес ожидаемого урона в скоринге.',
-        'Miss weight — штраф за промах/дистанцию до цели в скоринге.',
-        'Move penalty per px — штраф за перемещение к позиции (чем больше, тем меньше бот любит ходить далеко).',
-        'Safe extra radius — дополнительный запас безопасности к радиусу взрыва (чтобы не зацепить себя/союзников).',
+        'Бонус за добивание — бонус к оценке, если выстрел (по оценке) добивает врага.',
+        'Вес урона — вес ожидаемого урона в скоринге.',
+        'Штраф за промах — штраф за промах/дистанцию до цели в скоринге.',
+        'Штраф за движение (на пиксель) — штраф за перемещение к позиции (чем больше, тем меньше бот любит ходить далеко).',
+        'Запас безопасности (радиус) — дополнительный запас безопасности к радиусу взрыва (чтобы не зацепить себя/союзников).',
         '',
-        'Dig enabled — включить режим “копать под движение”, если нет хорошего плана выстрела.',
-        'Dig shots/turn — максимум копающих выстрелов за ход (обычно 1).',
-        'Dig distances — расстояния по X от бота для точек копания (через запятую).',
-        'Dig depth min/max — насколько глубоко в грунт целиться относительно поверхности (пиксели).'
+        'Копание включено (0/1) — включить режим “копать под движение”, если нет хорошего плана выстрела.',
+        'Копаний за ход — максимум копающих выстрелов за ход (обычно 1).',
+        'Дистанции копания — расстояния по X от бота для точек копания (через запятую).',
+        'Глубина копания min/max — насколько глубоко в грунт целиться относительно поверхности (пиксели).'
       ].join('\\n')
     );
   }

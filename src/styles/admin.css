@@ -307,3 +307,69 @@
 .retro-btn.small {
   display: none; /* old class cleanup */
 }
+
+.bot-settings-card {
+  margin-bottom: 20px;
+  background: rgba(0,0,0,0.5);
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.bot-settings-scroll {
+  max-height: min(55vh, 460px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.bot-settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.bot-setting {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 140px;
+  align-items: center;
+  gap: 12px;
+}
+
+.bot-setting-wide {
+  grid-template-columns: 1fr;
+}
+
+.bot-setting-label {
+  color: #cfcfd8;
+  font-size: 0.95rem;
+}
+
+.bot-setting-input {
+  width: 140px;
+  padding: 8px 10px;
+}
+
+.bot-setting-wide .bot-setting-input {
+  width: 100%;
+}
+
+.bot-settings-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+@media (max-width: 520px) {
+  .bot-settings-scroll {
+    max-height: 60vh;
+  }
+  .bot-setting {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .bot-setting-input {
+    width: 100%;
+  }
+}

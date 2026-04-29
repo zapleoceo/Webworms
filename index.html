@@ -53,14 +53,23 @@
 
         <div class="menu-actions" style="display: flex; flex-direction: column; gap: 10px; max-width: 300px; margin: 0 auto;">
           <button class="primary-btn pulse-anim" id="btn-play-training" style="animation-delay: 0s;">PLAY NOW</button>
-          <button class="primary-btn pulse-anim" id="btn-play-ai" style="animation-delay: 0.75s;">PLAY WITH AI</button>
-          <select id="ai-difficulty-select" class="retro-select retro-input" style="padding: 8px 12px; font-size: 0.9rem; width: 100%; animation-delay: 1.1s;">
-            <option value="easy">AI: EASY</option>
-            <option value="medium" selected>AI: MEDIUM</option>
-            <option value="hard">AI: HARD</option>
-          </select>
           <button class="primary-btn pulse-anim" id="btn-play-random" style="animation-delay: 1.5s;">PLAY RANDOM</button>
           <button class="primary-btn pulse-anim" id="btn-play-friends" style="animation-delay: 2.25s;">PLAY WITH FRIEND</button>
+        </div>
+
+        <div class="ai-vs-block" aria-label="User vs AI">
+          <div class="ai-vs-title comic-text">User vs AI</div>
+          <div class="ai-vs-grid">
+            <button class="ai-worm-card" type="button" data-difficulty="easy" data-src="/assets/ai-worms/e2.png" data-hover-src="/assets/ai-worms/e1.png" data-loader-src="/assets/ai-worms/e3.png">
+              <img class="ai-worm-img" src="/assets/ai-worms/e2.png" alt="Easy AI" decoding="async">
+            </button>
+            <button class="ai-worm-card" type="button" data-difficulty="medium" data-src="/assets/ai-worms/m2.png" data-hover-src="/assets/ai-worms/m1.png" data-loader-src="/assets/ai-worms/m3.png">
+              <img class="ai-worm-img" src="/assets/ai-worms/m2.png" alt="Medium AI" decoding="async">
+            </button>
+            <button class="ai-worm-card" type="button" data-difficulty="hard" data-src="/assets/ai-worms/h2.png" data-hover-src="/assets/ai-worms/h1.png" data-loader-src="/assets/ai-worms/h3.png">
+              <img class="ai-worm-img" src="/assets/ai-worms/h2.png" alt="Hard AI" decoding="async">
+            </button>
+          </div>
         </div>
 
         <div class="menu-footer" style="margin-top: 20px;">
@@ -86,12 +95,15 @@
       <!-- LOADER / INVITE SCREEN -->
       <div id="loader-screen" class="screen" style="justify-content: center; align-items: center;">
         <h2 id="loader-text" class="comic-text huge-text bounce-anim" style="margin-bottom: 20px;">LOADING...</h2>
-        <div class="spinner" style="margin-bottom: 30px;"></div>
+        <div class="loader-worm-wrap">
+          <img id="loader-worm-image" class="loader-worm-image" alt="Loading worm" decoding="async" />
+          <div id="loader-progress-text" class="loader-worm-progress-text">0%</div>
+        </div>
+
         <div class="loader-progress-wrap">
           <div id="loader-progress" class="loader-progress">
             <div id="loader-progress-bar" class="loader-progress-bar"></div>
           </div>
-          <div id="loader-progress-text" class="loader-progress-text">0%</div>
         </div>
         
         <div id="cancel-search-container" style="display: none; margin-top: 20px;">
@@ -187,7 +199,7 @@
               </div>
               
               <div class="team-status right-team">
-                <div class="team-name">ENEMY</div>
+                <div class="team-name">ENEMY <span id="enemy-difficulty" class="enemy-difficulty"></span></div>
                 <div class="hp-bar-container"><div class="hp-bar fill-red" id="hp-enemy"></div></div>
               </div>
             </div>

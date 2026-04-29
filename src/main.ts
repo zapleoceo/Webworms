@@ -15,6 +15,7 @@ import { AuthController } from './controllers/AuthController';
 import { BotTurnController } from './controllers/BotTurnController';
 import { getAIDifficulty, setAIDifficulty } from './ai/AIStorage';
 import { normalizeBotConfig } from './ai/BotConfig';
+import type { AIDifficulty } from './ai/AIDifficulty';
 
 declare global {
   interface Window {
@@ -55,6 +56,37 @@ const btnUserProfile = document.getElementById('btn-user-profile') as HTMLButton
 const loaderTextEl = document.getElementById('loader-text') as HTMLElement | null;
 const loaderProgressBarEl = document.getElementById('loader-progress-bar') as HTMLElement | null;
 const loaderProgressTextEl = document.getElementById('loader-progress-text') as HTMLElement | null;
+const loaderWormImageEl = document.getElementById('loader-worm-image') as HTMLImageElement | null;
+const enemyDifficultyEl = document.getElementById('enemy-difficulty') as HTMLElement | null;
+
+let currentAIDifficultyForMatch: AIDifficulty | null = null;
+
+function getDifficultyLabel(d: AIDifficulty): string {
+  return d.toUpperCase();
+}
+
+function setEnemyDifficultyLabel(mode: 'training' | 'ai' | 'friend' | 'random') {
+  if (!enemyDifficultyEl) return;
+  if (mode !== 'ai') {
+    enemyDifficultyEl.innerText = '';
+    return;
+  }
+  const d = currentAIDifficultyForMatch || getAIDifficulty();
+  enemyDifficultyEl.innerText = getDifficultyLabel(d);
+}
+
+function setLoaderDifficultyWorm(mode: 'training' | 'ai' | 'friend' | 'random') {
+  if (!loaderWormImageEl) return;
+  if (mode !== 'ai') {
+    loaderWormImageEl.style.display = 'none';
+    loaderWormImageEl.removeAttribute('src');
+    return;
+  }
+  const d = currentAIDifficultyForMatch || getAIDifficulty();
+  const src = d === 'easy' ? '/assets/ai-worms/e3.png' : d === 'medium' ? '/assets/ai-worms/m3.png' : '/assets/ai-worms/h3.png';
+  loaderWormImageEl.style.display = '';
+  loaderWormImageEl.src = src;
+}
 
 function setLoaderProgress(progress01: number, text?: string) {
   const p = Math.max(0, Math.min(1, progress01));
@@ -101,12 +133,51 @@ APIClient.getMaps().then(maps => {
   }
 });
 
-const aiDifficultySelect = document.getElementById('ai-difficulty-select') as HTMLSelectElement | null;
-if (aiDifficultySelect) {
-  aiDifficultySelect.value = getAIDifficulty();
-  aiDifficultySelect.addEventListener('change', () => {
-    const v = aiDifficultySelect.value;
-    if (v === 'easy' || v === 'medium' || v === 'hard') setAIDifficulty(v);
+const aiHoverLoaded = new Set<string>();
+
+function preloadImageOnce(src: string): Promise<void> {
+  if (!src) return Promise.resolve();
+  if (aiHoverLoaded.has(src)) return Promise.resolve();
+  aiHoverLoaded.add(src);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = () => resolve();
+    img.src = src;
+  });
+}
+
+function bindAIDifficultyWormCards() {
+  const cards = Array.from(document.querySelectorAll<HTMLButtonElement>('.ai-worm-card'));
+  if (cards.length === 0) return;
+
+  cards.forEach((card) => {
+    const imgEl = card.querySelector<HTMLImageElement>('img');
+    if (!imgEl) return;
+
+    const baseSrc = card.dataset.src || imgEl.getAttribute('src') || '';
+    const hoverSrc = card.dataset.hoverSrc || '';
+
+    card.addEventListener('pointerenter', () => {
+      if (!hoverSrc) return;
+      preloadImageOnce(hoverSrc).then(() => {
+        if (card.matches(':hover')) imgEl.src = hoverSrc;
+      });
+    });
+
+    card.addEventListener('pointerleave', () => {
+      if (!baseSrc) return;
+      imgEl.src = baseSrc;
+    });
+
+    card.addEventListener('click', () => {
+      const d = card.dataset.difficulty as AIDifficulty | undefined;
+      if (!d) return;
+      currentAIDifficultyForMatch = d;
+      setAIDifficulty(d);
+      AudioManager.isGameStarted = true;
+      startGame('ai');
+    });
   });
 }
 
@@ -341,6 +412,8 @@ let currentMatchToken: string | null = null;
   async function startGame(mode: 'training' | 'ai' | 'friend' | 'random') {
     currentMode = mode;
     setLoaderProgress(0, 'LOADING...');
+    setLoaderDifficultyWorm(mode);
+    setEnemyDifficultyLabel(mode);
 
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
   const mapType = (mapTypeSelect?.value || 'islands') as 'islands' | 'cave' | 'flat';
@@ -447,6 +520,7 @@ let currentMatchToken: string | null = null;
       height: 800,
       mapType: mapType,
       mode: mode,
+      aiDifficulty: mode === 'ai' ? (currentAIDifficultyForMatch || getAIDifficulty()) : undefined,
       turnTime: turnTime,
       logos: logos,
       airdropPhysics: airdropPhysics,
@@ -659,10 +733,6 @@ let currentMatchToken: string | null = null;
 document.getElementById('btn-play-training')!.addEventListener('click', () => {
   AudioManager.isGameStarted = true; // Enable sounds
   startGame('training');
-});
-document.getElementById('btn-play-ai')!.addEventListener('click', () => {
-  AudioManager.isGameStarted = true; // Enable sounds
-  startGame('ai');
 });
 document.getElementById('btn-play-random')!.addEventListener('click', () => {
   AudioManager.isGameStarted = true; // Enable sounds
@@ -980,6 +1050,7 @@ function bindPresenterEvents() {
 }
 
 bindPresenterEvents();
+bindAIDifficultyWormCards();
 
 // Auto-join logic if room URL param exists
 const initUrlParams = new URLSearchParams(window.location.search);
