@@ -384,6 +384,10 @@ export class GamePresenter {
     return 'draw';
   }
 
+  private getMaxSpeed(player: any): number {
+    return (17.5 * 1.3) * (player.speedMultiplier || 1);
+  }
+
   private processActiveInputs(dt: number): void {
     const player = this.state.getCurrentPlayer();
     if (!player) return;
@@ -391,7 +395,7 @@ export class GamePresenter {
     const chargeSpeed = 100; // max power per second
     // Halved speeds as per user request + floaty worms physics
     const moveForce = 100 * player.speedMultiplier; // pixels per second squared (acceleration)
-    const maxSpeed = (17.5 * 1.3) * player.speedMultiplier;
+    const maxSpeed = this.getMaxSpeed(player);
     const airControl = 0.3; // 30% control while in the air
 
     // --- Handle Aiming (Keyboard + Analog Joystick) ---
@@ -580,17 +584,22 @@ export class GamePresenter {
       case 'jump':
         if (isActive && !player.isJumping) {
           player.isJumping = true;
-          const hasHorizontalInput =
-            this.activeInputs.has('left') ||
-            this.activeInputs.has('right') ||
-            Math.abs(this.analogX) > 0.1;
+          const maxSpeed = this.getMaxSpeed(player);
+          const jumpSpeed = Math.abs(player.jumpForce) * 1.7;
 
-          if (hasHorizontalInput) {
-            player.vy = player.jumpForce * 0.8 * 1.7;
-          } else {
-            player.vy = player.jumpForce * 1.07 * 1.7;
-            player.vx = 0;
-          }
+          let dir = player.facingRight ? 1 : -1;
+          if (this.activeInputs.has('left') || this.analogX < -0.1) dir = -1;
+          else if (this.activeInputs.has('right') || this.analogX > 0.1) dir = 1;
+          else if (Math.abs(player.vx) > 1) dir = Math.sign(player.vx);
+
+          const speedRatio = Math.min(1, Math.abs(player.vx) / Math.max(1, maxSpeed));
+          const minAngle = 12 * (Math.PI / 180);
+          const maxAngle = 38 * (Math.PI / 180);
+          const theta = minAngle + (maxAngle - minAngle) * speedRatio;
+
+          player.vy = -jumpSpeed * Math.cos(theta);
+          player.vx += dir * jumpSpeed * Math.sin(theta);
+
           // Play jump sound
           if (this.physics.onJump) this.physics.onJump();
           AudioManager.playJump();
