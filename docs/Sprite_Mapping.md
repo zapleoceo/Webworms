@@ -34,3 +34,4 @@
 - `public/sprites/Misc/grave1.png` ... `grave6.png`: Graves for dead worms.
 - `public/sprites/Misc/cursor*.png`: Crosshairs and cursors.
 - `public/sprites/Effects/exbiff.png`, `exfoom.png`: Explosions.
+
