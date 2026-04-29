@@ -139,6 +139,7 @@ export class GamePresenter {
     
     this.state.mapData = settings.mapData;
     await this.state.landscape.generateFromImage(settings.mapData);
+    this.state.landscape.computeSpawnCandidates(8, 14, 4, 10);
     worldWidth = this.state.landscape.width;
     worldHeight = this.state.landscape.height;
     this.state.width = worldWidth;

@@ -143,6 +143,7 @@ export class MultiplayerController {
 
     const spawnPoints: {x: number, y: number}[] = [];
     const availableClasses = ['soldier', 'heavy', 'scout'];
+    this.presenter.state.landscape.computeSpawnCandidates(8, 14, 4, 10);
 
     const t1Classes = [
       availableClasses[Random.nextInt(0, availableClasses.length - 1)],

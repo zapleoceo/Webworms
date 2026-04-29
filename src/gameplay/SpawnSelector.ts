@@ -33,6 +33,24 @@ export function findSafeWormSpawn(
     return true;
   };
 
+  const candidates = (landscape as any).spawnCandidates as Array<{ x: number; y: number }> | undefined;
+  if (Array.isArray(candidates) && candidates.length > 0) {
+    const attempts = Math.min(1200, candidates.length * 2);
+    for (let i = 0; i < attempts; i++) {
+      const idx = Math.floor(rng() * candidates.length);
+      const c = candidates[idx];
+      if (!c) continue;
+      if (!isFarEnough(c.x, c.y)) continue;
+      return { x: c.x, y: c.y };
+    }
+    for (let i = 0; i < attempts; i++) {
+      const idx = Math.floor(rng() * candidates.length);
+      const c = candidates[idx];
+      if (!c) continue;
+      return { x: c.x, y: c.y };
+    }
+  }
+
   const tryPoint = (x: number): { ok: boolean; x: number; y: number } => {
     const surfaceY = landscape.getTopSolidY(x);
     const spawnY = surfaceY - hh - clearance - 1;

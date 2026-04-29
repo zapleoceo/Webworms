@@ -9,6 +9,7 @@ export class Landscape {
   public newCraters: {x: number, y: number, r: number}[] = []; // Queue for fast erasure
   public syncCraters: {x: number, y: number, r: number}[] = []; // Used to sync craters exactly once per network tick
   public newStamps: { imgKey: string; x: number; y: number; w: number; h: number; angle: number; crop?: { x: number; y: number; w: number; h: number } }[] = []; // Queue for stamping images
+  public spawnCandidates: { x: number; y: number }[] = [];
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -111,6 +112,49 @@ export class Landscape {
       img.onerror = () => reject(new Error(`Failed to load map image: ${imageUrl}`));
       img.src = imageUrl;
     });
+  }
+
+  public computeSpawnCandidates(hw: number, hh: number, clearance: number, stride: number): void {
+    const candidates: { x: number; y: number }[] = [];
+    const isAirSample = (x: number, y: number): boolean => this.getMaterial(x, y) === 0;
+
+    const isAirBox = (cx: number, cy: number): boolean => {
+      const left = Math.floor(cx - hw - clearance);
+      const right = Math.floor(cx + hw + clearance);
+      const top = Math.floor(cy - hh - clearance);
+      const bottom = Math.floor(cy + hh + clearance);
+
+      const pts = [
+        [left, top],
+        [right, top],
+        [left, bottom],
+        [right, bottom],
+        [Math.floor(cx), Math.floor(cy)]
+      ];
+      for (const [px, py] of pts) {
+        if (!isAirSample(px, py)) return false;
+      }
+      return true;
+    };
+
+    const hasGround = (cx: number, cy: number): boolean => {
+      const y = Math.floor(cy + hh + clearance + 1);
+      const xs = [Math.floor(cx), Math.floor(cx - hw), Math.floor(cx + hw)];
+      for (const x of xs) {
+        if (this.getMaterial(x, y) > 0) return true;
+      }
+      return false;
+    };
+
+    for (let y = 60; y <= this.height - 80; y += stride) {
+      for (let x = 80; x <= this.width - 80; x += stride) {
+        if (!hasGround(x, y)) continue;
+        if (!isAirBox(x, y)) continue;
+        candidates.push({ x, y });
+      }
+    }
+
+    this.spawnCandidates = candidates;
   }
 
   public createCrater(cx: number, cy: number, radius: number): void {
