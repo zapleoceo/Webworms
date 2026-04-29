@@ -14,6 +14,8 @@ export function integrateAirdrop(
   const hw = logo.collisionWidth / 2;
   const hh = logo.collisionHeight / 2;
 
+  let hitWall = false;
+
   let unstickSteps = 0;
   while (obbHits(landscape, logo.x, logo.y, hw, hh, logo.angle) && unstickSteps < 16) {
     logo.y -= 1;
@@ -40,6 +42,8 @@ export function integrateAirdrop(
           logo.x -= dir * m;
           logo.vx *= -0.15;
           if (Math.abs(logo.vx) < 5) logo.vx = 0;
+          logo.angularVelocity *= 0.6;
+          hitWall = true;
         } else {
           logo.y -= dir * m;
           if (dir > 0) logo.touchedGround = true;
@@ -56,6 +60,7 @@ export function integrateAirdrop(
           } else {
             logo.vy = 0;
           }
+          logo.angularVelocity *= 0.35;
         }
         break;
       }
@@ -66,7 +71,7 @@ export function integrateAirdrop(
   sweepAxis('x', dx);
   sweepAxis('y', dy);
 
-  if (logo.touchedGround) {
+  if (logo.touchedGround && !hitWall) {
     const slope = estimateSlope(landscape, logo.x, logo.y, hw, hh);
     logo.vx += slope * gravity * dt * 0.25;
 
@@ -89,7 +94,7 @@ export function integrateAirdrop(
     const d1 = Math.abs(norm(cur - a1));
     const bestAngle = d0 <= d1 ? a0 : a1;
 
-    logo.angularVelocity += norm(bestAngle - logo.angle) * 15 * dt;
+    logo.angularVelocity += norm(bestAngle - logo.angle) * 10 * dt;
   } else {
     logo.vx *= Math.pow(0.995, dt);
   }

@@ -137,7 +137,8 @@ export class PhysicsEngine {
         }
       }
 
-      if (!touchedBefore && logo.touchedGround) {
+      if (!(logo as any).didImpact && !touchedBefore && logo.touchedGround) {
+        (logo as any).didImpact = true;
         if (this.onHeavyImpact) {
           this.onHeavyImpact();
         }
@@ -166,10 +167,6 @@ export class PhysicsEngine {
         AudioManager.playLand();
         state.landscape.stampImage(logo.sprite, logo.x, logo.y, logo.collisionWidth, logo.collisionHeight, logo.angle, (logo as any).spriteCrop);
         stamped.push(logo);
-        // Shake camera slightly
-        if (this.onHeavyImpact) {
-          this.onHeavyImpact(); // The presenter should have logic for this
-        }
         
         // Spawn dust particles
         if (!state.particles) state.particles = [];

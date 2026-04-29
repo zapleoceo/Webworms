@@ -31,6 +31,7 @@ export class BrandLogo {
   public lastY: number = 0;
   public lastAngle: number = 0;
   public bounceFactor: number = 1;
+  public didImpact: boolean = false;
 
   constructor(sprite: string, x: number, y: number, vx: number, vy: number, angle: number, angularVelocity: number) {
     this.sprite = sprite;
