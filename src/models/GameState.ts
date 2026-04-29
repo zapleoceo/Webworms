@@ -4,6 +4,7 @@ import { Projectile } from './Projectile';
 import { Explosion } from './Explosion';
 import { PhysicsProp } from './PhysicsProp';
 import { BrandLogo } from './BrandLogo';
+import type { AirdropPhysicsConfig } from '../physics/AirdropConfig';
 
 export interface FloatingText {
   x: number;
@@ -56,6 +57,7 @@ export class GameState {
   public airdropTimer: number = 60;
   public airdropIndex: number = 0;
   public airdropOffset: number = 0;
+  public airdropPhysics?: AirdropPhysicsConfig;
   public cameraShakeTime: number = 0;
   public lastPlayedIndex?: { [team: string]: number };
 

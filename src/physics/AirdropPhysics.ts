@@ -1,13 +1,69 @@
 import type { Landscape } from '../models/Landscape';
 import type { BrandLogo } from '../models/BrandLogo';
+import { DEFAULT_AIRDROP_PHYSICS, normalizeAirdropPhysicsConfig, type AirdropPhysicsConfig } from './AirdropConfig';
 
-function obbPointSolid(landscape: Landscape, cx: number, cy: number, lx: number, ly: number, angle: number): boolean {
-  const cosA = Math.cos(angle);
-  const sinA = Math.sin(angle);
-  const x = Math.floor(cx + lx * cosA - ly * sinA);
-  const y = Math.floor(cy + lx * sinA + ly * cosA);
+type Vec = { x: number; y: number };
+
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const dot = (a: Vec, b: Vec) => a.x * b.x + a.y * b.y;
+const len = (v: Vec) => Math.hypot(v.x, v.y);
+const norm = (v: Vec): Vec => {
+  const l = len(v);
+  if (l <= 1e-6) return { x: 0, y: -1 };
+  return { x: v.x / l, y: v.y / l };
+};
+const crossSV = (s: number, v: Vec): Vec => ({ x: -s * v.y, y: s * v.x });
+const crossVV = (a: Vec, b: Vec): number => a.x * b.y - a.y * b.x;
+const add = (a: Vec, b: Vec): Vec => ({ x: a.x + b.x, y: a.y + b.y });
+const sub = (a: Vec, b: Vec): Vec => ({ x: a.x - b.x, y: a.y - b.y });
+const mul = (v: Vec, s: number): Vec => ({ x: v.x * s, y: v.y * s });
+
+const rot = (v: Vec, c: number, s: number): Vec => ({ x: v.x * c - v.y * s, y: v.x * s + v.y * c });
+
+const solid = (landscape: Landscape, x: number, y: number): boolean => {
   if (y < 0) return false;
   return landscape.getMaterial(x, y) > 0;
+};
+
+const angleNorm = (a: number): number => {
+  const TAU = Math.PI * 2;
+  a = (a + Math.PI) % TAU;
+  if (a < 0) a += TAU;
+  return a - Math.PI;
+};
+
+export function buildAirdropContactPoints(hw: number, hh: number, cfg: AirdropPhysicsConfig): Vec[] {
+  const spacing = Math.max(10, cfg.contactSpacing);
+  const points: Vec[] = [];
+  const push = (x: number, y: number) => {
+    const k = `${Math.round(x)}:${Math.round(y)}`;
+    if ((push as any)._seen?.has(k)) return;
+    if (!(push as any)._seen) (push as any)._seen = new Set<string>();
+    (push as any)._seen.add(k);
+    points.push({ x, y });
+  };
+
+  const w = hw * 2;
+  const h = hh * 2;
+  const bottomCount = Math.floor(clamp(Math.round(w / spacing) + 1, 3, cfg.maxContactPoints));
+  const sideCount = Math.floor(clamp(Math.round(h / (spacing * 1.4)) + 1, 2, 6));
+  const topCount = Math.floor(clamp(Math.round(w / (spacing * 2.0)) + 1, 2, 4));
+
+  for (let i = 0; i < bottomCount; i++) {
+    const t = bottomCount === 1 ? 0.5 : i / (bottomCount - 1);
+    push(-hw + t * w, hh);
+  }
+  for (let i = 0; i < topCount; i++) {
+    const t = topCount === 1 ? 0.5 : i / (topCount - 1);
+    push(-hw + t * w, -hh);
+  }
+  for (let i = 0; i < sideCount; i++) {
+    const t = sideCount === 1 ? 0.5 : i / (sideCount - 1);
+    push(-hw, -hh + t * h);
+    push(hw, -hh + t * h);
+  }
+
+  return points.slice(0, cfg.maxContactPoints);
 }
 
 export function integrateAirdrop(
@@ -16,162 +72,157 @@ export function integrateAirdrop(
   gravity: number,
   landscape: Landscape
 ): void {
-  logo.touchedGround = false;
+  const cfg = normalizeAirdropPhysicsConfig((logo as any).airdropPhysics || DEFAULT_AIRDROP_PHYSICS);
+  const h = cfg.fixedStep;
+  const maxSubSteps = cfg.maxSubSteps;
 
-  logo.vy += gravity * dt;
+  logo.physicsAccum += Math.max(0, dt);
+  const maxAccum = h * maxSubSteps;
+  if (logo.physicsAccum > maxAccum) logo.physicsAccum = maxAccum;
 
   const hw = logo.collisionWidth / 2;
   const hh = logo.collisionHeight / 2;
 
-  let hitWall = false;
-
-  let unstickSteps = 0;
-  while (obbHits(landscape, logo.x, logo.y, hw, hh, logo.angle) && unstickSteps < 16) {
-    logo.y -= 1;
-    unstickSteps++;
+  if (!Array.isArray(logo.contactPointsLocal) || logo.contactPointsLocal.length === 0 || logo.lastCollisionW !== logo.collisionWidth || logo.lastCollisionH !== logo.collisionHeight) {
+    logo.contactPointsLocal = buildAirdropContactPoints(hw, hh, cfg) as any;
+    logo.lastCollisionW = logo.collisionWidth;
+    logo.lastCollisionH = logo.collisionHeight;
   }
 
-  const step = 1;
-  const dx = logo.vx * dt;
-  const dy = logo.vy * dt;
+  const m = Math.max(0.01, cfg.mass);
+  const invM = 1 / m;
+  const I = m * ((hw * 2) * (hw * 2) + (hh * 2) * (hh * 2)) / 12;
+  const invI = I > 1e-6 ? 1 / I : 0;
+  const comLocal: Vec = { x: 0, y: hh * cfg.centerOfMassYOffset };
 
-  const sweepAxis = (axis: 'x' | 'y', delta: number): void => {
-    const dir = Math.sign(delta);
-    if (dir === 0) return;
-    const total = Math.abs(delta);
-    let moved = 0;
-    while (moved < total) {
-      const m = Math.min(step, total - moved);
-      if (axis === 'x') logo.x += dir * m;
-      else logo.y += dir * m;
+  const stepOnce = () => {
+    logo.touchedGround = false;
 
-      const hit = obbHits(landscape, logo.x, logo.y, hw, hh, logo.angle);
-      if (hit) {
-        if (axis === 'x') {
-          logo.x -= dir * m;
-          logo.vx *= -0.15;
-          if (Math.abs(logo.vx) < 5) logo.vx = 0;
-          logo.angularVelocity *= 0.6;
-          hitWall = true;
-        } else {
-          logo.y -= dir * m;
-          if (dir > 0) logo.touchedGround = true;
-          if (dir > 0) {
-            const impact = logo.vy;
-            if (impact > 260) {
-              const bf = Math.max(0, (logo as any).bounceFactor ?? 1);
-              const restitution = 0.08 * bf;
-              logo.vy = -Math.min(impact * restitution, 80 * bf);
-              (logo as any).bounceFactor = Math.max(0, bf * 0.55 - 0.02);
-            } else {
-              logo.vy = 0;
-            }
-          } else {
-            logo.vy = 0;
-          }
-          logo.angularVelocity *= 0.35;
-        }
-        break;
+    logo.vy += gravity * h;
+
+    logo.x += logo.vx * h;
+    logo.y += logo.vy * h;
+    logo.angle = angleNorm(logo.angle + logo.angularVelocity * h);
+
+    const c = Math.cos(logo.angle);
+    const s = Math.sin(logo.angle);
+    const comWorld = add({ x: logo.x, y: logo.y }, rot(comLocal, c, s));
+
+    type Contact = { p: Vec; n: Vec; pen: number; r: Vec };
+    const contacts: Contact[] = [];
+
+    for (const lp of logo.contactPointsLocal as any as Vec[]) {
+      const wp = add({ x: logo.x, y: logo.y }, rot(lp, c, s));
+      const ix = Math.floor(wp.x);
+      const iy = Math.floor(wp.y);
+      if (!solid(landscape, ix, iy)) continue;
+
+      const gx = (solid(landscape, ix + 1, iy) ? 1 : 0) - (solid(landscape, ix - 1, iy) ? 1 : 0);
+      const gy = (solid(landscape, ix, iy + 1) ? 1 : 0) - (solid(landscape, ix, iy - 1) ? 1 : 0);
+      let n = norm({ x: -gx, y: -gy });
+      if (!Number.isFinite(n.x) || !Number.isFinite(n.y)) n = { x: 0, y: -1 };
+
+      let pen = 0;
+      let out = wp;
+      const maxPen = cfg.maxPenetration;
+      for (let k = 0; k < maxPen; k++) {
+        const tx = Math.floor(out.x);
+        const ty = Math.floor(out.y);
+        if (!solid(landscape, tx, ty)) break;
+        out = add(out, n);
+        pen += 1;
       }
-      moved += m;
+      if (pen <= 0) continue;
+
+      const r = sub(wp, comWorld);
+      contacts.push({ p: wp, n, pen, r });
+      if (contacts.length >= cfg.maxContactPoints) break;
     }
-  };
 
-  sweepAxis('x', dx);
-  sweepAxis('y', dy);
-
-  if (hitWall) {
-    const av = Math.abs(logo.angularVelocity);
-    const slow = Math.max(0, (av - 0.4) * 4) + 1;
-    logo.vx *= Math.pow(0.4, dt * slow);
-    logo.vy *= Math.pow(0.4, dt * slow);
-    logo.angularVelocity *= Math.pow(0.15, dt);
-  }
-
-  if (logo.touchedGround && !hitWall) {
-    const leftTouch = obbPointSolid(landscape, logo.x, logo.y, -hw, hh + 2, logo.angle);
-    const rightTouch = obbPointSolid(landscape, logo.x, logo.y, hw, hh + 2, logo.angle);
-    if (leftTouch !== rightTouch) {
-      const dir = rightTouch ? 1 : -1;
-      logo.angularVelocity += dir * 18 * dt;
-      logo.vx = Math.max(-80, Math.min(80, logo.vx + dir * 60 * dt));
-      const friction = 18;
-      if (logo.vx > 0) logo.vx = Math.max(0, logo.vx - friction * dt);
-      else logo.vx = Math.min(0, logo.vx + friction * dt);
+    if (contacts.length === 0) {
+      logo.sleepAccum = 0;
+      const air = Math.exp(-cfg.linearDampingAir * h);
+      logo.vx *= air;
+      logo.vy *= air;
+      logo.angularVelocity *= Math.exp(-cfg.angularDampingAir * h);
       return;
     }
 
-    const slope = estimateSlope(landscape, logo.x, logo.y, hw, hh);
-    logo.vx += slope * gravity * dt * 0.25;
-
-    const friction = 18;
-    if (logo.vx > 0) logo.vx = Math.max(0, logo.vx - friction * dt);
-    else logo.vx = Math.min(0, logo.vx + friction * dt);
-
-    const targetAngle = Math.atan(slope);
-    const TAU = Math.PI * 2;
-    const norm = (a: number) => {
-      a = (a + Math.PI) % TAU;
-      if (a < 0) a += TAU;
-      return a - Math.PI;
-    };
-    
-    const a0 = norm(targetAngle);
-    const a1 = norm(targetAngle + Math.PI);
-    const cur = logo.angle;
-    const d0 = Math.abs(norm(cur - a0));
-    const d1 = Math.abs(norm(cur - a1));
-    const bestAngle = d0 <= d1 ? a0 : a1;
-
-    logo.angularVelocity += norm(bestAngle - logo.angle) * 10 * dt;
-  } else {
-    logo.vx *= Math.pow(0.995, dt);
-  }
-}
-
-export function estimateSlope(
-  landscape: Landscape,
-  cx: number,
-  cy: number,
-  hx: number,
-  hy: number
-): number {
-  const footY = cy + hy;
-  const sample = (sx: number): number => {
-    const ix = Math.floor(sx);
-    let y = Math.floor(footY);
-    for (let i = 0; i < 60 && y < landscape.height - 1; i++, y++) {
-      if (landscape.getMaterial(ix, y) > 0) return y;
+    for (const ctc of contacts) {
+      if (ctc.n.y < -0.35) logo.touchedGround = true;
+      const corr = clamp((ctc.pen - 0.5) * cfg.penetrationCorrection, 0, cfg.maxPenetration);
+      logo.x += ctc.n.x * corr;
+      logo.y += ctc.n.y * corr;
     }
-    return landscape.height;
+
+    const restitutionScale = Math.max(0, (logo as any).bounceFactor ?? 1);
+    const restitution = cfg.restitution * restitutionScale;
+
+    for (let it = 0; it < cfg.solverIterations; it++) {
+      for (const ctc of contacts) {
+        const v: Vec = { x: logo.vx, y: logo.vy };
+        const w = logo.angularVelocity;
+        const vp = add(v, crossSV(w, ctc.r));
+        const vn = dot(vp, ctc.n);
+        if (vn < 0) {
+          const rn = crossVV(ctc.r, ctc.n);
+          const denom = invM + rn * rn * invI;
+          const jn = denom > 1e-6 ? (-(1 + restitution) * vn) / denom : 0;
+          const impulseN = mul(ctc.n, jn);
+          logo.vx += impulseN.x * invM;
+          logo.vy += impulseN.y * invM;
+          logo.angularVelocity += rn * jn * invI;
+
+          const vt = sub(vp, mul(ctc.n, vn));
+          const tl = len(vt);
+          if (tl > 1e-6) {
+            const t = { x: vt.x / tl, y: vt.y / tl };
+            const rt = crossVV(ctc.r, t);
+            const denomT = invM + rt * rt * invI;
+            const jt0 = denomT > 1e-6 ? (-dot(vp, t)) / denomT : 0;
+            const jt = clamp(jt0, -cfg.friction * jn, cfg.friction * jn);
+            const impulseT = mul(t, jt);
+            logo.vx += impulseT.x * invM;
+            logo.vy += impulseT.y * invM;
+            logo.angularVelocity += rt * jt * invI;
+          }
+        }
+      }
+    }
+
+    if (logo.touchedGround) {
+      const ground = Math.exp(-cfg.linearDampingGround * h);
+      logo.vx *= ground;
+      logo.vy *= ground;
+      logo.angularVelocity *= Math.exp(-cfg.angularDampingGround * h);
+    } else {
+      const air = Math.exp(-cfg.linearDampingAir * h);
+      logo.vx *= air;
+      logo.vy *= air;
+      logo.angularVelocity *= Math.exp(-cfg.angularDampingAir * h);
+    }
+
+    const speed = Math.hypot(logo.vx, logo.vy);
+    const aw = Math.abs(logo.angularVelocity);
+    if (logo.touchedGround && speed < cfg.sleepLinear && aw < cfg.sleepAngular) {
+      logo.sleepAccum += h;
+    } else {
+      logo.sleepAccum = 0;
+    }
+
+    if (logo.sleepAccum >= cfg.sleepTime) {
+      logo.isDynamic = false;
+      logo.vx = 0;
+      logo.vy = 0;
+      logo.angularVelocity = 0;
+      logo.bounceTime = 1.0;
+    }
   };
-  const yL = sample(cx - hx);
-  const yR = sample(cx + hx);
-  return (yR - yL) / Math.max(1, hx * 2);
-}
 
-export function obbHits(landscape: Landscape, cx: number, cy: number, hw: number, hh: number, angle: number): boolean {
-  const cosA = Math.cos(angle);
-  const sinA = Math.sin(angle);
-
-  const check = (lx: number, ly: number): boolean => {
-    const x = Math.floor(cx + lx * cosA - ly * sinA);
-    const y = Math.floor(cy + lx * sinA + ly * cosA);
-    if (y < 0) return false;
-    return landscape.getMaterial(x, y) > 0;
-  };
-
-  const sx = Math.max(1, Math.floor(hw));
-  const sy = Math.max(1, Math.floor(hh));
-  const step = 1;
-
-  for (let i = -sx; i <= sx; i += step) {
-    if (check(i, -sy)) return true;
-    if (check(i, sy)) return true;
+  let steps = 0;
+  while (logo.physicsAccum >= h && steps < maxSubSteps && logo.isDynamic) {
+    stepOnce();
+    logo.physicsAccum -= h;
+    steps++;
   }
-  for (let j = -sy; j <= sy; j += step) {
-    if (check(-sx, j)) return true;
-    if (check(sx, j)) return true;
-  }
-  return false;
 }

@@ -177,7 +177,7 @@ weaponCheckboxes.forEach(cb => {
   });
 });
 
-let currentMode: 'training' | 'friend' | 'random' = 'training';
+let currentMode: 'training' | 'ai' | 'friend' | 'random' = 'training';
 
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
@@ -326,7 +326,7 @@ touchActions.forEach(({ id, action }) => {
 let currentMatchToken: string | null = null;
 
   // Start Game Helpers
-  async function startGame(mode: 'training' | 'friend' | 'random') {
+  async function startGame(mode: 'training' | 'ai' | 'friend' | 'random') {
     currentMode = mode;
     setLoaderProgress(0, 'LOADING...');
 
@@ -379,11 +379,13 @@ let currentMatchToken: string | null = null;
 
   if (mode === 'friend' || mode === 'random') {
     gameInitPromise = (async () => {
-      const turnTimePromise = APIClient.getTurnTime();
+      const settingsPromise = APIClient.getGameSettings();
       const logosPromise = APIClient.getLogos();
-      const turnTime = await turnTimePromise;
+      const gameSettings = await settingsPromise;
+      const turnTime = gameSettings?.turn_time || (await APIClient.getTurnTime());
       setLoaderProgress(0.35, 'LOADING GAME...');
       const logos = await logosPromise;
+      const airdropPhysics = gameSettings?.airdrop_physics || null;
       setLoaderProgress(0.45, 'LOADING GAME...');
       await window.presenter.startGame({
         width: 1500,
@@ -392,14 +394,17 @@ let currentMatchToken: string | null = null;
         mode: mode,
         turnTime: turnTime,
         logos: logos,
+        airdropPhysics: airdropPhysics,
         mapData: null
       });
       window.presenter.localTeam = 'team1';
     })();
   } else {
-    const turnTime = await APIClient.getTurnTime();
+    const gameSettings = await APIClient.getGameSettings();
+    const turnTime = gameSettings?.turn_time || (await APIClient.getTurnTime());
     setLoaderProgress(0.35, 'LOADING GAME...');
     const logos = await APIClient.getLogos();
+    const airdropPhysics = gameSettings?.airdrop_physics || null;
     setLoaderProgress(0.45, 'LOADING GAME...');
     const maps = await APIClient.getMaps();
     setLoaderProgress(0.6, 'LOADING MAP...');
@@ -429,6 +434,7 @@ let currentMatchToken: string | null = null;
       mode: mode,
       turnTime: turnTime,
       logos: logos,
+      airdropPhysics: airdropPhysics,
       mapData: mapData
     });
     window.presenter.localTeam = 'training';
@@ -631,6 +637,10 @@ let currentMatchToken: string | null = null;
 document.getElementById('btn-play-training')!.addEventListener('click', () => {
   AudioManager.isGameStarted = true; // Enable sounds
   startGame('training');
+});
+document.getElementById('btn-play-ai')!.addEventListener('click', () => {
+  AudioManager.isGameStarted = true; // Enable sounds
+  startGame('ai');
 });
 document.getElementById('btn-play-random')!.addEventListener('click', () => {
   AudioManager.isGameStarted = true; // Enable sounds

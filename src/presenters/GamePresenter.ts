@@ -12,6 +12,7 @@ import { getLoadoutForWorm } from '../equipment/LoadoutGenerator';
 import { findSafeWormSpawn } from '../gameplay/SpawnSelector';
 
 import { BrandLogo } from '../models/BrandLogo';
+import { DEFAULT_AIRDROP_PHYSICS, normalizeAirdropPhysicsConfig } from '../physics/AirdropConfig';
 
 export class GamePresenter {
   public state: GameState;
@@ -92,7 +93,8 @@ export class GamePresenter {
     this.physics.onLand = () => this.soundManager.playLand();
     this.physics.onHeavyImpact = () => {
       this.soundManager.playHeavyImpact();
-      this.state.cameraShakeTime = 0.3; // 300ms shake
+      const shake = this.state.airdropPhysics?.impactShakeTime;
+      this.state.cameraShakeTime = typeof shake === 'number' ? shake : 0.3;
     };
   }
 
@@ -148,6 +150,8 @@ export class GamePresenter {
     // Set map seed for deterministic item generation (airdrops, wind, etc.)
     this.state.mapSeed = settings.seed || Math.floor(Math.random() * 1000000);
     Random.setSeed(this.state.mapSeed!);
+
+    this.state.airdropPhysics = normalizeAirdropPhysicsConfig(settings.airdropPhysics || DEFAULT_AIRDROP_PHYSICS);
 
     this.state.airdropTimer = 20 + Random.next() * 25; // First airdrop in 20-45s
     this.state.airdropIndex = 0;
@@ -842,6 +846,7 @@ export class GamePresenter {
     brandLogo.hardness = hardness;
     brandLogo.maxHealth = Math.max(10, hardness * 10);
     brandLogo.health = brandLogo.maxHealth;
+    (brandLogo as any).airdropPhysics = this.state.airdropPhysics;
     
     if (!this.state.brandLogos) this.state.brandLogos = [];
     this.state.brandLogos.push(brandLogo);

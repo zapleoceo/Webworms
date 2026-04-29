@@ -32,6 +32,11 @@ export class BrandLogo {
   public lastAngle: number = 0;
   public bounceFactor: number = 1;
   public didImpact: boolean = false;
+  public physicsAccum: number = 0;
+  public sleepAccum: number = 0;
+  public contactPointsLocal: Array<{ x: number; y: number }> = [];
+  public lastCollisionW: number = 0;
+  public lastCollisionH: number = 0;
 
   constructor(sprite: string, x: number, y: number, vx: number, vy: number, angle: number, angularVelocity: number) {
     this.sprite = sprite;
@@ -65,12 +70,6 @@ export class BrandLogo {
 
     this.age += dt;
 
-    const TAU = Math.PI * 2;
-    const norm = (a: number) => {
-      a = (a + Math.PI) % TAU;
-      if (a < 0) a += TAU;
-      return a - Math.PI;
-    };
     const wasGrounded = this.touchedGround;
     const oldHy = this.collisionHeight / 2;
     const oldBottom = this.y + oldHy;
@@ -92,32 +91,9 @@ export class BrandLogo {
     }
 
     integrateAirdrop(this, dt, gravity, landscape);
-
-    if (this.touchedGround) {
-      this.angularVelocity *= Math.pow(0.5, dt);
-    } else {
-      this.angularVelocity *= Math.pow(0.98, dt);
-    }
-
-    this.angle += this.angularVelocity * dt;
-    this.angle = norm(this.angle);
-
-    const moved = Math.hypot(this.x - this.lastX, this.y - this.lastY);
-    const spun = Math.abs(norm(this.angle - this.lastAngle));
-    const still = moved < 0.35 && spun < 0.01 && Math.abs(this.vx) < 6 && Math.abs(this.vy) < 6 && Math.abs(this.angularVelocity) < 0.08;
-    if (still) this.stationaryTime += dt;
-    else this.stationaryTime = 0;
     this.lastX = this.x;
     this.lastY = this.y;
     this.lastAngle = this.angle;
-
-    if (this.touchedGround && this.stationaryTime >= 2.0) {
-      this.isDynamic = false;
-      this.vx = 0;
-      this.vy = 0;
-      this.angularVelocity = 0;
-      this.bounceTime = 1.0;
-    }
   }
 
   public takeHit(expX: number, _expY: number, _expRadius: number): void {

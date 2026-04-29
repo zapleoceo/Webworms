@@ -107,6 +107,26 @@ export class APIClient {
     }
   }
 
+  public static async getAirdropPhysics(): Promise<any> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/settings/airdrop_physics`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  public static async getGameSettings(): Promise<{ turn_time: number; airdrop_physics: any } | null> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/settings/game`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
   public static async startMatch(sessionId: string): Promise<any> {
     try {
       const res = await fetch(`${this.BASE_URL}/match/start`, {

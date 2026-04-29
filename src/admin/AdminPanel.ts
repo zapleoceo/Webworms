@@ -83,6 +83,30 @@ export class AdminPanel {
 
             <section id="section-dashboard" class="admin-section">
               <h2>Dashboard Statistics</h2>
+              <div class="upload-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
+                <h3>Airdrop Physics</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                  <input type="number" id="adp-mass" placeholder="Mass" class="retro-input" step="0.1">
+                  <input type="number" id="adp-restitution" placeholder="Restitution" class="retro-input" step="0.01">
+                  <input type="number" id="adp-friction" placeholder="Friction" class="retro-input" step="0.05">
+                  <input type="number" id="adp-comy" placeholder="COM Y offset" class="retro-input" step="0.01">
+                  <input type="number" id="adp-spacing" placeholder="Contact spacing" class="retro-input" step="1">
+                  <input type="number" id="adp-maxpoints" placeholder="Max contact points" class="retro-input" step="1">
+                  <input type="number" id="adp-iters" placeholder="Solver iterations" class="retro-input" step="1">
+                  <input type="number" id="adp-sleeptime" placeholder="Sleep time" class="retro-input" step="0.1">
+                  <input type="number" id="adp-sleepv" placeholder="Sleep linear" class="retro-input" step="0.5">
+                  <input type="number" id="adp-sleepw" placeholder="Sleep angular" class="retro-input" step="0.05">
+                  <input type="number" id="adp-maxpen" placeholder="Max penetration" class="retro-input" step="1">
+                  <input type="number" id="adp-penk" placeholder="Pen correction" class="retro-input" step="0.05">
+                  <input type="number" id="adp-lindampg" placeholder="Lin damp ground" class="retro-input" step="0.5">
+                  <input type="number" id="adp-angdampg" placeholder="Ang damp ground" class="retro-input" step="0.5">
+                  <input type="number" id="adp-shake" placeholder="Impact shake time" class="retro-input" step="0.05">
+                </div>
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                  <button id="adp-load" class="secondary-btn small-btn">Load</button>
+                  <button id="adp-save" class="primary-btn small-btn">Save</button>
+                </div>
+              </div>
               <div class="stats-grid">
                 <div class="stat-card">
                   <h3>Total Users</h3>
@@ -250,11 +274,14 @@ export class AdminPanel {
     document.getElementById('admin-login-btn')?.addEventListener('click', () => this.handleLogin());
     document.getElementById('admin-logout-btn')?.addEventListener('click', () => this.handleLogout());
     document.getElementById('load-users')?.addEventListener('click', () => this.loadUsersData());
+    document.getElementById('adp-load')?.addEventListener('click', () => this.loadAirdropPhysics());
+    document.getElementById('adp-save')?.addEventListener('click', () => this.saveAirdropPhysics());
     
     // Navigation
     document.getElementById('nav-dashboard')?.addEventListener('click', (e) => {
       this.switchTab('dashboard', e.target as HTMLElement);
       this.loadUsersData(); // To populate dashboard stats
+      this.loadAirdropPhysics();
     });
     document.getElementById('nav-maps')?.addEventListener('click', (e) => {
       this.switchTab('maps', e.target as HTMLElement);
@@ -885,7 +912,7 @@ export class AdminPanel {
       return;
     }
 
-    // Trim transparent edges so the physical bounds exactly match the visible pixels
+    this.removeSolidBackground(canvas);
     const trimmedInfo = this.trimCanvasTransparency(canvas);
     if (!trimmedInfo) {
       alert('Image is completely transparent.');
@@ -940,6 +967,120 @@ export class AdminPanel {
       trimRatioW: trimmedWidth / w,
       trimRatioH: trimmedHeight / h
     };
+  }
+
+  private removeSolidBackground(canvas: HTMLCanvasElement) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    const img = ctx.getImageData(0, 0, w, h);
+    const d = img.data;
+    const pts = [
+      0, 0,
+      w - 1, 0,
+      0, h - 1,
+      w - 1, h - 1
+    ];
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < pts.length; i += 2) {
+      const x = pts[i];
+      const y = pts[i + 1];
+      const off = (y * w + x) * 4;
+      if (d[off + 3] < 10) continue;
+      r += d[off];
+      g += d[off + 1];
+      b += d[off + 2];
+      n++;
+    }
+    if (n === 0) return;
+    r = r / n;
+    g = g / n;
+    b = b / n;
+    const thr = 18;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 10) continue;
+      if (Math.abs(d[i] - r) < thr && Math.abs(d[i + 1] - g) < thr && Math.abs(d[i + 2] - b) < thr) {
+        d[i + 3] = 0;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  private setNumberInput(id: string, v: any) {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (!el) return;
+    const num = Number(v);
+    if (Number.isFinite(num)) el.value = String(num);
+  }
+
+  private getNumberInput(id: string, fallback: number) {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (!el) return fallback;
+    const v = Number(el.value);
+    return Number.isFinite(v) ? v : fallback;
+  }
+
+  private async loadAirdropPhysics() {
+    try {
+      const res = await fetch(APIClient.BASE_URL + '/settings/airdrop_physics');
+      if (!res.ok) return;
+      const cfg = await res.json();
+      this.setNumberInput('adp-mass', cfg.mass);
+      this.setNumberInput('adp-restitution', cfg.restitution);
+      this.setNumberInput('adp-friction', cfg.friction);
+      this.setNumberInput('adp-comy', cfg.centerOfMassYOffset);
+      this.setNumberInput('adp-spacing', cfg.contactSpacing);
+      this.setNumberInput('adp-maxpoints', cfg.maxContactPoints);
+      this.setNumberInput('adp-iters', cfg.solverIterations);
+      this.setNumberInput('adp-sleeptime', cfg.sleepTime);
+      this.setNumberInput('adp-sleepv', cfg.sleepLinear);
+      this.setNumberInput('adp-sleepw', cfg.sleepAngular);
+      this.setNumberInput('adp-maxpen', cfg.maxPenetration);
+      this.setNumberInput('adp-penk', cfg.penetrationCorrection);
+      this.setNumberInput('adp-lindampg', cfg.linearDampingGround);
+      this.setNumberInput('adp-angdampg', cfg.angularDampingGround);
+      this.setNumberInput('adp-shake', cfg.impactShakeTime);
+    } catch {}
+  }
+
+  private async saveAirdropPhysics() {
+    try {
+      const cfg = {
+        mass: this.getNumberInput('adp-mass', 3),
+        restitution: this.getNumberInput('adp-restitution', 0.05),
+        friction: this.getNumberInput('adp-friction', 0.7),
+        centerOfMassYOffset: this.getNumberInput('adp-comy', 0.18),
+        contactSpacing: this.getNumberInput('adp-spacing', 26),
+        maxContactPoints: this.getNumberInput('adp-maxpoints', 14),
+        solverIterations: this.getNumberInput('adp-iters', 6),
+        sleepTime: this.getNumberInput('adp-sleeptime', 0.9),
+        sleepLinear: this.getNumberInput('adp-sleepv', 6),
+        sleepAngular: this.getNumberInput('adp-sleepw', 0.35),
+        maxPenetration: this.getNumberInput('adp-maxpen', 10),
+        penetrationCorrection: this.getNumberInput('adp-penk', 0.55),
+        linearDampingGround: this.getNumberInput('adp-lindampg', 6),
+        angularDampingGround: this.getNumberInput('adp-angdampg', 10),
+        impactShakeTime: this.getNumberInput('adp-shake', 0.3)
+      };
+      const res = await fetch(APIClient.BASE_URL + '/settings/airdrop_physics', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+        },
+        body: JSON.stringify(cfg)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert('Failed to save: ' + (err.error || 'Unknown error'));
+        return;
+      }
+      await this.loadAirdropPhysics();
+    } catch (e: any) {
+      alert('Network error');
+    }
   }
 
   private async uploadCroppedImage(base64Data: string, trimRatioW: number, trimRatioH: number) {

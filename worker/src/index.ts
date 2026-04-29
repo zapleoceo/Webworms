@@ -6,7 +6,7 @@ import { handleSignalingSignal, handleSignalingSnapshot, handleSignalingWS } fro
 import { SignalingDO as SignalingDOImpl } from './durable/SignalingDO';
 import { createRoom, joinRandomRoom, heartbeatRoom, joinRoomState, getRoomState } from './controllers/rooms';
 import { handleRegister, handleLogin, handleVerify, handleSession, handleDailyReset, handleUpdateProfile, getProfile, handleUpdatePassword } from './controllers/auth';
-import { getTurnTime, updateTurnTime } from './controllers/settings';
+import { getTurnTime, updateTurnTime, getAirdropPhysics, updateAirdropPhysics, getGameSettings } from './controllers/settings';
 import { getAdminUsers, updateAdminUser, deleteAdminUser, addAdminUserTime } from './controllers/adminUsers';
 import { checkAdminAuth } from './services/adminAuth';
 import { addPlayTime } from './services/playTime';
@@ -228,6 +228,15 @@ export default {
       }
       else if (url.pathname === '/api/settings/turn_time' && request.method === 'PUT') {
         response = await updateTurnTime(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/settings/game' && request.method === 'GET') {
+        response = await getGameSettings(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/settings/airdrop_physics' && request.method === 'GET') {
+        response = await getAirdropPhysics(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/settings/airdrop_physics' && request.method === 'PUT') {
+        response = await updateAirdropPhysics(request, env, corsHeaders);
       }
       else if (url.pathname === '/api/admin/users' && request.method === 'GET') {
         response = await getAdminUsers(request, env, corsHeaders);
