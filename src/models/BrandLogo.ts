@@ -30,6 +30,7 @@ export class BrandLogo {
   public lastX: number = 0;
   public lastY: number = 0;
   public lastAngle: number = 0;
+  public bounceFactor: number = 1;
 
   constructor(sprite: string, x: number, y: number, vx: number, vy: number, angle: number, angularVelocity: number) {
     this.sprite = sprite;
@@ -124,6 +125,7 @@ export class BrandLogo {
       this.vy -= 100;
       this.vx += (this.x > expX ? 30 : -30);
       this.angularVelocity += (Math.random() - 0.5) * 2;
+      this.bounceFactor = 1;
     } else {
       // Temporarily tilt and shake the settled logo
       this.hitShake = 1.0;

@@ -45,9 +45,11 @@ export function integrateAirdrop(
           if (dir > 0) logo.touchedGround = true;
           if (dir > 0) {
             const impact = logo.vy;
-            const restitution = 0.08;
             if (impact > 260) {
-              logo.vy = -Math.min(impact * restitution, 80);
+              const bf = Math.max(0, (logo as any).bounceFactor ?? 1);
+              const restitution = 0.08 * bf;
+              logo.vy = -Math.min(impact * restitution, 80 * bf);
+              (logo as any).bounceFactor = Math.max(0, bf * 0.55 - 0.02);
             } else {
               logo.vy = 0;
             }
