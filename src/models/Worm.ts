@@ -107,6 +107,14 @@ export class Worm {
       if (this.weaponCooldowns[id] === undefined) this.weaponCooldowns[id] = 0;
       if (this.maxWeaponCooldowns[id] === undefined) this.maxWeaponCooldowns[id] = w.cooldown;
     }
+
+    const preferredWeaponIndex = this.equipmentIds.findIndex((id) => isWeaponEquipment(id) && id !== 'grenade');
+    if (preferredWeaponIndex >= 0) {
+      this.currentEquipmentIndex = preferredWeaponIndex;
+    } else {
+      const grenadeIndex = this.equipmentIds.findIndex((id) => id === 'grenade');
+      if (grenadeIndex >= 0) this.currentEquipmentIndex = grenadeIndex;
+    }
   }
 
   public getCurrentEquipmentId(): string {

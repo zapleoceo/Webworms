@@ -44,6 +44,7 @@ export class BotTurnController {
   private dirFlipWindowAt: number = -999;
   private dirFlipCount: number = 0;
   private lastDx: number = 0;
+  private ropeStallCount: number = 0;
   private lastMovementCfg: { maxStrategyAttemptsPerTurn: number; maxStrategyFailuresPerTurn: number; replanWhenBannedAtLeast: number; replanCooldownSeconds: number } = {
     maxStrategyAttemptsPerTurn: 3,
     maxStrategyFailuresPerTurn: 3,
@@ -99,6 +100,7 @@ export class BotTurnController {
       this.dirFlipWindowAt = -999;
       this.dirFlipCount = 0;
       this.lastDx = 0;
+      this.ropeStallCount = 0;
       presenter.handleInput?.('left', false, true);
       presenter.handleInput?.('right', false, true);
       presenter.handleInput?.('up', false, true);
@@ -628,6 +630,7 @@ export class BotTurnController {
       this.ropeMode = isClimb ? 'climb' : isSwing ? 'swing' : 'descend';
       this.strategyCost0 = this.estimateCost(presenter, player, moveTo, now);
       this.strategyEvalAt = now + 0.65;
+      this.ropeStallCount = 0;
       return true;
     }
 
@@ -647,6 +650,8 @@ export class BotTurnController {
     const dist2 = Math.hypot(dx, dy);
     const ropeElapsed = now - this.ropeStartedAt;
     const s: MoveStrategy = this.ropeMode === 'climb' ? 'rope_climb' : this.ropeMode === 'descend' ? 'rope_descend' : 'rope_swing';
+    const dyAbs = Math.abs(dy);
+    const dxAbs = Math.abs(dx);
 
     presenter.handleInput?.('left', false, true);
     presenter.handleInput?.('right', false, true);
@@ -670,18 +675,31 @@ export class BotTurnController {
         this.recordStrategySuccess(s);
         this.strategyCost0 = costNow;
         this.strategyEvalAt = now + 0.65;
+        this.ropeStallCount = 0;
       } else {
-        this.recordStrategyFailure(s, now);
-        presenter.handleInput?.('fire', true, true);
-        this.ropeMode = null;
-        this.strategy = null;
-        return;
+        this.ropeStallCount += 1;
+        this.strategyEvalAt = now + 0.65;
+        if (ropeElapsed > 0.9 && this.ropeStallCount >= 2) {
+          this.recordStrategyFailure(s, now);
+          presenter.handleInput?.('fire', true, true);
+          this.ropeMode = null;
+          this.strategy = null;
+          return;
+        }
       }
     }
 
+    const nearGoal = dist2 < 70 && dyAbs < 55;
+    const swingRelease =
+      this.ropeMode === 'swing' &&
+      ropeElapsed > 1.0 &&
+      dyAbs < 90 &&
+      ((dir === 'right' && player.x >= moveTo.x - 10 && player.vx > 6) || (dir === 'left' && player.x <= moveTo.x + 10 && player.vx < -6));
+
     const shouldDetach =
-      dist2 < 70 ||
-      ropeElapsed > 3.2 ||
+      (nearGoal && (this.ropeMode !== 'swing' || dxAbs < 60)) ||
+      swingRelease ||
+      ropeElapsed > 4.0 ||
       (this.ropeMode === 'climb' && dy > -10) ||
       (this.ropeMode === 'descend' && dy < 10);
 
