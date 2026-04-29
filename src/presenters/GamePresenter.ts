@@ -402,14 +402,24 @@ export class GamePresenter {
     const maxAngle = 60 * (Math.PI / 180);
     const theta = minAngle + (maxAngle - minAngle) * runRatio;
 
-    const baseSpeed = Math.abs(player.jumpForce) * 1.2;
-    const speedScale = 1 + 0.4 * runRatio;
+    const baseSpeed = Math.abs(player.jumpForce) * 1.15;
+    const speedScale = 1 + 0.45 * runRatio;
     const jumpSpeed = baseSpeed * speedScale;
 
     const horizontalBoost = 1.2;
     const vx = preVx * 0.95 + dir * jumpSpeed * Math.sin(theta) * horizontalBoost;
     const vy = -jumpSpeed * Math.cos(theta);
     return { vx, vy };
+  }
+
+  private snapCameraTo(x: number, y: number): void {
+    const viewportWidth = this.initialWidth / this.state.zoom;
+    const viewportHeight = this.initialHeight / this.state.zoom;
+    this.state.cameraX = x - viewportWidth / 2;
+    this.state.cameraY = y - viewportHeight / 2;
+    this.cameraFreeMode = false;
+    this.cameraDelayTimer = 0;
+    this.clampCamera(this.initialWidth, this.initialHeight);
   }
 
   private processActiveInputs(dt: number): void {
@@ -603,6 +613,7 @@ export class GamePresenter {
           this.state.currentPlayerIndex = next;
           const nextWorm = this.state.players[next];
           this.updateMobileWeaponIcon(nextWorm);
+          this.snapCameraTo(nextWorm.x, nextWorm.y);
         }
         break;
       case 'jump':
@@ -650,6 +661,7 @@ export class GamePresenter {
           if (targetWorm.team !== player.team) break;
           this.state.currentPlayerIndex = payload;
           this.updateMobileWeaponIcon(targetWorm);
+          this.snapCameraTo(targetWorm.x, targetWorm.y);
         }
         break;
     }
