@@ -82,13 +82,12 @@ export function aabbHits(landscape: Landscape, cx: number, cy: number, hx: numbe
   const bottom = Math.floor(cy + hy);
 
   for (let x = left; x <= right; x += 2) {
-    if (landscape.getMaterial(x, top) > 0) return true;
+    if (top >= 0 && landscape.getMaterial(x, top) > 0) return true;
     if (landscape.getMaterial(x, bottom) > 0) return true;
   }
   for (let y = top; y <= bottom; y += 2) {
-    if (landscape.getMaterial(left, y) > 0) return true;
-    if (landscape.getMaterial(right, y) > 0) return true;
+    if (y >= 0 && landscape.getMaterial(left, y) > 0) return true;
+    if (y >= 0 && landscape.getMaterial(right, y) > 0) return true;
   }
   return false;
 }
-
