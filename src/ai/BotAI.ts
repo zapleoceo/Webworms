@@ -251,6 +251,16 @@ function surfaceY(terrain: TerrainQuery, x: number): number | null {
   return null;
 }
 
+function floorY(terrain: TerrainQuery, x: number, yHint: number): number | null {
+  const px = Math.floor(x);
+  if (px < 0 || px >= terrain.width) return null;
+  const y0 = clamp(Math.floor(yHint), 0, terrain.height - 1);
+  for (let y = y0; y < terrain.height; y++) {
+    if (terrain.isSolid(px, y)) return y;
+  }
+  return null;
+}
+
 type PathPlan = { reachable: boolean; cost: number; next?: { x: number; y: number } };
 
 function buildSurfacePathPlanner(
@@ -278,7 +288,7 @@ function buildSurfacePathPlanner(
     const k = Math.floor(x);
     const c = syCache.get(k);
     if (c !== undefined) return c;
-    const v = surfaceY(terrain, x);
+    const v = floorY(terrain, x, shooter.y);
     syCache.set(k, v);
     return v;
   };
@@ -470,7 +480,7 @@ export function debugSurfacePathMatrix(
   const costs: number[][] = [];
   const unreachable: Array<{ from: number; to: number }> = [];
   for (let i = 0; i < xs.length; i++) {
-    const sy = surfaceY(terrain, xs[i]);
+    const sy = floorY(terrain, xs[i], terrain.height / 2);
     const y = sy === null ? 0 : (sy - 1 - shooterTemplate.height / 2);
     const shooter: BotWormSnapshot = { ...shooterTemplate, id: String(i), x: xs[i], y };
     const plan = buildSurfacePathPlanner(terrain, shooter, moveSeconds, ropeAttachBudget);
@@ -585,7 +595,7 @@ export function chooseBotPlan(
   let best: { plan: BotPlan; score: number } | null = null;
 
   for (const x of uniq) {
-    const ySolid = surfaceY(world.terrain, x);
+    const ySolid = floorY(world.terrain, x, shooter.y);
     const y = ySolid === null ? shooter.y : (ySolid - 1 - shooter.height / 2);
     const path = planPathToX(x);
     if (!path.reachable) continue;
