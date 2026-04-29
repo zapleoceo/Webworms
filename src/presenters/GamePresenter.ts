@@ -388,6 +388,29 @@ export class GamePresenter {
     return (17.5 * 1.3) * (player.speedMultiplier || 1);
   }
 
+  private computeJumpImpulse(player: any): { vx: number; vy: number } {
+    const maxSpeed = this.getMaxSpeed(player);
+    const preVx = player.vx || 0;
+
+    let dir = player.facingRight ? 1 : -1;
+    if (this.activeInputs.has('left') || this.analogX < -0.1) dir = -1;
+    else if (this.activeInputs.has('right') || this.analogX > 0.1) dir = 1;
+    else if (Math.abs(preVx) > 1) dir = Math.sign(preVx);
+
+    const runRatio = Math.min(1, Math.abs(preVx) / Math.max(1, maxSpeed));
+    const minAngle = 6 * (Math.PI / 180);
+    const maxAngle = 55 * (Math.PI / 180);
+    const theta = minAngle + (maxAngle - minAngle) * runRatio;
+
+    const baseSpeed = Math.abs(player.jumpForce) * 1.7;
+    const speedScale = 1 + 0.35 * runRatio;
+    const jumpSpeed = baseSpeed * speedScale;
+
+    const vx = preVx * 0.9 + dir * jumpSpeed * Math.sin(theta);
+    const vy = -jumpSpeed * Math.cos(theta);
+    return { vx, vy };
+  }
+
   private processActiveInputs(dt: number): void {
     const player = this.state.getCurrentPlayer();
     if (!player) return;
@@ -468,8 +491,8 @@ export class GamePresenter {
 
     // Clamp air speed so they don't accelerate infinitely
     if (player.isJumping) {
-      if (player.vx > maxSpeed * 1.5) player.vx = maxSpeed * 1.5;
-      if (player.vx < -maxSpeed * 1.5) player.vx = -maxSpeed * 1.5;
+      if (player.vx > maxSpeed * 2.2) player.vx = maxSpeed * 2.2;
+      if (player.vx < -maxSpeed * 2.2) player.vx = -maxSpeed * 2.2;
     }
   }
 
@@ -584,21 +607,9 @@ export class GamePresenter {
       case 'jump':
         if (isActive && !player.isJumping) {
           player.isJumping = true;
-          const maxSpeed = this.getMaxSpeed(player);
-          const jumpSpeed = Math.abs(player.jumpForce) * 1.7;
-
-          let dir = player.facingRight ? 1 : -1;
-          if (this.activeInputs.has('left') || this.analogX < -0.1) dir = -1;
-          else if (this.activeInputs.has('right') || this.analogX > 0.1) dir = 1;
-          else if (Math.abs(player.vx) > 1) dir = Math.sign(player.vx);
-
-          const speedRatio = Math.min(1, Math.abs(player.vx) / Math.max(1, maxSpeed));
-          const minAngle = 12 * (Math.PI / 180);
-          const maxAngle = 38 * (Math.PI / 180);
-          const theta = minAngle + (maxAngle - minAngle) * speedRatio;
-
-          player.vy = -jumpSpeed * Math.cos(theta);
-          player.vx += dir * jumpSpeed * Math.sin(theta);
+          const impulse = this.computeJumpImpulse(player);
+          player.vx = impulse.vx;
+          player.vy = impulse.vy;
 
           // Play jump sound
           if (this.physics.onJump) this.physics.onJump();
