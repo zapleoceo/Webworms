@@ -642,7 +642,7 @@ export class CanvasRenderer {
       }
 
       // Aiming Reticle (only for current player and alive)
-      if (player === state.getCurrentPlayer() && player.health > 0) {
+      if (player === state.getCurrentPlayer() && !player.isJumping && player.health > 0) {
         let globalAimAngle = player.aimAngle;
         if (!player.facingRight) {
           globalAimAngle = Math.PI - player.aimAngle;
