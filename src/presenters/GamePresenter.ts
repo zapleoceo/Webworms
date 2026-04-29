@@ -902,6 +902,9 @@ export class GamePresenter {
 
     // Keep track of which team went last
     const currentPlayer = this.state.getCurrentPlayer();
+    if (currentPlayer?.ropeActive) {
+      RopeTool.detach(currentPlayer);
+    }
     const currentTeam = currentPlayer ? currentPlayer.team : 'team1';
     
     // Only switch teams if it's not training mode, otherwise just loop through team 1

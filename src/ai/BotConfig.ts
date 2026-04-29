@@ -6,6 +6,13 @@ export type BotConfig = {
   ropeAttachLimit: Record<AIDifficulty, number>;
   aimErrorPct: Record<AIDifficulty, number>;
   powerErrorPct: Record<AIDifficulty, number>;
+  dig: {
+    enabled: boolean;
+    maxShotsPerTurn: number;
+    distances: number[];
+    depthMin: number;
+    depthMax: number;
+  };
   grenade: {
     fuseSeconds: number;
     restitution: number;
@@ -31,6 +38,7 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   ropeAttachLimit: { easy: 3, medium: 4, hard: 5 },
   aimErrorPct: { easy: 0.3, medium: 0.15, hard: 0.05 },
   powerErrorPct: { easy: 0.3, medium: 0.15, hard: 0.05 },
+  dig: { enabled: true, maxShotsPerTurn: 1, distances: [80, 120, 160], depthMin: 10, depthMax: 40 },
   grenade: { fuseSeconds: 3, restitution: 0.35, friction: 0.85, stopSpeed: 28 },
   scoring: { killBonus: 4000, damageWeight: 1, missWeight: 1, movePenaltyPerPx: 0.35, safeExtraRadius: 14 }
 };
@@ -40,8 +48,15 @@ export function normalizeBotConfig(raw: any): BotConfig {
   const rope = r.ropeAttachLimit && typeof r.ropeAttachLimit === 'object' ? r.ropeAttachLimit : {};
   const aim = r.aimErrorPct && typeof r.aimErrorPct === 'object' ? r.aimErrorPct : {};
   const power = r.powerErrorPct && typeof r.powerErrorPct === 'object' ? r.powerErrorPct : {};
+  const dig = r.dig && typeof r.dig === 'object' ? r.dig : {};
   const grenade = r.grenade && typeof r.grenade === 'object' ? r.grenade : {};
   const scoring = r.scoring && typeof r.scoring === 'object' ? r.scoring : {};
+
+  const distancesRaw = Array.isArray(dig.distances) ? dig.distances : DEFAULT_BOT_CONFIG.dig.distances;
+  const distances = distancesRaw
+    .map((v: any) => num(v, 0))
+    .filter((v: number) => Number.isFinite(v) && v > 0)
+    .slice(0, 8);
 
   return {
     planSeconds: clamp(num(r.planSeconds, DEFAULT_BOT_CONFIG.planSeconds), 0.2, 8),
@@ -61,6 +76,13 @@ export function normalizeBotConfig(raw: any): BotConfig {
       medium: clamp(num(power.medium, DEFAULT_BOT_CONFIG.powerErrorPct.medium), 0, 0.8),
       hard: clamp(num(power.hard, DEFAULT_BOT_CONFIG.powerErrorPct.hard), 0, 0.8)
     },
+    dig: {
+      enabled: Boolean(dig.enabled ?? DEFAULT_BOT_CONFIG.dig.enabled),
+      maxShotsPerTurn: clamp(int(dig.maxShotsPerTurn, DEFAULT_BOT_CONFIG.dig.maxShotsPerTurn), 0, 3),
+      distances: distances.length > 0 ? distances : DEFAULT_BOT_CONFIG.dig.distances,
+      depthMin: clamp(num(dig.depthMin, DEFAULT_BOT_CONFIG.dig.depthMin), 0, 120),
+      depthMax: clamp(num(dig.depthMax, DEFAULT_BOT_CONFIG.dig.depthMax), 0, 200)
+    },
     grenade: {
       fuseSeconds: clamp(num(grenade.fuseSeconds, DEFAULT_BOT_CONFIG.grenade.fuseSeconds), 0.6, 6),
       restitution: clamp(num(grenade.restitution, DEFAULT_BOT_CONFIG.grenade.restitution), 0, 0.85),
@@ -76,4 +98,3 @@ export function normalizeBotConfig(raw: any): BotConfig {
     }
   };
 }
-

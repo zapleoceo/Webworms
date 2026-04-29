@@ -63,6 +63,21 @@
   - medium: ropeAttachLimit.medium
   - hard: ropeAttachLimit.hard
 
+## Сброс верёвки в конце хода
+
+Если червь заканчивает ход с активной верёвкой, верёвка принудительно отключается при переходе хода.
+
+## Режим Dig (копать под движение)
+
+Если бот не смог найти валидный план выстрела/позиции, он может сделать “копающий” выстрел рядом с собой, чтобы изменить рельеф и сделать следующую позицию достижимой.
+
+- Dig включается параметром dig.enabled.
+- Максимум копающих выстрелов за ход: dig.maxShotsPerTurn (обычно 1).
+- Бот выбирает точку копания в локальной зоне по направлению к ближайшему врагу:
+  - X = shooter.x ± dig.distances[]
+  - Y = topSolidY(X) + depth (между dig.depthMin..dig.depthMax)
+- Далее подбирает выстрел разрушительным оружием, который максимально близко попадает в точку копания и не задевает себя/союзников.
+
 ## Параметры (admin → BOT)
 
 - planSeconds
@@ -72,4 +87,4 @@
 - powerErrorPct.easy / medium / hard
 - grenade.fuseSeconds / restitution / friction / stopSpeed
 - scoring.killBonus / damageWeight / missWeight / movePenaltyPerPx / safeExtraRadius
-
+- dig.enabled / dig.maxShotsPerTurn / dig.distances / dig.depthMin / dig.depthMax

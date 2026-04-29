@@ -2,7 +2,7 @@ import { mulberry32, hashStringToSeed } from '../utils/SeededRng';
 import { getAIDifficulty } from '../ai/AIStorage';
 import type { AIDifficulty, BotConfig } from '../ai/BotConfig';
 import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
-import { buildSnapshotFromState, chooseBotAction, chooseBotPlan, terrainFromLandscape } from '../ai/BotAI';
+import { buildSnapshotFromState, chooseBotAction, chooseBotPlan, chooseDigAction, terrainFromLandscape } from '../ai/BotAI';
 
 export class BotTurnController {
   private lastTurnIndex: number = -1;
@@ -13,6 +13,7 @@ export class BotTurnController {
   private ropeAttachUsed: number = 0;
   private ropeStartedAt: number = 0;
   private lastRopeAttemptAt: number = -999;
+  private digShotsThisTurn: number = 0;
 
   public update(presenter: any, isWorldBusy: boolean): void {
     if (!presenter?.isRunning) return;
@@ -35,6 +36,7 @@ export class BotTurnController {
       this.ropeAttachUsed = 0;
       this.ropeStartedAt = 0;
       this.lastRopeAttemptAt = -999;
+      this.digShotsThisTurn = 0;
       presenter.handleInput?.('left', false, true);
       presenter.handleInput?.('right', false, true);
       presenter.handleInput?.('up', false, true);
@@ -85,6 +87,14 @@ export class BotTurnController {
         if (plan) {
           this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power } };
           this.moveStartedAt = presenter.matchDuration || 0;
+        } else if (botCfg.dig.enabled && this.digShotsThisTurn < botCfg.dig.maxShotsPerTurn) {
+          const dig = chooseDigAction(rng, snap.world, shooter, enemies, allies, botCfg);
+          if (dig) {
+            const noisy = this.applyError({ weaponIndex: dig.weaponIndex, facingRight: dig.facingRight, aimAngle: dig.aimAngle, power: dig.power }, botCfg, difficulty, this.rngForTurn(presenter));
+            this.fireAction(presenter, noisy);
+            this.firedThisTurn = true;
+            this.digShotsThisTurn += 1;
+          }
         }
       }
     }

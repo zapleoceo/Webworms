@@ -68,6 +68,12 @@ function weaponCandidates(shooter: BotWormSnapshot): Array<{ index: number; weap
   return out;
 }
 
+function destructibleWeaponCandidates(shooter: BotWormSnapshot): Array<{ index: number; weapon: Weapon; id: string }> {
+  const out = weaponCandidates(shooter).filter(w => w.weapon.explosionRadius > 0 && w.weapon.damage > 0);
+  out.sort((a, b) => b.weapon.explosionRadius - a.weapon.explosionRadius);
+  return out;
+}
+
 function sampleAngles(n: number): number[] {
   const max = 78 * (Math.PI / 180);
   const min = -78 * (Math.PI / 180);
@@ -245,6 +251,38 @@ function surfaceY(terrain: TerrainQuery, x: number): number | null {
   return null;
 }
 
+export function pickDigPoint(
+  terrain: TerrainQuery,
+  shooter: { x: number; y: number; height: number },
+  enemies: Array<{ x: number; y: number }>,
+  botCfg: BotConfig
+): { x: number; y: number } | null {
+  const alive = enemies;
+  if (alive.length === 0) return null;
+  const target = alive
+    .map(e => ({ e, d: Math.hypot(e.x - shooter.x, e.y - shooter.y) }))
+    .sort((a, b) => a.d - b.d)[0]?.e;
+  if (!target) return null;
+
+  const dir = target.x >= shooter.x ? 1 : -1;
+  const depths = {
+    min: Math.min(botCfg.dig.depthMin, botCfg.dig.depthMax),
+    max: Math.max(botCfg.dig.depthMin, botCfg.dig.depthMax)
+  };
+  const depth = (depths.min + depths.max) / 2;
+
+  for (const d of botCfg.dig.distances) {
+    const x = clamp(shooter.x + dir * d, 35, terrain.width - 35);
+    const yTop = surfaceY(terrain, x);
+    if (yTop === null) continue;
+    const y = clamp(yTop + depth, 35, terrain.height - 35);
+    if (!terrain.isSolid(Math.floor(x), Math.floor(y))) continue;
+    return { x, y };
+  }
+
+  return null;
+}
+
 export function chooseBotAction(
   rng: Rng,
   world: BotWorldSnapshot,
@@ -310,4 +348,86 @@ export function chooseBotPlan(
   }
 
   return best?.plan || null;
+}
+
+export function chooseDigAction(
+  rng: Rng,
+  world: BotWorldSnapshot,
+  shooter: BotWormSnapshot,
+  enemies: BotWormSnapshot[],
+  allies: BotWormSnapshot[],
+  botCfg: BotConfig
+): BotAction | null {
+  if (!botCfg.dig.enabled) return null;
+  if (!enemies.some(e => e.health > 0)) return null;
+  const digPoint = pickDigPoint(world.terrain, shooter, enemies, botCfg);
+  if (!digPoint) return null;
+
+  const weapons = destructibleWeaponCandidates(shooter);
+  if (weapons.length === 0) return null;
+
+  const angleList = sampleAngles(18);
+  const powerList = samplePowers(10);
+
+  let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weapon: Weapon } | null = null;
+
+  for (const w of weapons) {
+    const weapon = w.weapon;
+    for (const localAngle of angleList) {
+      const global = (digPoint.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
+      for (const power of powerList) {
+        let speed = power * 4.2 * (weapon.speedModifier || 1);
+        if (weapon.id === 'blaster') speed = 750;
+        const muzzle = gunMuzzlePosition(shooter, global);
+        const res = simulateTrajectory(
+          world.terrain,
+          {
+            start: muzzle,
+            velocity: { x: Math.cos(global) * speed, y: Math.sin(global) * speed },
+            gravity: world.gravity,
+            wind: world.wind,
+            windMultiplier: weapon.windMultiplier || 0,
+            radius: weapon.id === 'grenade' ? 6 : 3,
+            dt: 1 / 60,
+            maxTime: weapon.id === 'grenade' ? botCfg.grenade.fuseSeconds : 2.2,
+            mode: weapon.id === 'grenade' ? 'grenade' : 'projectile',
+            grenade: weapon.id === 'grenade' ? botCfg.grenade : undefined
+          },
+          { x: digPoint.x, y: digPoint.y },
+          12
+        );
+
+        const miss = Math.hypot(res.end.x - digPoint.x, res.end.y - digPoint.y);
+        let score = -miss;
+        score += weapon.explosionRadius * 0.5;
+        score += (rng() - 0.5) * 1e-6;
+
+        const safeRadius = weapon.explosionRadius + botCfg.scoring.safeExtraRadius;
+        let unsafe = false;
+        for (const ally of allies) {
+          if (ally.health <= 0) continue;
+          const d = Math.hypot(res.end.x - ally.x, res.end.y - ally.y);
+          if (d < safeRadius) {
+            unsafe = true;
+            break;
+          }
+        }
+        if (unsafe) continue;
+
+        if (!best || score > best.score) {
+          best = { score, global, power, weaponIndex: w.index, impact: res.end, weapon };
+        }
+      }
+    }
+  }
+
+  if (!best) return null;
+  const local = localAimFromGlobal(best.global);
+  return {
+    weaponIndex: best.weaponIndex,
+    facingRight: local.facingRight,
+    aimAngle: local.aimAngle,
+    power: best.power,
+    targetId: 'dig'
+  };
 }

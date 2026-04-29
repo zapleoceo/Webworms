@@ -125,7 +125,10 @@ export class AdminPanel {
             </section>
 
             <section id="section-bot" class="admin-section">
-              <h2>Bot</h2>
+              <h2 style="display:flex; align-items:center; justify-content:space-between;">
+                <span>Bot</span>
+                <button id="bot-help" class="secondary-btn small-btn" style="width: 34px; height: 34px; padding: 0;">I</button>
+              </h2>
               <div class="upload-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
                 <h3>AI Bot Settings</h3>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
@@ -149,6 +152,11 @@ export class AdminPanel {
                   <input type="number" id="bot-miss-weight" placeholder="Miss weight" class="retro-input" step="0.1">
                   <input type="number" id="bot-move-penalty" placeholder="Move penalty per px" class="retro-input" step="0.05">
                   <input type="number" id="bot-safe-extra" placeholder="Safe extra radius" class="retro-input" step="1">
+                  <input type="number" id="bot-dig-enabled" placeholder="Dig enabled (0/1)" class="retro-input" step="1">
+                  <input type="number" id="bot-dig-max" placeholder="Dig shots/turn" class="retro-input" step="1">
+                  <input type="text" id="bot-dig-dist" placeholder="Dig distances (e.g. 80,120,160)" class="retro-input">
+                  <input type="number" id="bot-dig-depth-min" placeholder="Dig depth min" class="retro-input" step="1">
+                  <input type="number" id="bot-dig-depth-max" placeholder="Dig depth max" class="retro-input" step="1">
                 </div>
                 <div style="display:flex; gap:10px; margin-top:10px;">
                   <button id="bot-load" class="secondary-btn small-btn">Load</button>
@@ -315,6 +323,7 @@ export class AdminPanel {
     document.getElementById('adp-save')?.addEventListener('click', () => this.saveAirdropPhysics());
     document.getElementById('bot-load')?.addEventListener('click', () => this.loadBotSettings());
     document.getElementById('bot-save')?.addEventListener('click', () => this.saveBotSettings());
+    document.getElementById('bot-help')?.addEventListener('click', () => this.showBotHelp());
     
     // Navigation
     document.getElementById('nav-dashboard')?.addEventListener('click', (e) => {
@@ -1057,11 +1066,23 @@ export class AdminPanel {
     if (Number.isFinite(num)) el.value = String(num);
   }
 
+  private setTextInput(id: string, v: any) {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (!el) return;
+    el.value = v === undefined || v === null ? '' : String(v);
+  }
+
   private getNumberInput(id: string, fallback: number) {
     const el = document.getElementById(id) as HTMLInputElement | null;
     if (!el) return fallback;
     const v = Number(el.value);
     return Number.isFinite(v) ? v : fallback;
+  }
+
+  private getTextInput(id: string): string {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (!el) return '';
+    return String(el.value || '');
   }
 
   private async loadAirdropPhysics() {
@@ -1157,11 +1178,20 @@ export class AdminPanel {
       this.setNumberInput('bot-miss-weight', cfg.scoring?.missWeight);
       this.setNumberInput('bot-move-penalty', cfg.scoring?.movePenaltyPerPx);
       this.setNumberInput('bot-safe-extra', cfg.scoring?.safeExtraRadius);
+
+      this.setNumberInput('bot-dig-enabled', cfg.dig?.enabled ? 1 : 0);
+      this.setNumberInput('bot-dig-max', cfg.dig?.maxShotsPerTurn);
+      const dist = Array.isArray(cfg.dig?.distances) ? cfg.dig.distances.join(',') : '';
+      this.setTextInput('bot-dig-dist', dist);
+      this.setNumberInput('bot-dig-depth-min', cfg.dig?.depthMin);
+      this.setNumberInput('bot-dig-depth-max', cfg.dig?.depthMax);
     } catch {}
   }
 
   private async saveBotSettings() {
     try {
+      const distRaw = (this.getTextInput('bot-dig-dist') || '').split(',').map(s => s.trim()).filter(Boolean);
+      const dist = distRaw.map(v => Number(v)).filter(v => Number.isFinite(v) && v > 0);
       const cfg = {
         planSeconds: this.getNumberInput('bot-plan', 3),
         reserveSeconds: this.getNumberInput('bot-reserve', 1),
@@ -1192,6 +1222,13 @@ export class AdminPanel {
           missWeight: this.getNumberInput('bot-miss-weight', 1),
           movePenaltyPerPx: this.getNumberInput('bot-move-penalty', 0.35),
           safeExtraRadius: this.getNumberInput('bot-safe-extra', 14)
+        },
+        dig: {
+          enabled: this.getNumberInput('bot-dig-enabled', 1) !== 0,
+          maxShotsPerTurn: this.getNumberInput('bot-dig-max', 1),
+          distances: dist,
+          depthMin: this.getNumberInput('bot-dig-depth-min', 10),
+          depthMax: this.getNumberInput('bot-dig-depth-max', 40)
         }
       };
 
@@ -1213,6 +1250,38 @@ export class AdminPanel {
     } catch {
       alert('Network error');
     }
+  }
+
+  private showBotHelp() {
+    alert(
+      [
+        'Параметры бота (BOT):',
+        '',
+        'Plan seconds — сколько секунд бот тратит на поиск плана (в это время не двигается и не стреляет).',
+        'Reserve seconds — сколько секунд оставляем в конце хода на резервный выстрел.',
+        'Execution time считается автоматически: 30 - plan - reserve.',
+        '',
+        'Rope attaches (easy/medium/hard) — лимит успешных attach верёвки за один ход на каждой сложности.',
+        '',
+        'Aim/Power error % — погрешность перед выстрелом. Например 30% означает шум до ±30% по углу/силе.',
+        '',
+        'Grenade fuse — время до взрыва гранаты (сек).',
+        'Grenade restitution — “прыгучесть” при отскоках (0..1).',
+        'Grenade friction — трение/гашение скорости при касании поверхности.',
+        'Grenade stop speed — скорость, ниже которой граната считается остановившейся.',
+        '',
+        'Kill bonus — бонус к оценке, если выстрел (по оценке) добивает врага.',
+        'Damage weight — вес ожидаемого урона в скоринге.',
+        'Miss weight — штраф за промах/дистанцию до цели в скоринге.',
+        'Move penalty per px — штраф за перемещение к позиции (чем больше, тем меньше бот любит ходить далеко).',
+        'Safe extra radius — дополнительный запас безопасности к радиусу взрыва (чтобы не зацепить себя/союзников).',
+        '',
+        'Dig enabled — включить режим “копать под движение”, если нет хорошего плана выстрела.',
+        'Dig shots/turn — максимум копающих выстрелов за ход (обычно 1).',
+        'Dig distances — расстояния по X от бота для точек копания (через запятую).',
+        'Dig depth min/max — насколько глубоко в грунт целиться относительно поверхности (пиксели).'
+      ].join('\\n')
+    );
   }
 
   private async uploadCroppedImage(base64Data: string, trimRatioW: number, trimRatioH: number) {
