@@ -1,6 +1,6 @@
 import { mulberry32, hashStringToSeed } from '../utils/SeededRng';
 
-export type GameMode = 'training' | 'friend' | 'random';
+export type GameMode = 'training' | 'ai' | 'friend' | 'random';
 
 const FULL_LOADOUT = ['bazooka', 'triple', 'rocket', 'minigun', 'grenade', 'blaster', 'rope'];
 const RANDOM_WEAPONS = ['bazooka', 'triple', 'rocket', 'minigun', 'blaster'];
@@ -13,4 +13,3 @@ export function getLoadoutForWorm(mode: GameMode, seed: number, team: string, wo
   const pick = RANDOM_WEAPONS[Math.floor(rng() * RANDOM_WEAPONS.length)] || 'bazooka';
   return ['rope', 'grenade', pick];
 }
-

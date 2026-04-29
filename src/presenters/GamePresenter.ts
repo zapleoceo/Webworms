@@ -13,6 +13,7 @@ import { findSafeWormSpawn } from '../gameplay/SpawnSelector';
 
 import { BrandLogo } from '../models/BrandLogo';
 import { DEFAULT_AIRDROP_PHYSICS, normalizeAirdropPhysicsConfig } from '../physics/AirdropConfig';
+import { BotTurnController } from '../controllers/BotTurnController';
 
 export class GamePresenter {
   public state: GameState;
@@ -56,6 +57,8 @@ export class GamePresenter {
   public onGameOver?: (winner: string | null, stats: {p1Dmg: number, p2Dmg: number}) => void;
   public onLocalAction?: (action: string, isActive: boolean, payload?: any) => void;
   public onStateUpdate: ((state: any) => void) | null = null;
+
+  public botTurnController: BotTurnController | null = null;
 
 
   constructor(width: number, height: number) {
@@ -291,6 +294,10 @@ export class GamePresenter {
       }
       
       this.processActiveInputs(dt);
+
+      if (this.botTurnController) {
+        this.botTurnController.update(this, isMoving || wasMoving);
+      }
       
       // Check game over
       const winner = this.checkGameOver();

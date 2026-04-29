@@ -12,6 +12,8 @@ import { MultiplayerController } from './controllers/MultiplayerController';
 import { ContactController } from './controllers/ContactController';
 import { TimeBalanceController } from './controllers/TimeBalanceController';
 import { AuthController } from './controllers/AuthController';
+import { BotTurnController } from './controllers/BotTurnController';
+import { getAIDifficulty, setAIDifficulty } from './ai/AIStorage';
 
 declare global {
   interface Window {
@@ -97,6 +99,15 @@ APIClient.getMaps().then(maps => {
     mapTypeSelect.innerHTML = '<option disabled>No custom maps found</option>';
   }
 });
+
+const aiDifficultySelect = document.getElementById('ai-difficulty-select') as HTMLSelectElement | null;
+if (aiDifficultySelect) {
+  aiDifficultySelect.value = getAIDifficulty();
+  aiDifficultySelect.addEventListener('change', () => {
+    const v = aiDifficultySelect.value;
+    if (v === 'easy' || v === 'medium' || v === 'hard') setAIDifficulty(v);
+  });
+}
 
 // Weapon Carousel Logic
 const weaponSlots = document.querySelectorAll('.weapon-slot');
@@ -437,7 +448,13 @@ let currentMatchToken: string | null = null;
       airdropPhysics: airdropPhysics,
       mapData: mapData
     });
-    window.presenter.localTeam = 'training';
+    if (mode === 'ai') {
+      window.presenter.localTeam = 'team1';
+      window.presenter.botTurnController = new BotTurnController();
+    } else {
+      window.presenter.localTeam = 'training';
+      window.presenter.botTurnController = null;
+    }
     setLoaderProgress(1, 'STARTING...');
   }
 
