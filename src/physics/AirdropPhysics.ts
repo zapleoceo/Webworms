@@ -1,6 +1,15 @@
 import type { Landscape } from '../models/Landscape';
 import type { BrandLogo } from '../models/BrandLogo';
 
+function obbPointSolid(landscape: Landscape, cx: number, cy: number, lx: number, ly: number, angle: number): boolean {
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const x = Math.floor(cx + lx * cosA - ly * sinA);
+  const y = Math.floor(cy + lx * sinA + ly * cosA);
+  if (y < 0) return false;
+  return landscape.getMaterial(x, y) > 0;
+}
+
 export function integrateAirdrop(
   logo: BrandLogo,
   dt: number,
@@ -72,6 +81,18 @@ export function integrateAirdrop(
   sweepAxis('y', dy);
 
   if (logo.touchedGround && !hitWall) {
+    const leftTouch = obbPointSolid(landscape, logo.x, logo.y, -hw, hh + 2, logo.angle);
+    const rightTouch = obbPointSolid(landscape, logo.x, logo.y, hw, hh + 2, logo.angle);
+    if (leftTouch !== rightTouch) {
+      const dir = rightTouch ? 1 : -1;
+      logo.angularVelocity += dir * 18 * dt;
+      logo.vx = Math.max(-80, Math.min(80, logo.vx + dir * 60 * dt));
+      const friction = 18;
+      if (logo.vx > 0) logo.vx = Math.max(0, logo.vx - friction * dt);
+      else logo.vx = Math.min(0, logo.vx + friction * dt);
+      return;
+    }
+
     const slope = estimateSlope(landscape, logo.x, logo.y, hw, hh);
     logo.vx += slope * gravity * dt * 0.25;
 
