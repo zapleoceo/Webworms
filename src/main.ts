@@ -228,24 +228,44 @@ const moveStick = joystickMove?.querySelector('.joystick-stick') as HTMLElement;
 
 let isDraggingMove = false;
 let moveBaseRect: DOMRect | null = null;
+let moveTouchId: number | null = null;
 
 if (joystickMove) {
   joystickMove.addEventListener('touchstart', (e) => {
     isDraggingMove = true;
     moveBaseRect = joystickMove.getBoundingClientRect();
-    handleMove(e.touches[0]);
+    const t = e.changedTouches[0];
+    if (t) {
+      moveTouchId = t.identifier;
+      handleMove(t);
+    }
   }, { passive: false });
 
   joystickMove.addEventListener('touchmove', (e) => {
-    if (isDraggingMove) handleMove(e.touches[0]);
+    if (!isDraggingMove || moveTouchId === null) return;
+    const t = Array.from(e.touches).find(tt => tt.identifier === moveTouchId);
+    if (t) handleMove(t);
   }, { passive: false });
 
-  joystickMove.addEventListener('touchend', () => {
+  const endMove = () => {
     isDraggingMove = false;
+    moveTouchId = null;
     moveStick.style.transform = `translate(-50%, -50%)`;
     if (window.presenter) {
       window.presenter.handleAnalogInput(0, 0); // Stop movement and aiming
     }
+  };
+
+  joystickMove.addEventListener('touchend', (e) => {
+    if (moveTouchId === null) return endMove();
+    const ended = Array.from(e.changedTouches).some(t => t.identifier === moveTouchId);
+    if (ended) endMove();
+  });
+
+  joystickMove.addEventListener('touchcancel', (e) => {
+    if (moveTouchId === null) return endMove();
+    const ended = Array.from(e.changedTouches).some(t => t.identifier === moveTouchId);
+    if (ended) endMove();
   });
 
   function handleMove(touch: Touch) {
