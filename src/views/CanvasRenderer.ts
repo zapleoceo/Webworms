@@ -18,6 +18,14 @@ export class CanvasRenderer {
     return img;
   }
 
+  private getImg(src: string): HTMLImageElement {
+    const key = `img:${src}`;
+    if (!this.wormImages[key]) {
+      this.wormImages[key] = this.loadImg(src);
+    }
+    return this.wormImages[key];
+  }
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { willReadFrequently: true })!;
@@ -699,6 +707,21 @@ export class CanvasRenderer {
     for (const proj of state.projectiles) {
       this.ctx.save();
       this.ctx.translate(proj.x, proj.y);
+
+      const def = getEquipmentDefinition(proj.weaponId);
+      if (def?.projectileSpriteSrc) {
+        const img = this.getImg(def.projectileSpriteSrc);
+        if (img.complete && img.naturalWidth > 0) {
+          const angle = Math.atan2(proj.vy, proj.vx);
+          this.ctx.rotate(angle);
+          const scale = def.projectileSpriteScale ?? 0.4;
+          const w = img.naturalWidth * scale;
+          const h = img.naturalHeight * scale;
+          this.ctx.drawImage(img, -w / 2, -h / 2, w, h);
+          this.ctx.restore();
+          continue;
+        }
+      }
 
       const animKey = `proj_${proj.weaponId}`;
       const hasSprite = this.animCtrl.getAnimLength(animKey) > 0;

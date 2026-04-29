@@ -10,16 +10,18 @@ export interface EquipmentDefinition {
   icon: string;
   aimAnimKey?: string;
   projectileAnimKey?: string;
+  projectileSpriteSrc?: string;
+  projectileSpriteScale?: number;
   weapon?: Weapon;
 }
 
 const EQUIPMENT: Record<string, EquipmentDefinition> = {
-  bazooka: { id: 'bazooka', kind: 'weapon', name: 'Bazooka', icon: '/sprites/Weapon Icons/bazooka.1.png', aimAnimKey: 'bazooka', projectileAnimKey: 'proj_bazooka', weapon: WEAPONS.bazooka },
-  minigun: { id: 'minigun', kind: 'weapon', name: 'Minigun', icon: '/sprites/Weapon Icons/minigun.1.png', aimAnimKey: 'minigun', projectileAnimKey: 'proj_minigun', weapon: WEAPONS.minigun },
-  triple: { id: 'triple', kind: 'weapon', name: 'Triple-barrel', icon: '/sprites/Weapon Icons/shotgun.1.png', aimAnimKey: 'shotgun', projectileAnimKey: 'proj_triple', weapon: WEAPONS.triple },
-  rocket: { id: 'rocket', kind: 'weapon', name: 'Rocket', icon: '/sprites/Weapon Icons/hmissile.1.png', aimAnimKey: 'rocket', projectileAnimKey: 'proj_rocket', weapon: WEAPONS.rocket },
-  blaster: { id: 'blaster', kind: 'weapon', name: 'Blaster', icon: '/sprites/Weapon Icons/laser.1.png', aimAnimKey: 'bazooka', projectileAnimKey: 'proj_blaster', weapon: WEAPONS.blaster },
-  grenade: { id: 'grenade', kind: 'weapon', name: 'Grenade', icon: '/sprites/Weapon Icons/grenade.1.png', aimAnimKey: 'throw', projectileAnimKey: 'proj_grenade', weapon: WEAPONS.grenade },
+  bazooka: { id: 'bazooka', kind: 'weapon', name: 'Bazooka', icon: '/sprites/Weapon Icons/bazooka.1.png', aimAnimKey: 'bazooka', projectileAnimKey: 'proj_bazooka', projectileSpriteSrc: '/sprites/allsprites/bazooka_projectile.png', projectileSpriteScale: 0.42, weapon: WEAPONS.bazooka },
+  minigun: { id: 'minigun', kind: 'weapon', name: 'Minigun', icon: '/sprites/Weapon Icons/minigun.1.png', aimAnimKey: 'minigun', projectileAnimKey: 'proj_minigun', projectileSpriteSrc: '/sprites/allsprites/minigun_bullet.png', projectileSpriteScale: 0.36, weapon: WEAPONS.minigun },
+  triple: { id: 'triple', kind: 'weapon', name: 'Triple-barrel', icon: '/sprites/Weapon Icons/shotgun.1.png', aimAnimKey: 'shotgun', projectileAnimKey: 'proj_triple', projectileSpriteSrc: '/sprites/allsprites/triple_bullets.png', projectileSpriteScale: 0.36, weapon: WEAPONS.triple },
+  rocket: { id: 'rocket', kind: 'weapon', name: 'Rocket', icon: '/sprites/Weapon Icons/hmissile.1.png', aimAnimKey: 'rocket', projectileAnimKey: 'proj_rocket', projectileSpriteSrc: '/sprites/allsprites/rocket_projectile.png', projectileSpriteScale: 0.42, weapon: WEAPONS.rocket },
+  blaster: { id: 'blaster', kind: 'weapon', name: 'Blaster', icon: '/sprites/Weapon Icons/laser.1.png', aimAnimKey: 'bazooka', projectileAnimKey: 'proj_blaster', projectileSpriteSrc: '/sprites/allsprites/blaster_projectile.png', projectileSpriteScale: 0.38, weapon: WEAPONS.blaster },
+  grenade: { id: 'grenade', kind: 'weapon', name: 'Grenade', icon: '/sprites/Weapon Icons/grenade.1.png', aimAnimKey: 'throw', projectileAnimKey: 'proj_grenade', projectileSpriteSrc: '/sprites/allsprites/grenade_flying.png', projectileSpriteScale: 0.44, weapon: WEAPONS.grenade },
   rope: { id: 'rope', kind: 'tool', name: 'Rope', icon: '/sprites/Weapon Icons/rope.1.png', aimAnimKey: 'rope' }
 };
 
@@ -38,4 +40,3 @@ export function getWeaponByEquipmentId(id: string): Weapon | undefined {
 export function getDefaultLoadout(): string[] {
   return ['bazooka', 'grenade', 'rope'];
 }
-
