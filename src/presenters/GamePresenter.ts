@@ -452,9 +452,8 @@ export class GamePresenter {
     if (player.ropeActive) {
       const ropeRate = 220;
       if (Math.abs(this.analogY) > 0.1) {
-        RopeTool.adjustLength(player, this.analogY * ropeRate * dt);
+        RopeTool.adjustLength(player, Math.max(0, this.analogY) * ropeRate * dt);
       } else {
-        if (this.activeInputs.has('up')) RopeTool.adjustLength(player, -ropeRate * dt);
         if (this.activeInputs.has('down')) RopeTool.adjustLength(player, ropeRate * dt);
       }
     } else if (Math.abs(this.analogY) > 0.1) {
@@ -830,7 +829,7 @@ export class GamePresenter {
       sprite = logos[Random.nextInt(0, logos.length - 1)];
     }
 
-    const spawnX = Math.max(100, Math.min(this.state.landscape.width - 100, this.state.cameraX + (this.initialWidth / this.state.zoom) / 2 + (Random.next() - 0.5) * 400));
+    const spawnX = 150 + Random.next() * (this.state.landscape.width - 300);
     const spawnY = -100; // Above screen
     
     const vx = (Random.next() - 0.5) * 60; // -30 to +30
@@ -839,9 +838,8 @@ export class GamePresenter {
     const angularVelocity = (Random.next() - 0.5) * 2;
 
     const brandLogo = new BrandLogo(sprite, spawnX, spawnY, vx, vy, angle, angularVelocity);
-    // Increase the visual and physical size by 1.5x as requested
-    brandLogo.width = width * 1.5;
-    brandLogo.height = height * 1.5;
+    brandLogo.width = width * 2;
+    brandLogo.height = height * 2;
     brandLogo.hardness = hardness;
     brandLogo.maxHealth = Math.max(10, hardness * 10);
     brandLogo.health = brandLogo.maxHealth;

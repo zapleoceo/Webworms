@@ -166,7 +166,7 @@ export class BrandLogo {
     }
   }
 
-  public draw(ctx: CanvasRenderingContext2D, img: HTMLImageElement | undefined): void {
+  public draw(ctx: CanvasRenderingContext2D, img: HTMLImageElement | undefined, crop?: { x: number; y: number; w: number; h: number }): void {
     ctx.save();
     
     let drawX = this.x;
@@ -195,7 +195,11 @@ export class BrandLogo {
     ctx.shadowOffsetY = 4;
 
     if (img && img.complete && img.naturalWidth !== 0) {
-      ctx.drawImage(img, -this.width / 2, -this.height / 2, this.width, this.height);
+      if (crop) {
+        ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, -this.width / 2, -this.height / 2, this.width, this.height);
+      } else {
+        ctx.drawImage(img, -this.width / 2, -this.height / 2, this.width, this.height);
+      }
     } else {
       // Fallback colored rectangle if image is missing
       ctx.fillStyle = '#FFA500';

@@ -29,6 +29,7 @@ export class RopeTool {
   }
 
   public static adjustLength(player: Worm, delta: number): void {
+    if (delta <= 0) return;
     player.ropeLength = Math.max(40, Math.min(700, player.ropeLength + delta));
   }
 
@@ -68,4 +69,3 @@ export class RopeTool {
     }
   }
 }
-

@@ -18,14 +18,6 @@ export class CanvasRenderer {
     return img;
   }
 
-  private getImg(src: string): HTMLImageElement {
-    const key = `img:${src}`;
-    if (!this.wormImages[key]) {
-      this.wormImages[key] = this.loadImg(src);
-    }
-    return this.wormImages[key];
-  }
-
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { willReadFrequently: true })!;
@@ -51,7 +43,9 @@ export class CanvasRenderer {
       'shotgun': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'rocket': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'throw': { src: '/sprites/Worms/wthrow.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'rope': { src: '/sprites/Worms/wbatrope.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
+      'rope': { src: '/sprites/Worms/wbatrope.png', frameWidth: 60, frameHeight: 60, frameCount: 64 },
+      'ropetip': { src: '/sprites/Weapons/ropetip.png', frameWidth: 60, frameHeight: 60, frameCount: 64 },
+      'ropecuff': { src: '/sprites/Weapons/ropecuff.png', frameWidth: 60, frameHeight: 60, frameCount: 128 },
       // Projectiles
       'proj_bazooka': { src: '/sprites/Weapons/missile.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'proj_minigun': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
@@ -66,8 +60,6 @@ export class CanvasRenderer {
     this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg?v=3');
     this.wormImages['brand_windows'] = this.loadImg('/brand_windows.svg?v=3');
     this.wormImages['brand_android'] = this.loadImg('/brand_android.svg?v=3');
-    this.wormImages['ropetip'] = this.loadImg('/sprites/Weapons/ropetip.png');
-    this.wormImages['ropecuff'] = this.loadImg('/sprites/Weapons/ropecuff.png');
   }
 
   public render(state: GameState): void {
@@ -138,22 +130,24 @@ export class CanvasRenderer {
         img.src = logo.sprite;
         this.wormImages[logo.sprite] = img;
       }
+      let crop: { x: number; y: number; w: number; h: number } | undefined;
       if (img.complete && img.naturalWidth !== 0) {
         const bounds = this.getOpaqueBounds(logo.sprite, img);
         if (bounds) {
+          crop = bounds;
           const scaleX = logo.width / img.naturalWidth;
           const scaleY = logo.height / img.naturalHeight;
           logo.collisionWidth = Math.max(10, bounds.w * scaleX);
           logo.collisionHeight = Math.max(10, bounds.h * scaleY);
         }
       }
-      logo.draw(this.ctx, img);
+      logo.draw(this.ctx, img, crop);
     }
   }
 
-  private static opaqueBoundsCache: Record<string, { w: number; h: number }> = {};
+  private static opaqueBoundsCache: Record<string, { x: number; y: number; w: number; h: number }> = {};
 
-  private getOpaqueBounds(key: string, img: HTMLImageElement): { w: number; h: number } | null {
+  private getOpaqueBounds(key: string, img: HTMLImageElement): { x: number; y: number; w: number; h: number } | null {
     const cached = CanvasRenderer.opaqueBoundsCache[key];
     if (cached) return cached;
 
@@ -184,7 +178,7 @@ export class CanvasRenderer {
     }
 
     if (maxX < 0 || maxY < 0) return null;
-    const bounds = { w: maxX - minX + 1, h: maxY - minY + 1 };
+    const bounds = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
     CanvasRenderer.opaqueBoundsCache[key] = bounds;
     return bounds;
   }
@@ -583,16 +577,11 @@ export class CanvasRenderer {
       } else if (isActive && equip?.aimAnimKey) {
         animKey = equip.aimAnimKey;
 
-        // Calculate aim frame (0 to 31)
-        // aimAngle is -PI/2 (up) to PI/2 (down)
-        // In the sprite, Frame 0 is Straight DOWN (+PI/2), and Frame 31 is Straight UP (-PI/2).
-        // Total range is PI radians (180 degrees).
-        // So we invert the angle calculation:
-        // Angle from -PI/2 to PI/2 maps to 31 down to 0.
-        // Let's normalize so -PI/2 gives 31, and PI/2 gives 0.
-        const normalizedAngle = player.aimAngle + Math.PI / 2; // 0 (up) to PI (down)
-        frameIndex = Math.floor((1 - (normalizedAngle / Math.PI)) * 31);
-        frameIndex = Math.max(0, Math.min(31, frameIndex));
+        const frames = this.animCtrl.getAnimLength(animKey);
+        const normalizedAngle = player.aimAngle + Math.PI / 2; // 0..PI
+        const maxFrame = Math.max(0, frames - 1);
+        frameIndex = Math.floor((1 - (normalizedAngle / Math.PI)) * maxFrame);
+        frameIndex = Math.max(0, Math.min(maxFrame, frameIndex));
       } else {
         // Idle breathing
         animKey = 'idle';
@@ -632,14 +621,8 @@ export class CanvasRenderer {
         this.ctx.lineTo(ex, ey);
         this.ctx.stroke();
 
-        const cuff = this.wormImages['ropecuff'];
-        if (cuff?.complete) {
-          this.ctx.drawImage(cuff, sx - 10, sy - 10, 20, 20);
-        }
-        const tip = this.wormImages['ropetip'];
-        if (tip?.complete) {
-          this.ctx.drawImage(tip, ex - 10, ey - 10, 20, 20);
-        }
+        this.animCtrl.drawFrame(this.ctx, 'ropecuff', 0, sx, sy, 0.35, false, 30);
+        this.animCtrl.drawFrame(this.ctx, 'ropetip', 0, ex, ey, 0.35, false, 30);
       }
 
       // Draw name and health
@@ -707,21 +690,6 @@ export class CanvasRenderer {
     for (const proj of state.projectiles) {
       this.ctx.save();
       this.ctx.translate(proj.x, proj.y);
-
-      const def = getEquipmentDefinition(proj.weaponId);
-      if (def?.projectileSpriteSrc) {
-        const img = this.getImg(def.projectileSpriteSrc);
-        if (img.complete && img.naturalWidth > 0) {
-          this.ctx.save();
-          const angle = Math.atan2(proj.vy, proj.vx);
-          this.ctx.rotate(angle);
-          const scale = def.projectileSpriteScale ?? 0.4;
-          const w = img.naturalWidth * scale;
-          const h = img.naturalHeight * scale;
-          this.ctx.drawImage(img, -w / 2, -h / 2, w, h);
-          this.ctx.restore();
-        }
-      }
 
       const animKey = `proj_${proj.weaponId}`;
       const hasSprite = this.animCtrl.getAnimLength(animKey) > 0;
