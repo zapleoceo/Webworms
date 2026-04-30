@@ -85,4 +85,54 @@ describe('rooms', () => {
     expect(hb2Data.expired).toBe(false);
     expect(hb2Data.matched).toBe(true);
   });
+
+  it('heartbeat treats active room as matched', async () => {
+    const ctx1 = createExecutionContext();
+    const hostRes = await worker.fetch(
+      new Request('http://example.com/api/rooms/random', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: 'host-1' })
+      }),
+      env as any,
+      ctx1 as any
+    );
+    await waitOnExecutionContext(ctx1);
+    const { roomId } = await hostRes.json<any>();
+
+    const ctx2 = createExecutionContext();
+    await worker.fetch(
+      new Request('http://example.com/api/rooms/random', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: 'client-1' })
+      }),
+      env as any,
+      ctx2 as any
+    );
+    await waitOnExecutionContext(ctx2);
+
+    const ctxState = createExecutionContext();
+    const stateRes = await worker.fetch(new Request(`http://example.com/api/rooms/${roomId}/state`, { method: 'GET' }), env as any, ctxState as any);
+    await waitOnExecutionContext(ctxState);
+    const roomState = await stateRes.json<any>();
+    roomState.status = 'active';
+    roomState.activeAt = Date.now();
+    await env.ROOMS.put(roomId, JSON.stringify(roomState), { expirationTtl: 3600 });
+
+    const ctxHb = createExecutionContext();
+    const hb = await worker.fetch(
+      new Request(`http://example.com/api/rooms/${roomId}/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostId: 'host-1' })
+      }),
+      env as any,
+      ctxHb as any
+    );
+    await waitOnExecutionContext(ctxHb);
+    const hbData = await hb.json<any>();
+    expect(hbData.expired).toBe(false);
+    expect(hbData.matched).toBe(true);
+  });
 });
