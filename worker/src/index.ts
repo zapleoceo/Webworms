@@ -20,7 +20,7 @@ export interface Env {
   DB: D1Database;
   ROOMS: KVNamespace;
   SIGNALING: DurableObjectNamespace;
-  AIVAI_LOGS: R2Bucket;
+  AIVAI_LOGS?: R2Bucket;
   RESEND_API_KEY?: string;
   PAYPAL_CLIENT_ID?: string;
   PAYPAL_SECRET?: string;
