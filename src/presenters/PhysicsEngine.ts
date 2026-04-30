@@ -20,13 +20,29 @@ export class PhysicsEngine {
   public onFallUpdate?: (vy: number) => void;
   public onLand?: () => void;
   public onHeavyImpact?: () => void;
+  private fixedDt: number = 1 / 60;
+  private accumulator: number = 0;
+  private maxSubsteps: number = 8;
 
   public update(state: GameState, dt: number): void {
-    // Handle input (walking)
+    const clamped = Math.max(0, Math.min(0.25, dt));
+    this.accumulator += clamped;
+    const maxAccum = this.fixedDt * this.maxSubsteps;
+    if (this.accumulator > maxAccum) this.accumulator = maxAccum;
+
+    let steps = Math.floor(this.accumulator / this.fixedDt);
+    if (steps > this.maxSubsteps) steps = this.maxSubsteps;
+
+    for (let i = 0; i < steps; i++) {
+      this.step(state, this.fixedDt);
+      this.accumulator -= this.fixedDt;
+    }
+  }
+
+  private step(state: GameState, dt: number): void {
     if (state.currentPlayerIndex >= 0 && state.currentPlayerIndex < state.players.length) {
       const player = state.getCurrentPlayer();
       if (player) {
-        // Decrease cooldowns
         for (const weaponId in player.weaponCooldowns) {
           if (player.weaponCooldowns[weaponId] > 0) {
             player.weaponCooldowns[weaponId] -= dt;
@@ -36,52 +52,45 @@ export class PhysicsEngine {
       }
     }
 
-    // Update players
     for (const worm of state.players) {
       this.updateWorm(worm, state, dt);
     }
 
-    // Update projectiles
     for (const proj of state.projectiles) {
       if (proj.active) {
         this.updateProjectile(proj, state, dt);
       }
     }
-    
-    // Clean up inactive projectiles
     state.projectiles = state.projectiles.filter(p => p.active);
 
-    // Smoothly transition wind to target
-    if (Random.next() < 0.01) { // Random chance to change wind direction every frame
-      state.windTarget = (Random.next() - 0.5) * 150; // Random wind up to +/- 75 px/s
+    if (Random.next() < 0.6 * dt) {
+      state.windTarget = (Random.next() - 0.5) * 150;
     }
-    state.wind += (state.windTarget - state.wind) * dt * 0.5; // Lerp wind
+    state.wind += (state.windTarget - state.wind) * dt * 0.5;
 
-    // Update explosions
     for (const exp of state.explosions) {
       exp.update(dt);
     }
     state.explosions = state.explosions.filter(e => e.life > 0);
 
-    // Update dynamic props
     this.updateProps(state, dt);
-
-    // Update brand logos
     this.updateBrandLogos(state, dt);
 
-    // Handle worm-to-worm collisions (Heavy Pushing)
     this.handleWormCollisions(state);
-
-    // Handle worm-to-prop collisions (Kinetic damage, falling)
     this.handleWormPropCollisions(state);
+    this.handleWormBrandLogoCollisions(state, dt);
 
-    // Handle worm-to-brandLogo collisions
-    this.handleWormBrandLogoCollisions(state);
+    for (const worm of state.players) {
+      if (worm.health <= 0) continue;
+      this.resolveAgainstTerrainWorm(worm, state);
+    }
+    for (const prop of state.props) {
+      if (prop.health <= 0) continue;
+      this.resolveAgainstTerrainProp(prop, state);
+    }
 
-    // Cleanup dead props
     state.props = state.props.filter(p => p.health > 0);
 
-    // Update particles
     if (state.particles) {
       for (const p of state.particles) {
         p.x += p.vx * dt;
@@ -91,10 +100,9 @@ export class PhysicsEngine {
       state.particles = state.particles.filter(p => p.life > 0);
     }
 
-    // Update floating texts
     if (state.floatingTexts) {
       for (const text of state.floatingTexts) {
-        text.y -= 30 * dt; // Float upwards
+        text.y -= 30 * dt;
         text.life -= dt;
       }
       state.floatingTexts = state.floatingTexts.filter(t => t.life > 0);
@@ -363,7 +371,7 @@ export class PhysicsEngine {
     }
   }
 
-  private handleWormBrandLogoCollisions(state: GameState): void {
+  private handleWormBrandLogoCollisions(state: GameState, dt: number): void {
     if (!state.brandLogos) return;
 
     for (const worm of state.players) {
@@ -379,14 +387,14 @@ export class PhysicsEngine {
 
         if (inX && inY) {
           // If falling, stand on top
-          if (worm.vy > 0 && worm.y + worm.height - worm.vy * 0.016 <= logo.y - halfH + 10) {
+          if (worm.vy > 0 && worm.y + worm.height - worm.vy * dt <= logo.y - halfH + 10) {
             worm.y = logo.y - halfH - worm.height;
             worm.vy = 0;
             worm.isJumping = false;
             
             // If logo is moving, carry worm
             if (logo.isDynamic) {
-              worm.x += logo.vx * 0.016;
+              worm.x += logo.vx * dt;
             }
           } else {
             // Push out horizontally
@@ -398,6 +406,45 @@ export class PhysicsEngine {
           }
         }
       }
+    }
+  }
+
+  private resolveAgainstTerrainWorm(worm: any, state: GameState): void {
+    const hw = 6;
+    const hh = 10;
+    if (!this.isBoxSolid(state.landscape, worm.x, worm.y, hw, hh)) return;
+    for (let i = 0; i < 36; i++) {
+      if (!this.isBoxSolid(state.landscape, worm.x, worm.y, hw, hh)) return;
+      worm.y -= 1;
+    }
+    for (let i = 0; i < 18; i++) {
+      if (!this.isBoxSolid(state.landscape, worm.x, worm.y, hw, hh)) return;
+      worm.x += (i % 2 === 0 ? 1 : -1) * (i + 1);
+    }
+  }
+
+  private resolveAgainstTerrainProp(prop: any, state: GameState): void {
+    const pr = Math.max(1, Math.floor(prop.radius * 0.8));
+    const offsets = circleOffsets(pr);
+    const inside = () => {
+      const px = Math.floor(prop.x);
+      const py = Math.floor(prop.y);
+      for (const o of offsets) {
+        const x = px + o.dx;
+        const y = py + o.dy;
+        if (x < 0 || x >= state.width || y < 0 || y >= state.height) continue;
+        if (state.landscape.getMaterial(x, y) > 0) return true;
+      }
+      return false;
+    };
+    if (!inside()) return;
+    for (let i = 0; i < 48; i++) {
+      if (!inside()) return;
+      prop.y -= 1;
+    }
+    for (let i = 0; i < 24; i++) {
+      if (!inside()) return;
+      prop.x += (i % 2 === 0 ? 1 : -1) * (i + 1);
     }
   }
 
@@ -653,10 +700,10 @@ export class PhysicsEngine {
   private getTerrainNormal(state: GameState, x: number, y: number): { nx: number; ny: number } {
     const ix = Math.floor(x);
     const iy = Math.floor(y);
-    const sL = state.landscape.getMaterial(ix - 1, iy) > 0 ? 1 : 0;
-    const sR = state.landscape.getMaterial(ix + 1, iy) > 0 ? 1 : 0;
-    const sU = state.landscape.getMaterial(ix, iy - 1) > 0 ? 1 : 0;
-    const sD = state.landscape.getMaterial(ix, iy + 1) > 0 ? 1 : 0;
+    const sL = state.landscape.getMaterial(ix - 2, iy) > 0 ? 1 : 0;
+    const sR = state.landscape.getMaterial(ix + 2, iy) > 0 ? 1 : 0;
+    const sU = state.landscape.getMaterial(ix, iy - 2) > 0 ? 1 : 0;
+    const sD = state.landscape.getMaterial(ix, iy + 2) > 0 ? 1 : 0;
 
     let nx = sL - sR;
     let ny = sU - sD;
@@ -724,8 +771,9 @@ export class PhysicsEngine {
 
     // Raycast / Substepping to prevent tunneling through terrain
     const dist = Math.hypot(newX - oldX, newY - oldY);
-    const steps = Math.max(1, Math.ceil(dist)); // roughly 1 step per pixel
     const pr = Math.max(1, Math.floor(proj.radius * 0.8)); // slightly smaller than visual radius for forgiveness
+    const maxStepLen = Math.max(1, pr * 0.75);
+    const steps = Math.max(1, Math.min(360, Math.ceil(dist / maxStepLen)));
     const terrainOffsets = circleOffsets(pr);
 
     const sweepMinX = Math.min(oldX, newX) - proj.radius - 12;

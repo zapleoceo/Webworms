@@ -22,7 +22,8 @@ export class Landscape {
   }
 
   public getMaterial(x: number, y: number): number {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return 255;
+    if (y < 0) return 0;
+    if (x < 0 || x >= this.width || y >= this.height) return 255;
     return this.grid[y * this.width + x];
   }
 
@@ -34,7 +35,8 @@ export class Landscape {
   }
 
   public isSolid(x: number, y: number): boolean {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return true;
+    if (y < 0) return false;
+    if (x < 0 || x >= this.width || y >= this.height) return true;
     return this.grid[y * this.width + x] > 0;
   }
 

@@ -6,6 +6,7 @@ export class RopeTool {
   public static readonly MIN_LENGTH = 40;
   public static readonly MAX_LENGTH = 252;
   public static readonly CAST_DURATION = 0.18;
+  private static readonly MAX_NODES = 24;
 
   private static raycast(
     player: Worm,
@@ -96,9 +97,11 @@ export class RopeTool {
 
     const wrap = RopeTool.segmentHitsTerrain(state, sx, sy, first.x, first.y);
     if (wrap.hit) {
+      if (player.ropeNodes.length < RopeTool.MAX_NODES) {
       const last = player.ropeNodes[0];
       if (!last || Math.hypot(last.x - wrap.x, last.y - wrap.y) > 6) {
         player.ropeNodes.unshift({ x: wrap.x, y: wrap.y });
+      }
       }
     }
 
@@ -110,6 +113,10 @@ export class RopeTool {
         continue;
       }
       break;
+    }
+
+    if (player.ropeNodes.length > RopeTool.MAX_NODES) {
+      player.ropeNodes.length = RopeTool.MAX_NODES;
     }
   }
 
