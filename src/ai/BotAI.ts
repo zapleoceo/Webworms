@@ -37,6 +37,30 @@ export interface BotPlan {
   action: BotAction;
 }
 
+export type BotCandidateSummary = {
+  weaponId: string;
+  weaponIndex: number;
+  targetId: string;
+  globalAngle: number;
+  power: number;
+  miss: number;
+  expectedDamage: number;
+  score: number;
+  impact: { x: number; y: number };
+  selfDist: number;
+  selfSafe: number;
+  safeRadius: number;
+  risk?: number;
+};
+
+export type BotDecisionTrace = {
+  shooter: { id: string; team: 'team1' | 'team2'; x: number; y: number; health: number };
+  targetId: string;
+  chosen: BotCandidateSummary;
+  bestByWeaponId: Record<string, BotCandidateSummary>;
+  rejected: Record<string, number>;
+};
+
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 const angleNorm = (a: number): number => {
@@ -107,7 +131,7 @@ function pickWeaponByRange(weapons: Array<{ index: number; weapon: Weapon; id: s
   return pick(['grenade', 'triple', 'blaster', 'bazooka', 'minigun', 'rocket']).concat(weapons);
 }
 
-type ScoredAction = { action: BotAction; score: number; impact: { x: number; y: number } };
+type ScoredAction = { action: BotAction; score: number; impact: { x: number; y: number }; trace?: BotDecisionTrace };
 
 function isCircleBlocked(terrain: TerrainQuery, x: number, y: number, r: number): boolean {
   const cx = Math.floor(x);
@@ -139,7 +163,8 @@ function chooseBotActionScored(
   shooter: BotWormSnapshot,
   enemies: BotWormSnapshot[],
   allies: BotWormSnapshot[],
-  botCfg: BotConfig
+  botCfg: BotConfig,
+  traceEnabled: boolean = false
 ): ScoredAction | null {
   const aliveEnemies = enemies.filter(e => e.health > 0);
   if (aliveEnemies.length === 0) return null;
@@ -152,15 +177,18 @@ function chooseBotActionScored(
 
   const targetRadius = 10;
 
-  let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot } | null = null;
+  let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot; trace?: BotDecisionTrace } | null = null;
 
   for (const target of aliveEnemies) {
     const dist = Math.hypot(target.x - shooter.x, target.y - shooter.y);
     const ordered = pickWeaponByRange(weapons, dist);
 
     let targetBest: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot } | null = null;
-    let bestBazooka: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot } | null = null;
-    let bestGrenade: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot } | null = null;
+    let bestBazooka: BotCandidateSummary | null = null;
+    let bestGrenade: BotCandidateSummary | null = null;
+    const rejected: Record<string, number> = {};
+    const bestByWeaponId: Record<string, BotCandidateSummary> = {};
+    const bump = (k: string) => { if (!traceEnabled) return; rejected[k] = (rejected[k] || 0) + 1; };
 
     for (let wIdx = 0; wIdx < ordered.length; wIdx++) {
       const w = ordered[wIdx];
@@ -175,14 +203,20 @@ function chooseBotActionScored(
             let speed = power * 4.2 * (weapon.speedModifier || 1);
           const muzzle = gunMuzzlePosition(shooter, global);
           const projRadius = weapon.id === 'grenade' ? 6 : 3;
-          if (isCircleBlocked(world.terrain, muzzle.x, muzzle.y, projRadius)) continue;
+          if (isCircleBlocked(world.terrain, muzzle.x, muzzle.y, projRadius)) {
+            bump('muzzle_blocked');
+            continue;
+          }
 
           const maxByRange = Number.isFinite(weapon.maxRange) && weapon.maxRange > 0 ? (weapon.maxRange / Math.max(1e-3, speed)) : Infinity;
           const fuseSeconds = weapon.id === 'grenade' ? (typeof weapon.fuseSeconds === 'number' ? weapon.fuseSeconds : 3.0) : 0;
           const maxTime = weapon.id === 'grenade'
             ? Math.min(fuseSeconds + (1 / 60), maxByRange)
             : Math.min(2.2, maxByRange);
-          if (!Number.isFinite(maxTime) || maxTime <= 0.05) continue;
+          if (!Number.isFinite(maxTime) || maxTime <= 0.05) {
+            bump('range_blocked');
+            continue;
+          }
 
           const res = simulateTrajectory(
             world.terrain,
@@ -217,7 +251,10 @@ function chooseBotActionScored(
           const safeRadius = simWeapon.explosionRadius + botCfg.scoring.safeExtraRadius;
           const selfSafe = simWeapon.explosionRadius + 18 + botCfg.scoring.safeExtraRadius;
           const selfDist = Math.hypot(res.end.x - shooter.x, res.end.y - shooter.y);
-          if (selfDist < selfSafe) continue;
+          if (selfDist < selfSafe) {
+            bump('self_unsafe');
+            continue;
+          }
           let unsafe = false;
           for (const ally of allies) {
             if (ally.health <= 0) continue;
@@ -227,8 +264,12 @@ function chooseBotActionScored(
               break;
             }
           }
-          if (unsafe) continue;
+          if (unsafe) {
+            bump('ally_unsafe');
+            continue;
+          }
 
+          let risk: number | undefined = undefined;
           if (weapon.id === 'grenade') {
             const pert = 2 * (Math.PI / 180);
             const res2 = simulateTrajectory(
@@ -249,14 +290,33 @@ function chooseBotActionScored(
               targetRadius
             );
             const miss2 = Math.hypot(res2.end.x - target.x, res2.end.y - target.y);
-            const risk = Math.abs(miss2 - miss);
+            risk = Math.abs(miss2 - miss);
             score -= risk * 0.6;
           }
 
           const cand = { score, global, power, weaponIndex: w.index, impact: res.end, weaponId: weapon.id, expectedDamage, target };
           if (!targetBest || score > targetBest.score) targetBest = cand;
-          if (weapon.id === 'bazooka' && (!bestBazooka || score > bestBazooka.score)) bestBazooka = cand;
-          if (weapon.id === 'grenade' && (!bestGrenade || score > bestGrenade.score)) bestGrenade = cand;
+          if (traceEnabled) {
+            const summary: BotCandidateSummary = {
+              weaponId: weapon.id,
+              weaponIndex: w.index,
+              targetId: target.id,
+              globalAngle: global,
+              power,
+              miss,
+              expectedDamage,
+              score,
+              impact: res.end,
+              selfDist,
+              selfSafe,
+              safeRadius,
+              risk
+            };
+            const prev = bestByWeaponId[weapon.id];
+            if (!prev || summary.score > prev.score) bestByWeaponId[weapon.id] = summary;
+            if (weapon.id === 'bazooka' && (!bestBazooka || summary.score > bestBazooka.score)) bestBazooka = summary;
+            if (weapon.id === 'grenade' && (!bestGrenade || summary.score > bestGrenade.score)) bestGrenade = summary;
+          }
         }
       }
     }
@@ -264,12 +324,21 @@ function chooseBotActionScored(
     if (targetBest?.weaponId === 'grenade' && bestBazooka && bestGrenade) {
       const minPct = botCfg.scoring.grenadeMinDamageAdvantagePct ?? 0;
       if (bestGrenade.expectedDamage < bestBazooka.expectedDamage * (1 + minPct)) {
-        targetBest = bestBazooka;
+        targetBest = { score: bestBazooka.score, global: bestBazooka.globalAngle, power: bestBazooka.power, weaponIndex: bestBazooka.weaponIndex, impact: bestBazooka.impact, weaponId: bestBazooka.weaponId, expectedDamage: bestBazooka.expectedDamage, target };
       }
     }
 
     if (targetBest && (!best || targetBest.score > best.score)) {
-      best = targetBest;
+      const trace = traceEnabled && bestByWeaponId[targetBest.weaponId]
+        ? {
+            shooter: { id: shooter.id, team: shooter.team, x: shooter.x, y: shooter.y, health: shooter.health },
+            targetId: target.id,
+            chosen: bestByWeaponId[targetBest.weaponId],
+            bestByWeaponId,
+            rejected
+          }
+        : undefined;
+      best = { ...targetBest, trace };
     }
   }
 
@@ -286,7 +355,8 @@ function chooseBotActionScored(
       targetId: best.target.id
     },
     score: best.score,
-    impact: best.impact
+    impact: best.impact,
+    trace: best.trace
   };
 }
 
@@ -617,6 +687,19 @@ export function chooseBotAction(
   botCfg: BotConfig = DEFAULT_BOT_CONFIG
 ): BotAction | null {
   return chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg)?.action || null;
+}
+
+export function chooseBotActionDebug(
+  rng: Rng,
+  world: BotWorldSnapshot,
+  shooter: BotWormSnapshot,
+  enemies: BotWormSnapshot[],
+  allies: BotWormSnapshot[] = [shooter],
+  botCfg: BotConfig = DEFAULT_BOT_CONFIG
+): { action: BotAction; score: number; impact: { x: number; y: number }; trace?: BotDecisionTrace } | null {
+  const res = chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true);
+  if (!res) return null;
+  return { action: res.action, score: res.score, impact: res.impact, trace: res.trace };
 }
 
 export function chooseBotPlan(

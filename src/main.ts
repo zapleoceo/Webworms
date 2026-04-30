@@ -331,6 +331,7 @@ weaponCheckboxes.forEach(cb => {
 });
 
 let currentMode: 'training' | 'ai' | 'aivai' | 'friend' | 'random' = 'training';
+let aivaiLog: any | null = null;
 
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
@@ -524,6 +525,19 @@ let currentMatchToken: string | null = null;
 let currentRoomId: string | null = null;
 let currentRoomPlayerId: string | null = null;
 
+  function downloadJson(filename: string, data: any) {
+    const text = JSON.stringify(data);
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   // Start Game Helpers
   async function startGame(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random') {
     currentMode = mode;
@@ -646,6 +660,8 @@ let currentRoomPlayerId: string | null = null;
 
     // Use the first uploaded custom map if available
     let mapData = null;
+    let chosenMapId: string | null = null;
+    let chosenMapName: string | null = null;
     if (maps && maps.length > 0) {
       // If a specific map is selected, try to use it. Otherwise use the first one.
       const selectedMapId = mapTypeSelect.value;
@@ -655,6 +671,8 @@ let currentRoomPlayerId: string | null = null;
       }
       
       if (mapObj) {
+        chosenMapId = mapObj.id;
+        chosenMapName = mapObj.name || null;
         const fullMap = await APIClient.getMapById(mapObj.id);
         if (fullMap) {
           mapData = APIClient.BASE_URL.replace('/api', '') + fullMap.image_data + '?t=' + Date.now();
@@ -667,6 +685,28 @@ let currentRoomPlayerId: string | null = null;
     const ai2 = new URLSearchParams(window.location.search).get('a2') as any;
     const a1d: AIDifficulty = ai1 === 'easy' || ai1 === 'medium' || ai1 === 'hard' ? ai1 : 'easy';
     const a2d: AIDifficulty = ai2 === 'easy' || ai2 === 'medium' || ai2 === 'hard' ? ai2 : 'medium';
+    if (mode === 'aivai') {
+      const createdAt = Date.now();
+      aivaiLog = {
+        matchId: `aivai_${createdAt}_${a1d}_${a2d}`,
+        createdAt,
+        url: window.location.href,
+        a1: a1d,
+        a2: a2d,
+        mapType,
+        map: { id: chosenMapId, name: chosenMapName },
+        turnTime,
+        botConfig,
+        gameSettings,
+        events: []
+      };
+      window.presenter.onAIVaiTrace = (e: any) => {
+        if (aivaiLog) aivaiLog.events.push(e);
+      };
+    } else {
+      aivaiLog = null;
+      window.presenter.onAIVaiTrace = undefined;
+    }
     await window.presenter.startGame({
       width: 1500,
       height: 800,
@@ -680,6 +720,11 @@ let currentRoomPlayerId: string | null = null;
       botConfig: botConfig,
       mapData: mapData
     });
+    if (aivaiLog && window.presenter?.state) {
+      aivaiLog.mapSeed = window.presenter.state.mapSeed || null;
+      aivaiLog.weapons = (window.presenter.state as any).weapons || null;
+      aivaiLog.terrainSeed = (window.presenter.state as any).terrainSeed || null;
+    }
     dbg && console.log('[LOADER] solo init ms', Math.round(performance.now() - t0));
     if (mode === 'ai') {
       window.presenter.localTeam = 'team1';
@@ -1234,6 +1279,20 @@ function bindPresenterEvents() {
         <p>Damage Dealt: ${Math.round(stats.damageDealt || stats.p1Dmg || 0)}</p>
         <p>Match Time: ${Math.round(stats.matchDuration || stats.matchTime || 0)}s</p>
       `;
+    }
+
+    if (currentMode === 'aivai' && aivaiLog) {
+      aivaiLog.finishedAt = Date.now();
+      aivaiLog.result = { winner, stats };
+      APIClient.uploadAIVaiLog(aivaiLog).then((res: any) => {
+        if (res?.success && res.key) {
+          aivaiLog.r2Key = res.key;
+        } else {
+          downloadJson(`${aivaiLog.matchId}.json`, aivaiLog);
+        }
+      }).catch(() => {
+        downloadJson(`${aivaiLog.matchId}.json`, aivaiLog);
+      });
     }
   };
 }

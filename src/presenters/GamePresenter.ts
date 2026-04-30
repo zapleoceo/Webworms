@@ -127,6 +127,7 @@ export class GamePresenter {
   }
 
   public localTeam: string | null = null;
+  public onAIVaiTrace?: (event: any) => void;
 
   public async startGame(settings: any) {
     if (settings.mode !== 'training' && settings.mode !== 'aivai') {

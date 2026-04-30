@@ -2,7 +2,7 @@ import { mulberry32, hashStringToSeed } from '../utils/SeededRng';
 import { getAIDifficulty } from '../ai/AIStorage';
 import type { AIDifficulty, BotConfig } from '../ai/BotConfig';
 import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
-import { buildSnapshotFromState, chooseBotAction, chooseBotPlan, chooseDigAction, terrainFromLandscape } from '../ai/BotAI';
+import { buildSnapshotFromState, chooseBotAction, chooseBotActionDebug, chooseBotPlan, chooseDigAction, terrainFromLandscape } from '../ai/BotAI';
 
 type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
 type RopeMode = 'climb' | 'swing' | 'descend';
@@ -55,6 +55,48 @@ export class BotTurnController {
 
   constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
     if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
+  }
+
+  private recordAIVai(
+    presenter: any,
+    botCfg: BotConfig,
+    difficulty: AIDifficulty,
+    stage: string,
+    action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number } | null,
+    noisy: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number } | null
+  ) {
+    try {
+      if (presenter?.state?.mode !== 'aivai') return;
+      const cb = presenter?.onAIVaiTrace;
+      if (typeof cb !== 'function') return;
+      const terrain = terrainFromLandscape(presenter.state.landscape);
+      const snap = buildSnapshotFromState(presenter.state, presenter.physics.gravity, terrain);
+      const p = presenter.state.getCurrentPlayer?.();
+      const shooter = snap.worms.find((w: any) => w.id === String(presenter.state.currentPlayerIndex));
+      if (!p || !shooter) return;
+      shooter.x = p.x;
+      shooter.y = p.y;
+      shooter.height = p.height || shooter.height;
+      shooter.health = p.health || shooter.health;
+      shooter.equipmentIds = Array.isArray(p.equipmentIds) ? p.equipmentIds : shooter.equipmentIds;
+      shooter.weaponCooldowns = p.weaponCooldowns || shooter.weaponCooldowns;
+      const enemies = snap.worms.filter((w: any) => w.team !== shooter.team && w.health > 0);
+      const allies = snap.worms.filter((w: any) => w.team === shooter.team && w.health > 0);
+      const dbg = chooseBotActionDebug(this.rngForTurn(presenter), snap.world, shooter, enemies, allies, botCfg);
+      cb({
+        t: presenter.matchDuration || 0,
+        stage,
+        team: shooter.team,
+        wormId: shooter.id,
+        pos: { x: shooter.x, y: shooter.y },
+        health: shooter.health,
+        difficulty,
+        plan: this.plan?.moveTo ? { x: this.plan.moveTo.x, y: this.plan.moveTo.y } : null,
+        action,
+        noisy,
+        debug: dbg
+      });
+    } catch {}
   }
 
   private debugEnabled(): boolean {
@@ -160,6 +202,7 @@ export class BotTurnController {
         const action = this.computeActionFromCurrent(presenter, botCfg);
         if (action) {
           const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter));
+          this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', action, noisy);
           this.fireAction(presenter, noisy);
           this.firedThisTurn = true;
         }
@@ -174,10 +217,10 @@ export class BotTurnController {
       const rng = this.rngForTurn(presenter);
       const terrain = terrainFromLandscape(presenter.state.landscape);
       const snap = buildSnapshotFromState(presenter.state, presenter.physics.gravity, terrain);
-      const shooter = snap.worms.find(w => w.id === String(presenter.state.currentPlayerIndex)) || snap.worms.find(w => w.team === 'team2');
+      const shooter = snap.worms.find(w => w.id === String(presenter.state.currentPlayerIndex));
       if (shooter) {
-        const enemies = snap.worms.filter(w => w.team === 'team1' && w.health > 0);
-        const allies = snap.worms.filter(w => w.team === 'team2' && w.health > 0);
+        const enemies = snap.worms.filter(w => w.team !== shooter.team && w.health > 0);
+        const allies = snap.worms.filter(w => w.team === shooter.team && w.health > 0);
         const plan = chooseBotPlan(rng, snap.world, shooter, enemies, allies, botCfg, executeSeconds, ropeRemaining);
         if (plan) {
           this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power } };
@@ -187,6 +230,7 @@ export class BotTurnController {
           const dig = chooseDigAction(rng, snap.world, shooter, enemies, allies, botCfg);
           if (dig) {
             const noisy = this.applyError({ weaponIndex: dig.weaponIndex, facingRight: dig.facingRight, aimAngle: dig.aimAngle, power: dig.power }, botCfg, difficulty, this.rngForTurn(presenter));
+            this.recordAIVai(presenter, botCfg, difficulty, 'dig_fire', { weaponIndex: dig.weaponIndex, facingRight: dig.facingRight, aimAngle: dig.aimAngle, power: dig.power }, noisy);
             this.fireAction(presenter, noisy);
             this.firedThisTurn = true;
             this.digShotsThisTurn += 1;
@@ -215,6 +259,7 @@ export class BotTurnController {
     if (!isWorldBusy) {
       const action = this.computeActionFromCurrent(presenter, botCfg) || this.plan.action;
       const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter));
+      this.recordAIVai(presenter, botCfg, difficulty, 'execute_fire', action, noisy);
       this.fireAction(presenter, noisy);
       this.firedThisTurn = true;
     }
@@ -230,15 +275,15 @@ export class BotTurnController {
     const snap = buildSnapshotFromState(presenter.state, presenter.physics.gravity, terrain);
     const p = presenter.state.getCurrentPlayer?.();
     if (!p) return null;
-    const shooter = snap.worms.find(w => w.id === String(presenter.state.currentPlayerIndex)) || snap.worms.find(w => w.team === 'team2');
+    const shooter = snap.worms.find(w => w.id === String(presenter.state.currentPlayerIndex));
     if (!shooter) return null;
     shooter.x = p.x;
     shooter.y = p.y;
     shooter.height = p.height || shooter.height;
     shooter.equipmentIds = Array.isArray(p.equipmentIds) ? p.equipmentIds : shooter.equipmentIds;
     shooter.weaponCooldowns = p.weaponCooldowns || shooter.weaponCooldowns;
-    const enemies = snap.worms.filter(w => w.team === 'team1' && w.health > 0);
-    const allies = snap.worms.filter(w => w.team === 'team2' && w.health > 0);
+    const enemies = snap.worms.filter(w => w.team !== shooter.team && w.health > 0);
+    const allies = snap.worms.filter(w => w.team === shooter.team && w.health > 0);
     const act = chooseBotAction(this.rngForTurn(presenter), snap.world, shooter, enemies, allies, botCfg);
     if (!act) return null;
     return { weaponIndex: act.weaponIndex, facingRight: act.facingRight, aimAngle: act.aimAngle, power: act.power };

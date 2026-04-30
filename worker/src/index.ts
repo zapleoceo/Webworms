@@ -14,11 +14,13 @@ import { getMaps, getMapById, getMapImage, createMap, updateMap, deleteMap } fro
 import { getLogos, createLogo, updateLogo, deleteLogo } from './controllers/logos';
 import { startMatch, reportMatchEnd } from './controllers/matches';
 import { handleContactEmail } from './controllers/contact';
+import { uploadAIVaiLog } from './controllers/aivaiLogs';
 
 export interface Env {
   DB: D1Database;
   ROOMS: KVNamespace;
   SIGNALING: DurableObjectNamespace;
+  AIVAI_LOGS: R2Bucket;
   RESEND_API_KEY?: string;
   PAYPAL_CLIENT_ID?: string;
   PAYPAL_SECRET?: string;
@@ -351,6 +353,9 @@ export default {
       }
       else if (url.pathname === '/api/payment/paypal/capture' && request.method === 'POST') {
         response = await capturePayPalOrder(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/aivai/logs' && request.method === 'POST') {
+        response = await uploadAIVaiLog(request, env, corsHeaders);
       }
       else if (url.pathname === '/api/admin/users/time' && request.method === 'POST') {
         response = await addAdminUserTime(request, env, corsHeaders);
