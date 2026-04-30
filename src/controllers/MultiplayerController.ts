@@ -19,11 +19,14 @@ export class MultiplayerController {
   private pendingState: any | null = null;
   private lastSeq: number = 0;
   private projectileById: Map<number, Projectile> = new Map();
+  private syncBuffer: Array<{ t: number; state: any }> = [];
+  private static readonly INTERP_DELAY_MS = 100;
 
   constructor(presenter: GamePresenter, userId: string) {
     this.presenter = presenter;
     this.userId = userId;
     this.sync = new MultiplayerSync();
+    this.presenter.onClientTick = () => this.tickClientInterpolation();
 
     this.sync.onPlayerAction = (action, active, payload) => {
       if (action === 'analog') {
@@ -51,7 +54,7 @@ export class MultiplayerController {
         this.pendingState = stateData;
         return;
       }
-      this.applyHostState(stateData);
+      this.enqueueHostState(stateData);
     };
 
     this.presenter.onLocalAction = (action: string, active: boolean, payload?: any) => {
@@ -71,100 +74,128 @@ export class MultiplayerController {
     } catch {}
   }
 
-  private applyHostState(stateData: any) {
+  private enqueueHostState(stateData: any) {
     const seq = typeof stateData?.seq === 'number' ? stateData.seq : 0;
     if (seq > 0 && seq <= this.lastSeq) return;
     if (seq > 0) this.lastSeq = seq;
-
-    const oldCurrentPlayerIndex = this.presenter.state.currentPlayerIndex;
-    this.presenter.state.currentPlayerIndex = stateData.currentPlayerIndex;
-    if (oldCurrentPlayerIndex !== stateData.currentPlayerIndex) {
-      const cp = this.presenter.state.getCurrentPlayer();
-      if (cp) this.presenter.updateMobileWeaponIcon(cp);
-    }
-
-    this.presenter.state.wind = stateData.wind;
-    this.presenter.turnTimeLeft = stateData.turnTimeLeft;
-    this.presenter.state.turnTimeLeft = stateData.turnTimeLeft;
-    this.presenter.hasFiredThisTurn = stateData.hasFiredThisTurn;
-    if (stateData.lastPlayedIndex) {
-      this.presenter.state.lastPlayedIndex = stateData.lastPlayedIndex;
-    }
-
-    const smooth = (cur: number, target: number, a: number) => cur + (target - cur) * a;
-    const a = 0.45;
-    stateData.players.forEach((pData: any, i: number) => {
-      if (this.presenter.state.players[i]) {
-        const p = this.presenter.state.players[i];
-        p.x = smooth(p.x, pData.x, a);
-        p.y = smooth(p.y, pData.y, a);
-        p.vx = smooth(p.vx, pData.vx, a);
-        p.vy = smooth(p.vy, pData.vy, a);
-        p.health = pData.health;
-        p.aimAngle = pData.aimAngle;
-        p.facingRight = pData.facingRight;
-
-        if (pData.currentEquipmentIndex !== undefined) {
-          p.currentEquipmentIndex = pData.currentEquipmentIndex;
-        }
-        if (pData.ropeActive !== undefined) {
-          p.ropeActive = pData.ropeActive;
-          p.ropeAnchorX = pData.ropeAnchorX || 0;
-          p.ropeAnchorY = pData.ropeAnchorY || 0;
-          p.ropeLength = pData.ropeLength || 0;
-        }
-        p.team = pData.team;
-        if (pData.unitClass && p.unitClass !== pData.unitClass) {
-          p.unitClass = pData.unitClass;
-        }
-      }
-    });
-
-    const nextProjectiles: Projectile[] = [];
-    const seen = new Set<number>();
-    for (const projData of stateData.projectiles || []) {
-      const id = typeof projData?.id === 'number' ? projData.id : null;
-      const weapon = WEAPONS[projData.weaponId] || WEAPONS['bazooka'];
-
-      if (id === null) {
-        if (projData.weaponId === 'grenade') {
-          const gp = new GrenadeProjectile(projData.x, projData.y, projData.vx, projData.vy, weapon, 3);
-          if (typeof projData.fuseRemaining === 'number') gp.fuseRemaining = projData.fuseRemaining;
-          nextProjectiles.push(gp);
-        } else {
-          nextProjectiles.push(new Projectile(projData.x, projData.y, projData.vx, projData.vy, weapon));
-        }
-        continue;
-      }
-
-      let p = this.projectileById.get(id);
-      if (!p) {
-        p = projData.weaponId === 'grenade'
-          ? new GrenadeProjectile(projData.x, projData.y, projData.vx, projData.vy, weapon, 3)
-          : new Projectile(projData.x, projData.y, projData.vx, projData.vy, weapon);
-        (p as any).netId = id;
-        this.projectileById.set(id, p);
-      }
-      p.x = smooth(p.x, projData.x, 0.55);
-      p.y = smooth(p.y, projData.y, 0.55);
-      p.vx = smooth(p.vx, projData.vx, 0.55);
-      p.vy = smooth(p.vy, projData.vy, 0.55);
-      if (p instanceof GrenadeProjectile && typeof projData.fuseRemaining === 'number') {
-        p.fuseRemaining = projData.fuseRemaining;
-      }
-      nextProjectiles.push(p);
-      seen.add(id);
-    }
-    for (const [id] of this.projectileById) {
-      if (!seen.has(id)) this.projectileById.delete(id);
-    }
-    this.presenter.state.projectiles = nextProjectiles;
 
     if (stateData.craters && stateData.craters.length > 0) {
       stateData.craters.forEach((crater: any) => {
         this.presenter.state.landscape.createCrater(crater.x, crater.y, crater.r);
       });
     }
+
+    this.syncBuffer.push({ t: performance.now(), state: stateData });
+    if (this.syncBuffer.length > 3) this.syncBuffer.shift();
+  }
+
+  private tickClientInterpolation() {
+    if (!this.hasInit) return;
+    if (this.syncBuffer.length === 0) return;
+
+    const now = performance.now();
+    const renderTime = now - MultiplayerController.INTERP_DELAY_MS;
+    let a = this.syncBuffer[0];
+    let b = this.syncBuffer[this.syncBuffer.length - 1];
+
+    for (let i = 0; i < this.syncBuffer.length - 1; i++) {
+      const s0 = this.syncBuffer[i];
+      const s1 = this.syncBuffer[i + 1];
+      if (renderTime >= s0.t && renderTime <= s1.t) {
+        a = s0;
+        b = s1;
+        break;
+      }
+      if (renderTime > s1.t) {
+        a = s1;
+        b = s1;
+      }
+    }
+
+    const dt = Math.max(1, b.t - a.t);
+    const t = Math.max(0, Math.min(1, (renderTime - a.t) / dt));
+    this.applyInterpolatedState(a.state, b.state, t);
+  }
+
+  private applyInterpolatedState(s0: any, s1: any, t: number) {
+    const lerp = (x: number, y: number) => x + (y - x) * t;
+    const s = s1 || s0;
+
+    const oldCurrentPlayerIndex = this.presenter.state.currentPlayerIndex;
+    this.presenter.state.currentPlayerIndex = s.currentPlayerIndex;
+    if (oldCurrentPlayerIndex !== s.currentPlayerIndex) {
+      const cp = this.presenter.state.getCurrentPlayer();
+      if (cp) this.presenter.updateMobileWeaponIcon(cp);
+    }
+
+    this.presenter.state.wind = s.wind;
+    this.presenter.turnTimeLeft = s.turnTimeLeft;
+    this.presenter.state.turnTimeLeft = s.turnTimeLeft;
+    this.presenter.hasFiredThisTurn = s.hasFiredThisTurn;
+    if (s.lastPlayedIndex) {
+      this.presenter.state.lastPlayedIndex = s.lastPlayedIndex;
+    }
+
+    const p0 = Array.isArray(s0?.players) ? s0.players : [];
+    const p1 = Array.isArray(s1?.players) ? s1.players : [];
+    for (let i = 0; i < this.presenter.state.players.length; i++) {
+      const w = this.presenter.state.players[i];
+      const a = p0[i] || p1[i];
+      const b = p1[i] || p0[i];
+      if (!a || !b) continue;
+      w.x = lerp(a.x, b.x);
+      w.y = lerp(a.y, b.y);
+      w.vx = lerp(a.vx, b.vx);
+      w.vy = lerp(a.vy, b.vy);
+      w.health = b.health;
+      w.aimAngle = b.aimAngle;
+      w.facingRight = b.facingRight;
+      if (b.currentEquipmentIndex !== undefined) w.currentEquipmentIndex = b.currentEquipmentIndex;
+      if (b.ropeActive !== undefined) {
+        w.ropeActive = b.ropeActive;
+        w.ropeAnchorX = b.ropeAnchorX || 0;
+        w.ropeAnchorY = b.ropeAnchorY || 0;
+        w.ropeLength = b.ropeLength || 0;
+      }
+      w.team = b.team;
+      if (b.unitClass && w.unitClass !== b.unitClass) w.unitClass = b.unitClass;
+    }
+
+    const proj0 = Array.isArray(s0?.projectiles) ? s0.projectiles : [];
+    const proj1 = Array.isArray(s1?.projectiles) ? s1.projectiles : [];
+    const map0 = new Map<number, any>();
+    const map1 = new Map<number, any>();
+    for (const pd of proj0) if (typeof pd?.id === 'number') map0.set(pd.id, pd);
+    for (const pd of proj1) if (typeof pd?.id === 'number') map1.set(pd.id, pd);
+
+    const ids = new Set<number>([...map0.keys(), ...map1.keys()]);
+    const nextProjectiles: Projectile[] = [];
+    for (const id of ids) {
+      const a = map0.get(id) || map1.get(id);
+      const b = map1.get(id) || map0.get(id);
+      if (!a || !b) continue;
+      const weapon = WEAPONS[b.weaponId] || WEAPONS['bazooka'];
+      let p = this.projectileById.get(id);
+      if (!p) {
+        p = b.weaponId === 'grenade'
+          ? new GrenadeProjectile(b.x, b.y, b.vx, b.vy, weapon, 3)
+          : new Projectile(b.x, b.y, b.vx, b.vy, weapon);
+        (p as any).netId = id;
+        this.projectileById.set(id, p);
+      }
+      p.x = lerp(a.x, b.x);
+      p.y = lerp(a.y, b.y);
+      p.vx = lerp(a.vx, b.vx);
+      p.vy = lerp(a.vy, b.vy);
+      if (p instanceof GrenadeProjectile && typeof b.fuseRemaining === 'number') {
+        p.fuseRemaining = b.fuseRemaining;
+      }
+      nextProjectiles.push(p);
+    }
+    for (const [id] of this.projectileById) {
+      if (!ids.has(id)) this.projectileById.delete(id);
+    }
+    this.presenter.state.projectiles = nextProjectiles;
   }
 
   private applyHostInit(initData: any) {
@@ -184,18 +215,22 @@ export class MultiplayerController {
         this.rebuildWorms(typeof mapSeed === 'number' ? mapSeed : 1);
         this.presenter.isPaused = false;
         this.hasInit = true;
+        this.syncBuffer = [];
+        this.lastSeq = 0;
         const pending = this.pendingState;
         this.pendingState = null;
-        if (pending) this.applyHostState(pending);
+        if (pending) this.enqueueHostState(pending);
       }).catch(() => {
         this.presenter.isPaused = false;
       });
       return;
     }
     this.hasInit = true;
+    this.syncBuffer = [];
+    this.lastSeq = 0;
     const pending = this.pendingState;
     this.pendingState = null;
-    if (pending) this.applyHostState(pending);
+    if (pending) this.enqueueHostState(pending);
   }
 
   private rebuildWorms(mapSeed: number) {

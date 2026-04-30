@@ -68,6 +68,7 @@ export class GamePresenter {
 
   public onGameOver?: (winner: string | null, stats: {p1Dmg: number, p2Dmg: number}) => void;
   public onLocalAction?: (action: string, isActive: boolean, payload?: any) => void;
+  public onClientTick?: (dt: number) => void;
   public onStateUpdate: ((state: any) => void) | null = null;
 
   public botTurnController: BotTurnController | null = null;
@@ -358,6 +359,7 @@ export class GamePresenter {
       // CLIENT MODE: Only process local inputs to send to host, and update camera
       // Local inputs are still collected in activeInputs, but we don't apply physics.
       // MultiplayerSync will send them.
+      if (this.onClientTick) this.onClientTick(dt);
     }
 
     // Camera update happens for both host and client
