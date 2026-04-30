@@ -25,6 +25,7 @@ export class MultiplayerSync {
   
   private localIceCandidates: any[] = [];
   private iceDebounce: number | null = null;
+  private disconnectTimer: number | null = null;
 
   public onStateReceived?: (stateData: any) => void;
   public onInitReceived?: (initData: any) => void;
@@ -260,9 +261,23 @@ export class MultiplayerSync {
       console.log('PeerConnection state:', this.peerConnection!.connectionState);
       if (this.peerConnection!.connectionState === 'connected') {
         this.stopHeartbeat();
+        if (this.disconnectTimer) {
+          clearTimeout(this.disconnectTimer);
+          this.disconnectTimer = null;
+        }
       }
-      if (this.peerConnection!.connectionState === 'disconnected' || this.peerConnection!.connectionState === 'failed') {
+      if (this.peerConnection!.connectionState === 'failed' || this.peerConnection!.connectionState === 'closed') {
         if (this.onPeerDisconnected) this.onPeerDisconnected();
+      }
+      if (this.peerConnection!.connectionState === 'disconnected') {
+        if (this.disconnectTimer) return;
+        this.disconnectTimer = window.setTimeout(() => {
+          this.disconnectTimer = null;
+          const s = this.peerConnection?.connectionState;
+          if (s === 'disconnected' || s === 'failed' || s === 'closed') {
+            if (this.onPeerDisconnected) this.onPeerDisconnected();
+          }
+        }, 8000);
       }
     };
 
