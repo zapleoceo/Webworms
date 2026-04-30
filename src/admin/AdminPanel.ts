@@ -407,19 +407,59 @@ export class AdminPanel {
                     </div>
 
                     <div class="weapon-form-grid">
-                      <input type="text" id="weapon-id" class="retro-input" placeholder="id" disabled />
-                      <input type="text" id="weapon-name" class="retro-input" placeholder="name" />
-                      <input type="color" id="weapon-color" class="retro-input" />
-                      <input type="number" id="weapon-damage" class="retro-input" placeholder="damage" />
-                      <input type="number" id="weapon-radius" class="retro-input" placeholder="explosionRadius" />
-                      <input type="number" id="weapon-knockback" class="retro-input" placeholder="knockback" />
-                      <input type="number" id="weapon-wind" class="retro-input" placeholder="windMultiplier" step="0.1" />
-                      <input type="number" id="weapon-spread" class="retro-input" placeholder="spread" step="0.1" />
-                      <input type="number" id="weapon-projectiles" class="retro-input" placeholder="projectilesPerShot" />
-                      <input type="number" id="weapon-cooldown" class="retro-input" placeholder="cooldown" step="0.05" />
-                      <input type="number" id="weapon-chargespeed" class="retro-input" placeholder="chargeSpeed" step="0.05" />
-                      <input type="number" id="weapon-speedmod" class="retro-input" placeholder="speedModifier" step="0.05" />
-                      <input type="number" id="weapon-maxrange" class="retro-input" placeholder="maxRange" />
+                      <label class="weapon-field weapon-field-wide">
+                        <span class="weapon-field-label">ID</span>
+                        <input type="text" id="weapon-id" class="retro-input" disabled />
+                      </label>
+                      <label class="weapon-field weapon-field-wide">
+                        <span class="weapon-field-label">Название</span>
+                        <input type="text" id="weapon-name" class="retro-input" />
+                      </label>
+                      <label class="weapon-field weapon-field-wide">
+                        <span class="weapon-field-label">Цвет</span>
+                        <input type="color" id="weapon-color" class="retro-input weapon-color-input" />
+                      </label>
+
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Урон</span>
+                        <input type="number" id="weapon-damage" class="retro-input weapon-num" />
+                      </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Радиус</span>
+                        <input type="number" id="weapon-radius" class="retro-input weapon-num" />
+                      </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Отдача</span>
+                        <input type="number" id="weapon-knockback" class="retro-input weapon-num" />
+                      </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Ветер</span>
+                        <input type="number" id="weapon-wind" class="retro-input weapon-num" step="0.1" />
+                      </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Разброс</span>
+                        <input type="number" id="weapon-spread" class="retro-input weapon-num" step="0.1" />
+                      </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Снаряды</span>
+                        <input type="number" id="weapon-projectiles" class="retro-input weapon-num" />
+                      </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Откат</span>
+                        <input type="number" id="weapon-cooldown" class="retro-input weapon-num" step="0.05" />
+                      </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Заряд</span>
+                        <input type="number" id="weapon-chargespeed" class="retro-input weapon-num" step="0.05" />
+                      </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Скорость</span>
+                        <input type="number" id="weapon-speedmod" class="retro-input weapon-num" step="0.05" />
+                      </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Дальность</span>
+                        <input type="number" id="weapon-maxrange" class="retro-input weapon-num" />
+                      </label>
                     </div>
 
                     <div class="weapon-derived" id="weapon-derived"></div>
