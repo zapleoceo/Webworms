@@ -88,6 +88,13 @@ html, body {
   display: flex;
 }
 
+#game-screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+}
+
 .loader-progress-wrap {
   width: min(420px, 80vw);
   display: flex;
@@ -657,7 +664,7 @@ button:hover {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 15px;
+  padding: calc(15px + env(safe-area-inset-top)) calc(15px + env(safe-area-inset-right)) 15px calc(15px + env(safe-area-inset-left));
   width: 100%;
   box-sizing: border-box;
   pointer-events: none;
@@ -838,7 +845,7 @@ button:hover {
   display: none;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 calc(20px + env(safe-area-inset-right)) calc(env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
   box-sizing: border-box;
   pointer-events: none; /* Let touches pass through where no buttons exist */
 }
