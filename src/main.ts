@@ -34,7 +34,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260430_0200';
+  const buildVersion = '20260430_0310';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -106,16 +106,6 @@ APIClient.getMaps().then(maps => {
   
   if (mapTypeSelect && maps && maps.length > 0) {
     mapTypeSelect.innerHTML = ''; // Clear "Loading maps..."
-    
-    const updateSizeDisplay = () => {
-      const selectedId = mapTypeSelect.value;
-      const selectedMap = maps.find((m: any) => m.id === selectedId);
-      const mapSizeDisplay = document.getElementById('map-size-display');
-      if (selectedMap && mapSizeDisplay) {
-        mapSizeDisplay.style.display = 'inline-block';
-        mapSizeDisplay.innerText = `${selectedMap.width} x ${selectedMap.height}`;
-      }
-    };
 
     maps.forEach((m: any) => {
       const opt = document.createElement('option');
@@ -125,11 +115,6 @@ APIClient.getMaps().then(maps => {
       opt.innerText = cleanName;
       mapTypeSelect.appendChild(opt);
     });
-    
-    // Initial display and listen for changes
-    updateSizeDisplay();
-    mapTypeSelect.addEventListener('change', updateSizeDisplay);
-    
   } else if (mapTypeSelect) {
     mapTypeSelect.innerHTML = '<option disabled>No custom maps found</option>';
   }

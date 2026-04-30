@@ -423,13 +423,6 @@ button:hover {
   transform: translateY(2px);
 }
 
-.select-wrapper {
-  position: relative;
-  width: 100%;
-  max-width: 250px;
-  margin: 0 auto;
-}
-
 .map-selection-container {
   display: flex;
   align-items: center;
@@ -443,19 +436,9 @@ button:hover {
   line-height: 1;
 }
 
-.map-size-badge {
-  background: rgba(0, 0, 0, 0.6);
-  border: 2px dashed var(--color-secondary);
-  color: #fff;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-family: var(--font-body);
-  font-weight: bold;
-  font-size: 0.9rem;
-  letter-spacing: 1px;
-  text-shadow: 1px 1px 0 #000;
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
-  white-space: nowrap;
+.map-selection-container #map-type-select {
+  width: min(520px, 80vw);
+  text-align: center;
 }
 
 .icon-only-btn {

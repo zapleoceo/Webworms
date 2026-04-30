@@ -112,10 +112,6 @@ export class Landscape {
         
         ctx.drawImage(img, 0, 0);
         const imageData = ctx.getImageData(0, 0, this.width, this.height).data;
-        const bgR = imageData[0];
-        const bgG = imageData[1];
-        const bgB = imageData[2];
-        const bgThreshold = 18;
         
         // Store a copy of original colors for rendering
         this.pixelData = new Uint8ClampedArray(imageData);
@@ -128,18 +124,17 @@ export class Landscape {
           const b = imageData[i + 2];
           const alpha = imageData[i + 3];
           const pixelIndex = i / 4;
-          
-          const isBg = Math.abs(r - bgR) < bgThreshold && Math.abs(g - bgG) < bgThreshold && Math.abs(b - bgB) < bgThreshold;
 
-          // Treat transparent pixels OR background-color pixels as AIR
-          if (alpha < 10 || isBg) {
-            this.grid[pixelIndex] = 0; // Air
-            // Also force it to be visually transparent so the game background shows through
-            if (this.pixelData) {
-              this.pixelData[i + 3] = 0;
-            }
+          if (alpha < 10) {
+            this.grid[pixelIndex] = 0;
+            if (this.pixelData) this.pixelData[i + 3] = 0;
+            continue;
+          }
+
+          const isBlack = r < 10 && g < 10 && b < 10;
+          if (isBlack) {
+            this.grid[pixelIndex] = 255;
           } else {
-            // Everything else is fully destructible earth
             this.grid[pixelIndex] = 1;
           }
         }
