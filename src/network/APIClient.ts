@@ -216,6 +216,38 @@ export class APIClient {
     }
   }
 
+  static async createPayPalOrder(sessionId: string, planId: string): Promise<any> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/payment/paypal/create-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionId}`
+        },
+        body: JSON.stringify({ planId })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Network error' };
+    }
+  }
+
+  static async capturePayPalOrder(sessionId: string, orderID: string, planId: string): Promise<any> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/payment/paypal/capture`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionId}`
+        },
+        body: JSON.stringify({ orderID, planId })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Network error' };
+    }
+  }
+
   static async createRoom(hostId: string) {
     try {
       const response = await fetch(`${this.BASE_URL}/rooms`, {

@@ -20,6 +20,18 @@ CREATE TABLE IF NOT EXISTS Users (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS Payments (
+  order_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  currency TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  captured_at INTEGER,
+  premium_until INTEGER
+);
+
 -- Index for faster referral lookups
 CREATE INDEX IF NOT EXISTS idx_users_referred_by ON Users(referred_by);
 CREATE INDEX IF NOT EXISTS idx_users_email ON Users(email);

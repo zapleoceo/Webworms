@@ -1,6 +1,6 @@
 import { getSpriteSets, createSpriteSet, updateSpriteSet, deleteSpriteSet } from './controllers/spritesets';
 import { getWeapons, createWeapon, updateWeapon, deleteWeapon } from './controllers/weapons';
-import { capturePayPalOrder } from './controllers/payments';
+import { capturePayPalOrder, createPayPalOrder } from './controllers/payments';
 import { getTurnIceServers } from './controllers/turn';
 import { handleSignalingSignal, handleSignalingSnapshot, handleSignalingWS } from './controllers/signaling';
 import { SignalingDO as SignalingDOImpl } from './durable/SignalingDO';
@@ -345,6 +345,9 @@ export default {
       }
       else if (url.pathname === '/api/match/end' && request.method === 'POST') {
         response = await reportMatchEnd(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/payment/paypal/create-order' && request.method === 'POST') {
+        response = await createPayPalOrder(request, env, corsHeaders);
       }
       else if (url.pathname === '/api/payment/paypal/capture' && request.method === 'POST') {
         response = await capturePayPalOrder(request, env, corsHeaders);

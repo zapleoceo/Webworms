@@ -94,6 +94,54 @@ html, body {
   overflow: hidden;
   transition: opacity 180ms ease, transform 180ms ease, max-height 180ms ease;
 }
+
+.donate-plans {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.donate-plan {
+  flex: 1;
+  border-radius: 10px;
+  border: 2px solid rgba(0,0,0,0.35);
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  padding: 12px 10px;
+  cursor: pointer;
+  font-family: var(--font-comic);
+  text-shadow: 1px 1px 0 #000;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, filter 160ms ease;
+}
+
+.donate-plan:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.05);
+}
+
+.donate-plan.is-selected {
+  border-color: var(--color-primary);
+  background: rgba(255, 69, 0, 0.22);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.28);
+}
+
+.donate-plan-price {
+  font-size: 22px;
+  letter-spacing: 1px;
+}
+
+.donate-plan-title {
+  font-size: 12px;
+  letter-spacing: 1px;
+  opacity: 0.95;
+}
+
+.donate-paypal {
+  min-height: 150px;
+  background: #fff;
+  padding: 10px;
+  border-radius: 10px;
+}
 .controls-help b {
   color: #ffeb3b;
   font-size: 14px;
