@@ -96,7 +96,9 @@ export class Landscape {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "Anonymous";
-      img.onload = () => {
+      img.onload = async () => {
+        const dbg = (() => { try { return localStorage.getItem('ww_debug') === '1'; } catch { return false; } })();
+        const t0 = performance.now();
         // Adjust landscape size to image size
         this.width = img.width;
         this.height = img.height;
@@ -118,9 +120,15 @@ export class Landscape {
         // Store a copy of original colors for rendering
         this.pixelData = new Uint8ClampedArray(imageData);
 
+        const yieldFrame = () => new Promise<void>((r) => {
+          if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => r());
+          else setTimeout(() => r(), 0);
+        });
+
         // Build physics grid
         // Format: [R, G, B, A, R, G, B, A, ...]
         for (let i = 0; i < imageData.length; i += 4) {
+          if (i > 0 && i % 2000000 === 0) await yieldFrame();
           const r = imageData[i];
           const g = imageData[i + 1];
           const b = imageData[i + 2];
@@ -143,6 +151,7 @@ export class Landscape {
         
         // Ensure boundaries are solid (optional, but good for gameplay)
         for (let y = 0; y < this.height; y++) {
+          if (y > 0 && y % 80 === 0) await yieldFrame();
           for (let x = 0; x < this.width; x++) {
             if (x < 10 || x >= this.width - 10 || y >= this.height - 10) {
                this.grid[y * this.width + x] = 255;
@@ -151,6 +160,7 @@ export class Landscape {
         }
 
         this.needsUpdate = true;
+        dbg && console.log('[MAP] generateFromImage ms', Math.round(performance.now() - t0), { w: this.width, h: this.height });
         resolve();
       };
       img.onerror = () => reject(new Error(`Failed to load map image: ${imageUrl}`));

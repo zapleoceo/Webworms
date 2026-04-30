@@ -521,6 +521,8 @@ let currentMatchToken: string | null = null;
 
   if (mode === 'friend' || mode === 'random') {
     gameInitPromise = (async () => {
+      const dbg = APIClient.isDebugEnabled();
+      const t0 = performance.now();
       const settingsPromise = APIClient.getGameSettings();
       const logosPromise = APIClient.getLogos();
       const gameSettings = await settingsPromise;
@@ -548,6 +550,7 @@ let currentMatchToken: string | null = null;
           }
         }
       }
+      setLoaderProgress(0.75, 'PROCESSING MAP...');
       await window.presenter.startGame({
         width: 1500,
         height: 800,
@@ -559,9 +562,12 @@ let currentMatchToken: string | null = null;
         botConfig: botConfig,
         mapData: mapData
       });
+      dbg && console.log('[LOADER] multiplayer init ms', Math.round(performance.now() - t0));
       window.presenter.localTeam = 'team1';
     })();
   } else {
+    const dbg = APIClient.isDebugEnabled();
+    const t0 = performance.now();
     const gameSettings = await APIClient.getGameSettings();
     const turnTime = gameSettings?.turn_time || (await APIClient.getTurnTime());
     const botConfig = normalizeBotConfig(gameSettings?.bot_settings);
@@ -590,6 +596,7 @@ let currentMatchToken: string | null = null;
       }
     }
 
+    setLoaderProgress(0.75, 'PROCESSING MAP...');
     await window.presenter.startGame({
       width: 1500,
       height: 800,
@@ -602,6 +609,7 @@ let currentMatchToken: string | null = null;
       botConfig: botConfig,
       mapData: mapData
     });
+    dbg && console.log('[LOADER] solo init ms', Math.round(performance.now() - t0));
     if (mode === 'ai') {
       window.presenter.localTeam = 'team1';
       window.presenter.botTurnController = new BotTurnController();
