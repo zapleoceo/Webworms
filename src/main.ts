@@ -209,6 +209,26 @@ function setLoaderProgress(progress01: number, text?: string) {
 // Only run game logic if we are not on the admin page and have game elements
 if (!isAdminPage) {
 
+let aivaiLogSent = false;
+
+function flushAIVaiLog(reason: string, winner: any = null) {
+  if (currentMode !== 'aivai' || !aivaiLog) return;
+  if (aivaiLogSent) return;
+  aivaiLogSent = true;
+  aivaiLog.abortedAt = Date.now();
+  aivaiLog.abortReason = reason;
+  aivaiLog.result = { winner, stats: null };
+  APIClient.uploadAIVaiLog(aivaiLog).then((res: any) => {
+    if (res?.success && res.key) {
+      aivaiLog.r2Key = res.key;
+    } else {
+      downloadJson(`${aivaiLog.matchId}.json`, aivaiLog);
+    }
+  }).catch(() => {
+    downloadJson(`${aivaiLog.matchId}.json`, aivaiLog);
+  });
+}
+
 // Load custom maps into dropdown
 APIClient.getMaps().then(maps => {
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
@@ -586,6 +606,7 @@ let currentRoomPlayerId: string | null = null;
   async function startGame(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random') {
     currentMode = mode;
     setWakeLockWanted(true);
+    aivaiLogSent = false;
     setLoaderProgress(0, 'LOADING...');
     setLoaderDifficultyWorm(mode);
     setEnemyDifficultyLabel(mode);
@@ -1024,6 +1045,7 @@ document.getElementById('btn-cancel-leave')?.addEventListener('click', () => {
 
 document.getElementById('btn-confirm-leave')?.addEventListener('click', () => {
   document.getElementById('leave-confirm-modal')!.style.display = 'none';
+  flushAIVaiLog('leave');
   setWakeLockWanted(false);
   if (currentRoomId && currentRoomPlayerId) {
     APIClient.leaveRoom(currentRoomId, currentRoomPlayerId);
@@ -1344,15 +1366,18 @@ function bindPresenterEvents() {
     if (currentMode === 'aivai' && aivaiLog) {
       aivaiLog.finishedAt = Date.now();
       aivaiLog.result = { winner, stats };
-      APIClient.uploadAIVaiLog(aivaiLog).then((res: any) => {
-        if (res?.success && res.key) {
-          aivaiLog.r2Key = res.key;
-        } else {
+      if (!aivaiLogSent) {
+        aivaiLogSent = true;
+        APIClient.uploadAIVaiLog(aivaiLog).then((res: any) => {
+          if (res?.success && res.key) {
+            aivaiLog.r2Key = res.key;
+          } else {
+            downloadJson(`${aivaiLog.matchId}.json`, aivaiLog);
+          }
+        }).catch(() => {
           downloadJson(`${aivaiLog.matchId}.json`, aivaiLog);
-        }
-      }).catch(() => {
-        downloadJson(`${aivaiLog.matchId}.json`, aivaiLog);
-      });
+        });
+      }
     }
   };
 }
