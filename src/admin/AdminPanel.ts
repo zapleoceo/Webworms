@@ -142,6 +142,32 @@ export class AdminPanel {
                 <span>Bot</span>
                 <button id="bot-help" class="secondary-btn small-btn" style="width: 34px; height: 34px; padding: 0;">I</button>
               </h2>
+              <div class="upload-form bot-settings-card" style="margin-bottom: 14px;">
+                <h3>AI vs AI</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                  <label class="bot-setting">
+                    <span class="bot-setting-label">AI 1 (team1)</span>
+                    <select id="bot-aivai-a1" class="retro-input bot-setting-input">
+                      <option value="easy">easy</option>
+                      <option value="medium">medium</option>
+                      <option value="hard">hard</option>
+                    </select>
+                  </label>
+                  <label class="bot-setting">
+                    <span class="bot-setting-label">AI 2 (team2)</span>
+                    <select id="bot-aivai-a2" class="retro-input bot-setting-input">
+                      <option value="easy">easy</option>
+                      <option value="medium" selected>medium</option>
+                      <option value="hard">hard</option>
+                    </select>
+                  </label>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+                  <button id="bot-aivai-start" class="primary-btn small-btn">Start</button>
+                  <button id="bot-aivai-copy" class="secondary-btn small-btn">Copy link</button>
+                  <input id="bot-aivai-link" class="retro-input" readonly style="flex: 1; min-width: 260px;" />
+                </div>
+              </div>
               <div class="upload-form bot-settings-card">
                 <h3>Настройки бота</h3>
                 <div class="bot-settings-scroll">
@@ -487,6 +513,35 @@ export class AdminPanel {
     document.getElementById('bot-load')?.addEventListener('click', () => this.loadBotSettings());
     document.getElementById('bot-save')?.addEventListener('click', () => this.saveBotSettings());
     document.getElementById('bot-help')?.addEventListener('click', () => this.showBotHelp());
+
+    const a1Sel = document.getElementById('bot-aivai-a1') as HTMLSelectElement | null;
+    const a2Sel = document.getElementById('bot-aivai-a2') as HTMLSelectElement | null;
+    const linkEl = document.getElementById('bot-aivai-link') as HTMLInputElement | null;
+    const buildLink = () => {
+      const a1 = (a1Sel?.value || 'easy').trim();
+      const a2 = (a2Sel?.value || 'medium').trim();
+      return `${window.location.origin}/?mode=aivai&a1=${encodeURIComponent(a1)}&a2=${encodeURIComponent(a2)}`;
+    };
+    const syncLink = () => {
+      if (linkEl) linkEl.value = buildLink();
+    };
+    a1Sel?.addEventListener('change', syncLink);
+    a2Sel?.addEventListener('change', syncLink);
+    syncLink();
+
+    document.getElementById('bot-aivai-start')?.addEventListener('click', () => {
+      const url = buildLink();
+      window.open(url, '_blank', 'noopener');
+    });
+    document.getElementById('bot-aivai-copy')?.addEventListener('click', async () => {
+      const url = buildLink();
+      try {
+        await navigator.clipboard.writeText(url);
+        alert('Copied!');
+      } catch {
+        alert(url);
+      }
+    });
     
     // Navigation
     document.getElementById('nav-dashboard')?.addEventListener('click', (e) => {

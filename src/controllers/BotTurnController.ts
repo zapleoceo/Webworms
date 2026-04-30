@@ -8,6 +8,7 @@ type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descen
 type RopeMode = 'climb' | 'swing' | 'descend';
 
 export class BotTurnController {
+  private difficultyByTeam: Partial<Record<'team1' | 'team2', AIDifficulty>> = {};
   private lastTurnIndex: number = -1;
   private firedThisTurn: boolean = false;
   private plannedThisTurn: boolean = false;
@@ -52,6 +53,10 @@ export class BotTurnController {
     replanCooldownSeconds: 1.2
   };
 
+  constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
+    if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
+  }
+
   private debugEnabled(): boolean {
     try {
       const loc = (globalThis as any)?.location?.search || '';
@@ -73,7 +78,7 @@ export class BotTurnController {
     if (!presenter?.isRunning) return;
     if (!presenter?.isHost) return;
     if (!presenter?.state) return;
-    if (presenter.state.mode !== 'ai') return;
+    if (presenter.state.mode !== 'ai' && presenter.state.mode !== 'aivai') return;
 
     const curIdx = presenter.state.currentPlayerIndex ?? -1;
     const player = presenter.state.getCurrentPlayer?.();
@@ -87,7 +92,7 @@ export class BotTurnController {
       this.matchFailStreak = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
     }
 
-    const isBotTurn = player.team === 'team2';
+    const isBotTurn = presenter.state.mode === 'aivai' ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
 
     if (curIdx !== this.lastTurnIndex) {
       this.lastTurnIndex = curIdx;
@@ -134,7 +139,10 @@ export class BotTurnController {
     if (this.firedThisTurn) return;
 
     const botCfg: BotConfig = presenter.state.botConfig || DEFAULT_BOT_CONFIG;
-    const difficulty = (getAIDifficulty() as AIDifficulty) || 'medium';
+    const activeTeam: 'team1' | 'team2' = player.team === 'team1' ? 'team1' : 'team2';
+    const difficulty = (presenter.state.mode === 'aivai'
+      ? (this.difficultyByTeam[activeTeam] as AIDifficulty | undefined)
+      : ((getAIDifficulty() as AIDifficulty) || undefined)) || 'medium';
     const maxTurn = Number.isFinite(presenter.maxTurnTime) ? presenter.maxTurnTime : 30;
     const timeLeft = Number.isFinite(presenter.turnTimeLeft) ? presenter.turnTimeLeft : 0;
     const elapsed = Math.max(0, maxTurn - timeLeft);

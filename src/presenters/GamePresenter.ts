@@ -129,7 +129,7 @@ export class GamePresenter {
   public localTeam: string | null = null;
 
   public async startGame(settings: any) {
-    if (settings.mode !== 'training') {
+    if (settings.mode !== 'training' && settings.mode !== 'aivai') {
       const premiumStr = localStorage.getItem('premiumUntil');
       let isPremium = false;
       if (premiumStr) {
@@ -156,6 +156,7 @@ export class GamePresenter {
     this.state = new GameState(worldWidth, worldHeight);
     this.state.mode = settings.mode;
     this.state.aiDifficulty = settings.aiDifficulty;
+    (this.state as any).aiDifficultyByTeam = settings.aiDifficultyByTeam;
     this.state.availableLogos = settings.logos || [];
     
     // Require a custom map
@@ -220,11 +221,12 @@ export class GamePresenter {
       const s = findSafeWormSpawn(this.state.landscape, this.state.mapSeed || 1, `team1:${i}`, spawnPoints, 150);
       spawnPoints.push(s);
       const loadout = Array.isArray(settings?.loadout) ? settings.loadout : getLoadoutForWorm(settings.mode, this.state.mapSeed || 1, 'team1', i);
+      const a1d = (settings.aiDifficultyByTeam && settings.aiDifficultyByTeam.team1) ? settings.aiDifficultyByTeam.team1 : 'easy';
       const p = new Worm(
         s.x,
         s.y,
         false,
-        settings.mode === 'ai' ? `my${i + 1}` : `Worm ${i + 1}`,
+        (settings.mode === 'ai' || settings.mode === 'aivai') ? `${a1d}${i + 1}` : `Worm ${i + 1}`,
         t1Classes[i] as any,
         loadout,
         'team1'
@@ -237,11 +239,12 @@ export class GamePresenter {
       const s = findSafeWormSpawn(this.state.landscape, this.state.mapSeed || 1, `team2:${i}`, spawnPoints, 150);
       spawnPoints.push(s);
       const loadout = Array.isArray(settings?.loadout) ? settings.loadout : getLoadoutForWorm(settings.mode, this.state.mapSeed || 1, 'team2', i);
+      const a2d = (settings.aiDifficultyByTeam && settings.aiDifficultyByTeam.team2) ? settings.aiDifficultyByTeam.team2 : (settings.aiDifficulty || 'medium');
       const p = new Worm(
         s.x,
         s.y,
         this.state.mode === 'training',
-        settings.mode === 'ai' ? `${(settings.aiDifficulty || 'medium')}${i + 1}` : `Enemy ${i + 1}`,
+        (settings.mode === 'ai' || settings.mode === 'aivai') ? `${a2d}${i + 1}` : `Enemy ${i + 1}`,
         t2Classes[i] as any,
         loadout,
         'team2'
