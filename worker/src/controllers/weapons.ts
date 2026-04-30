@@ -1,8 +1,9 @@
 import { Env } from '../index';
+import { d1Retry } from '../services/d1';
 
-export async function getWeapons(env: Env): Promise<Response> {
-  const result = await env.DB.prepare('SELECT * FROM Weapons ORDER BY created_at ASC').all();
-  return new Response(JSON.stringify(result.results), { headers: { 'Content-Type': 'application/json' } });
+export async function getWeapons(env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  const result = await d1Retry(() => env.DB.prepare('SELECT * FROM Weapons ORDER BY created_at ASC').all());
+  return new Response(JSON.stringify(result.results), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }
 
 export async function createWeapon(request: Request, env: Env): Promise<Response> {

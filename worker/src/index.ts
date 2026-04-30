@@ -69,6 +69,49 @@ function logEvent(event: string, data: Record<string, unknown>) {
   console.log(JSON.stringify({ event, ts: Date.now(), ...data }));
 }
 
+function newReqId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `r_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+  }
+}
+
+function withDiagHeaders(res: Response, reqId: string, ms: number): Response {
+  const h = new Headers(res.headers);
+  h.set('x-ww-reqid', reqId);
+  h.set('x-ww-ms', String(ms));
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
+
+async function diag<T extends Response>(
+  request: Request,
+  env: Env,
+  handler: (reqId: string) => Promise<T>
+): Promise<Response> {
+  const reqId = newReqId();
+  const t0 = Date.now();
+  const url = new URL(request.url);
+  logEvent('api.diag.start', {
+    reqId,
+    method: request.method,
+    path: url.pathname,
+    ua: request.headers.get('user-agent'),
+    referer: request.headers.get('referer'),
+    cfRay: request.headers.get('cf-ray')
+  });
+  try {
+    const res = await handler(reqId);
+    const ms = Date.now() - t0;
+    logEvent('api.diag.end', { reqId, ms, status: res.status, path: url.pathname });
+    return withDiagHeaders(res, reqId, ms);
+  } catch (e: any) {
+    const ms = Date.now() - t0;
+    logEvent('api.diag.err', { reqId, ms, path: url.pathname, error: String(e?.message || e) });
+    return withDiagHeaders(new Response(JSON.stringify({ error: 'Internal error' }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }), reqId, ms);
+  }
+}
+
 let dbInitPromise: Promise<void> | null = null;
 let dbInitDb: Env['DB'] | null = null;
 
@@ -297,7 +340,7 @@ export default {
         if (request.method === 'PUT') {
           response = await handleUpdateProfile(request, env, corsHeaders);
         } else if (request.method === 'GET') {
-          response = await getProfile(request, env, corsHeaders);
+          response = await diag(request, env, async () => await getProfile(request, env, corsHeaders));
         }
       }
 
@@ -375,7 +418,7 @@ export default {
 
       // Maps Endpoints
       else if (url.pathname === '/api/maps' && request.method === 'GET') {
-        response = await getMaps(request, env, corsHeaders);
+        response = await diag(request, env, async () => await getMaps(request, env, corsHeaders));
       }
       else if (url.pathname.startsWith('/api/maps/') && url.pathname.endsWith('/image') && request.method === 'GET') {
         response = await getMapImage(request, env, corsHeaders);
@@ -421,7 +464,7 @@ export default {
 
       // Weapons Endpoints
       else if (url.pathname === '/api/weapons' && request.method === 'GET') {
-        response = await getWeapons(env);
+        response = await diag(request, env, async () => await getWeapons(env, corsHeaders));
       }
       else if (url.pathname === '/api/admin/weapons' && request.method === 'POST') {
         if (!(await checkAdminAuth(request, env))) {

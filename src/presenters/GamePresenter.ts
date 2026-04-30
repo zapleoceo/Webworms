@@ -81,6 +81,7 @@ export class GamePresenter {
   public botTurnController: BotTurnController | null = null;
   public onPhysicsTrace?: (event: any) => void;
   private physicsSampleAccum: number = 0;
+  private lastPhysSample?: { t: number; projs: any[]; props: any[]; logos: any[] };
 
 
   constructor(width: number, height: number) {
@@ -122,7 +123,77 @@ export class GamePresenter {
       this.state.cameraShakeTime = typeof shake === 'number' ? shake : 0.3;
     };
     this.physics.onTrace = (e) => {
-      if (this.onPhysicsTrace) this.onPhysicsTrace(e);
+      if (!this.onPhysicsTrace) return;
+      this.onPhysicsTrace(e);
+      if (this.state?.mode !== 'aivai' || !this.lastPhysSample) return;
+      if (!e || typeof e !== 'object' || e.type !== 'physics_collision') return;
+      if (e.kind !== 'projectile' && e.kind !== 'prop_ground' && e.kind !== 'airdrop_contact') return;
+
+      const t = Number.isFinite(Number(e.t)) ? Number(e.t) : this.matchDuration;
+      const last = this.lastPhysSample;
+      const dt = Math.max(1e-6, t - last.t);
+
+      if (e.kind === 'projectile') {
+        const v0 = e.vBefore;
+        const v1 = e.vAfter;
+        if (!v0 || !v1) return;
+        const dvx = (v1.vx || 0) - (v0.vx || 0);
+        const dvy = (v1.vy || 0) - (v0.vy || 0);
+        const dv = Math.hypot(dvx, dvy);
+        const vyFlip = (v0.vy || 0) < 0 && (v1.vy || 0) > 0 && Math.abs(v1.vy) > 120;
+        const spike = dv / dt > 12000 || dv > 420 || vyFlip;
+        if (!spike) return;
+        this.onPhysicsTrace({
+          type: 'anomaly',
+          t,
+          kind: 'grenade_bounce_spike',
+          weaponId: e.weaponId,
+          dv,
+          dt,
+          normal: e.normal,
+          hitTerrain: e.hitTerrain,
+          hitEntity: e.hitEntity,
+          sample: last
+        });
+      } else if (e.kind === 'prop_ground') {
+        const v0 = e.vBefore;
+        const v1 = e.vAfter;
+        if (!v0 || !v1) return;
+        const dvx = (v1.vx || 0) - (v0.vx || 0);
+        const dvy = (v1.vy || 0) - (v0.vy || 0);
+        const dv = Math.hypot(dvx, dvy);
+        const spike = dv / dt > 10000 || dv > 380;
+        if (!spike) return;
+        this.onPhysicsTrace({
+          type: 'anomaly',
+          t,
+          kind: 'prop_impulse_spike',
+          dv,
+          dt,
+          targetAngle: e.targetAngle,
+          sample: last
+        });
+      } else if (e.kind === 'airdrop_contact') {
+        const v0 = e.v0;
+        const v1 = e.v1;
+        if (!v0 || !v1) return;
+        const dvx = (v1.vx || 0) - (v0.vx || 0);
+        const dvy = (v1.vy || 0) - (v0.vy || 0);
+        const dv = Math.hypot(dvx, dvy);
+        const spike = dv / dt > 10000 || dv > 380 || (e.maxPen || 0) >= 5;
+        if (!spike) return;
+        this.onPhysicsTrace({
+          type: 'anomaly',
+          t,
+          kind: 'airdrop_impulse_spike',
+          dv,
+          dt,
+          avgN: e.avgN,
+          maxPen: e.maxPen,
+          contacts: e.contacts,
+          sample: last
+        });
+      }
     };
   }
 
@@ -330,6 +401,7 @@ export class GamePresenter {
           const props = this.state.props.map((p: any, idx: number) => [p.x, p.y, p.vx, p.vy, p.radius, p.rotation, p.angularVelocity, idx]);
           const logos = (this.state.brandLogos || []).map((l: any, idx: number) => [l.x, l.y, l.vx, l.vy, l.angle, l.angularVelocity, l.collisionWidth, l.collisionHeight, l.isDynamic ? 1 : 0, l.touchedGround ? 1 : 0, idx]);
           const worms = this.state.players.map((w: any, idx: number) => [w.team, w.x, w.y, w.vx, w.vy, w.health, idx]);
+          this.lastPhysSample = { t: this.matchDuration, projs, props, logos };
           this.onPhysicsTrace({
             type: 'physics_sample',
             t: this.matchDuration,

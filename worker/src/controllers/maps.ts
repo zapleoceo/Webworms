@@ -1,11 +1,12 @@
 import { checkAdminAuth } from '../services/adminAuth';
+import { d1Retry } from '../services/d1';
 
 export async function getMaps(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
   try {
     const url = new URL(request.url);
     const includeImageData = url.searchParams.get('include_image_data') === '1';
 
-    const res = await env.DB.prepare('SELECT id, name, width, height, created_at FROM Maps ORDER BY created_at DESC').all<any>();
+    const res = await d1Retry(() => env.DB.prepare('SELECT id, name, width, height, created_at FROM Maps ORDER BY created_at DESC').all<any>());
     const rows = (res.results || []).map((m: any) => {
       const row: any = {
         id: m.id,

@@ -22,6 +22,18 @@ export class APIClient {
     }
   }
 
+  private static async fetchJsonWithRetry(url: string, init: RequestInit, timeoutMs: number, retries: number): Promise<any> {
+    let last: any = null;
+    for (let i = 0; i <= retries; i++) {
+      try {
+        return await this.fetchJsonWithTimeout(url, { ...init, cache: 'no-store' as any }, timeoutMs);
+      } catch (e: any) {
+        last = e;
+      }
+    }
+    return { success: false, error: last?.name === 'AbortError' ? 'Request timed out' : (last?.message || 'Network error') };
+  }
+
   static isDebugEnabled(): boolean {
     try {
       return localStorage.getItem('ww_debug') === '1';
@@ -72,14 +84,12 @@ export class APIClient {
 
   static async getProfile(sessionId: string) {
     try {
-      const response = await fetch(`${this.BASE_URL}/auth/profile`, {
+      return await this.fetchJsonWithRetry(`${this.BASE_URL}/auth/profile`, {
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionId}`
         }
-      });
-      return await response.json();
+      }, 12000, 2);
     } catch (e: any) {
       return { error: e.message };
     }
@@ -111,9 +121,8 @@ export class APIClient {
 
   public static async getWeapons(): Promise<any[]> {
     try {
-      const res = await fetch(`${this.BASE_URL}/weapons`);
-      if (!res.ok) return [];
-      return await res.json();
+      const data = await this.fetchJsonWithRetry(`${this.BASE_URL}/weapons`, { method: 'GET' }, 12000, 2);
+      return Array.isArray(data) ? data : [];
     } catch {
       return [];
     }
@@ -390,8 +399,8 @@ export class APIClient {
   // Maps endpoints
   static async getMaps() {
     try {
-      const response = await fetch(`${this.BASE_URL}/maps`);
-      if (response.ok) return await response.json();
+      const data = await this.fetchJsonWithRetry(`${this.BASE_URL}/maps`, { method: 'GET' }, 12000, 2);
+      if (Array.isArray(data)) return data;
     } catch (e) {}
     return [];
   }
