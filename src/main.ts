@@ -530,6 +530,24 @@ let currentMatchToken: string | null = null;
       const logos = await logosPromise;
       const airdropPhysics = gameSettings?.airdrop_physics || null;
       setLoaderProgress(0.45, 'LOADING GAME...');
+      const maps = await APIClient.getMaps();
+      setLoaderProgress(0.6, 'LOADING MAP...');
+
+      let mapData = null;
+      if (maps && maps.length > 0) {
+        const selectedMapId = mapTypeSelect.value;
+        let mapObj = maps.find((m: any) => m.id === selectedMapId);
+        if (!mapObj) {
+          mapObj = maps[0];
+        }
+        
+        if (mapObj) {
+          const fullMap = await APIClient.getMapById(mapObj.id);
+          if (fullMap) {
+            mapData = APIClient.BASE_URL.replace('/api', '') + fullMap.image_data + '?t=' + Date.now();
+          }
+        }
+      }
       await window.presenter.startGame({
         width: 1500,
         height: 800,
@@ -539,7 +557,7 @@ let currentMatchToken: string | null = null;
         logos: logos,
         airdropPhysics: airdropPhysics,
         botConfig: botConfig,
-        mapData: null
+        mapData: mapData
       });
       window.presenter.localTeam = 'team1';
     })();
