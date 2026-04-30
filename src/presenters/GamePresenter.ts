@@ -746,24 +746,23 @@ export class GamePresenter {
   }
 
   private clampCamera(canvasWidth: number, canvasHeight: number): void {
-    const maxCamX = this.state.width - canvasWidth / this.state.zoom;
-    const maxCamY = this.state.height - canvasHeight / this.state.zoom;
-    
-    // Add padding to prevent viewing the absolute 30px hard edge
-    const margin = 30;
-    
-    if (this.state.cameraX < margin) this.state.cameraX = margin;
-    if (this.state.cameraX > maxCamX - margin) this.state.cameraX = Math.max(margin, maxCamX - margin);
+    const viewW = canvasWidth / this.state.zoom;
+    const viewH = canvasHeight / this.state.zoom;
+    const maxCamX = Math.max(0, this.state.width - viewW);
+    const maxCamY = Math.max(0, this.state.height - viewH);
 
-    if (this.state.cameraY < margin) this.state.cameraY = margin;
-    if (this.state.cameraY > maxCamY - margin) this.state.cameraY = Math.max(margin, maxCamY - margin);
-    
-    // Fallback if screen is larger than map
-    if (canvasWidth / this.state.zoom > this.state.width) {
-      this.state.cameraX = (this.state.width - canvasWidth / this.state.zoom) / 2;
+    if (viewW >= this.state.width) {
+      this.state.cameraX = (this.state.width - viewW) / 2;
+    } else {
+      if (this.state.cameraX < 0) this.state.cameraX = 0;
+      if (this.state.cameraX > maxCamX) this.state.cameraX = maxCamX;
     }
-    if (canvasHeight / this.state.zoom > this.state.height) {
-      this.state.cameraY = (this.state.height - canvasHeight / this.state.zoom) / 2;
+
+    if (viewH >= this.state.height) {
+      this.state.cameraY = (this.state.height - viewH) / 2;
+    } else {
+      if (this.state.cameraY < 0) this.state.cameraY = 0;
+      if (this.state.cameraY > maxCamY) this.state.cameraY = maxCamY;
     }
   }
 

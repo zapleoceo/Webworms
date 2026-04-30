@@ -184,6 +184,7 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   display: block;
+  max-width: 100%;
 }
 
 .admin-table {
@@ -253,7 +254,24 @@
     padding: 15px;
     height: auto;
     flex: 1;
-    overflow-x: hidden;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-section {
+    min-width: 0;
+  }
+
+  .admin-table {
+    min-width: 640px;
+  }
+
+  .upload-form,
+  .upload-map-form,
+  .upload-logo-form {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
   
   .stats-grid {
