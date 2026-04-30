@@ -27,6 +27,15 @@ export class GamePresenter {
   private analogY: number = 0;
 
   public handleAnalogInput(x: number, y: number, isRemote: boolean = false): void {
+    if (!isRemote && this.localTeam !== null) {
+      const currentPlayer = this.state.getCurrentPlayer();
+      const activeTeam = currentPlayer ? currentPlayer.team : 'team1';
+      if (this.localTeam !== 'training' && activeTeam !== this.localTeam) {
+        this.analogX = 0;
+        this.analogY = 0;
+        return;
+      }
+    }
     if (!this.isHost && !isRemote) {
       if (this.onLocalAction) {
         this.onLocalAction('analog', true, {x, y});
