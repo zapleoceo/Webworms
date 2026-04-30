@@ -1,20 +1,18 @@
 .admin-container {
   display: flex;
   justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  min-height: 100dvh;
+  align-items: stretch;
+  height: 100vh;
+  height: 100dvh;
   background-color: #1a1a24;
   color: #e0e0e0;
   font-family: 'Courier New', Courier, monospace;
   padding: 20px;
   box-sizing: border-box;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
   width: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
+  position: fixed;
+  inset: 0;
 }
 
 .admin-auth-card {
@@ -36,12 +34,13 @@
   display: flex;
   width: 100%;
   max-width: 1200px;
-  height: 90%;
+  height: 100%;
   background-color: #2a2a36;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
   flex-direction: row;
+  min-height: 0;
 }
 
 .admin-sidebar {
@@ -99,6 +98,7 @@
   padding: 30px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  min-height: 0;
 }
 
 @media (max-width: 768px) {
@@ -135,6 +135,10 @@
   
   .admin-main-content {
     padding: 15px;
+  }
+
+  .admin-container {
+    padding: 0;
   }
 }
 
