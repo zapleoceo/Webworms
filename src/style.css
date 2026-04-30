@@ -44,7 +44,7 @@ html, body {
 
 .controls-ui {
   position: absolute;
-  top: 15px;
+  top: calc(15px + env(safe-area-inset-top) + 78px);
   right: 15px;
   z-index: 110;
   display: flex;
@@ -69,7 +69,7 @@ html, body {
 
 .controls-help {
   position: absolute;
-  top: calc(44px + env(safe-area-inset-top) + 78px);
+  top: 44px;
   right: 0;
   background: rgba(0, 0, 0, 0.6);
   color: white;
@@ -102,7 +102,7 @@ html, body {
 
 @media (max-width: 768px) {
   .controls-ui {
-    top: calc(12px + env(safe-area-inset-top));
+    top: calc(12px + env(safe-area-inset-top) + 72px);
     right: calc(12px + env(safe-area-inset-right));
   }
   .controls-help {
@@ -110,7 +110,7 @@ html, body {
     line-height: 1.5;
     padding: 10px 12px;
     max-width: min(78vw, 320px);
-    top: calc(44px + env(safe-area-inset-top));
+    top: 44px;
   }
 }
 
