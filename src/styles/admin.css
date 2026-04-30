@@ -1,3 +1,16 @@
+.admin-mode,
+html.admin-mode,
+body.admin-mode {
+  touch-action: auto;
+}
+
+html.admin-mode,
+body.admin-mode {
+  overflow: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .admin-container {
   display: flex;
   justify-content: center;

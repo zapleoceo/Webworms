@@ -12,6 +12,8 @@ export class AdminPanel {
   private upscaleAllAbort: boolean = false;
 
   constructor() {
+    document.documentElement.classList.add('admin-mode');
+    document.body.classList.add('admin-mode');
     this.renderInitialUI();
     this.bindEvents();
     this.checkSavedSession();
