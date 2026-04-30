@@ -21,6 +21,8 @@ export class GamePresenter {
   private lastTime: number = 0;
   public isRunning: boolean = false;
   private activeInputs: Set<string> = new Set(); // Track held keys/buttons
+  private shotsFiredThisTurnByWeaponId: Record<string, number> = {};
+  private static readonly MINIGUN_SHOTS_PER_TURN = 25;
   
   // Track analog joystick inputs (-1.0 to 1.0)
   private analogX: number = 0;
@@ -173,11 +175,14 @@ export class GamePresenter {
     this.state.cameraX = Math.max(0, (worldWidth - this.initialWidth) / 2);
     this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
+    this.shotsFiredThisTurnByWeaponId = {};
     
     // Reset timers
     this.matchDuration = 0;
     this.hasFiredThisTurn = false;
     this.state.hasFiredThisTurn = false;
+    this.shotsFiredThisTurnByWeaponId = {};
+    this.shotsFiredThisTurnByWeaponId = {};
     this.turnTimeLeft = this.maxTurnTime;
     this.state.turnTimeLeft = this.turnTimeLeft;
 
@@ -509,7 +514,11 @@ export class GamePresenter {
 
     if (this.activeInputs.has('fire')) {
       const weapon = player.getCurrentWeapon();
-      if (weapon && player.weaponCooldowns[weapon.id] <= 0) {
+      const blockMinigun = weapon?.id === 'minigun'
+        && (this.turnTimeLeft <= 0 || (this.shotsFiredThisTurnByWeaponId.minigun || 0) >= GamePresenter.MINIGUN_SHOTS_PER_TURN);
+      if (blockMinigun) {
+        player.aimPower = 0;
+      } else if (weapon && player.weaponCooldowns[weapon.id] <= 0) {
         if (weapon.chargeSpeed <= 0) {
           player.aimPower = 100;
           this.fireWeapon(player);
@@ -792,6 +801,12 @@ export class GamePresenter {
       // Cooldown active, cannot shoot
       return;
     }
+
+    if (weapon.id === 'minigun') {
+      const used = this.shotsFiredThisTurnByWeaponId.minigun || 0;
+      if (used >= GamePresenter.MINIGUN_SHOTS_PER_TURN) return;
+      if (this.turnTimeLeft <= 0) return;
+    }
     
     this.hasFiredThisTurn = true;
     this.state.hasFiredThisTurn = true;
@@ -830,7 +845,13 @@ export class GamePresenter {
     const startY = (player.y - player.height / 2) + Math.sin(baseRad) * gunLength;
 
     // Fire multiple projectiles if weapon supports it (e.g. shotgun)
-    const pCount = Math.max(1, weapon.projectilesPerShot || 1);
+    let pCount = Math.max(1, weapon.projectilesPerShot || 1);
+    if (weapon.id === 'minigun') {
+      const used = this.shotsFiredThisTurnByWeaponId.minigun || 0;
+      const remaining = Math.max(0, GamePresenter.MINIGUN_SHOTS_PER_TURN - used);
+      if (remaining <= 0) return;
+      pCount = Math.min(pCount, remaining);
+    }
     const radiusScale = pCount > 1 ? 1 / Math.sqrt(pCount) : 1;
     const projWeapon = {
       ...weapon,
@@ -854,6 +875,10 @@ export class GamePresenter {
         : new Projectile(startX, startY, vx, vy, projWeapon as any);
       (proj as any).owner = player; // Attach owner for stats tracking
       this.state.projectiles.push(proj);
+    }
+
+    if (weapon.id === 'minigun') {
+      this.shotsFiredThisTurnByWeaponId.minigun = (this.shotsFiredThisTurnByWeaponId.minigun || 0) + pCount;
     }
   }
 
