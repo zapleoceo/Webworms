@@ -31,6 +31,7 @@ export type BotConfig = {
     missWeight: number;
     movePenaltyPerPx: number;
     safeExtraRadius: number;
+    grenadeMinDamageAdvantagePct: number;
   };
 };
 
@@ -47,7 +48,7 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   movement: { maxStrategyAttemptsPerTurn: 3, maxStrategyFailuresPerTurn: 3, replanWhenBannedAtLeast: 3, replanCooldownSeconds: 1.2 },
   dig: { enabled: true, maxShotsPerTurn: 1, distances: [80, 120, 160], depthMin: 10, depthMax: 40 },
   grenade: { fuseSeconds: 3, restitution: 0.35, friction: 0.85, stopSpeed: 28 },
-  scoring: { killBonus: 4000, damageWeight: 1, missWeight: 1, movePenaltyPerPx: 0.35, safeExtraRadius: 14 }
+  scoring: { killBonus: 4000, damageWeight: 1, missWeight: 1, movePenaltyPerPx: 0.35, safeExtraRadius: 14, grenadeMinDamageAdvantagePct: 0.18 }
 };
 
 export function normalizeBotConfig(raw: any): BotConfig {
@@ -108,7 +109,8 @@ export function normalizeBotConfig(raw: any): BotConfig {
       damageWeight: clamp(num(scoring.damageWeight, DEFAULT_BOT_CONFIG.scoring.damageWeight), 0, 50),
       missWeight: clamp(num(scoring.missWeight, DEFAULT_BOT_CONFIG.scoring.missWeight), 0, 10),
       movePenaltyPerPx: clamp(num(scoring.movePenaltyPerPx, DEFAULT_BOT_CONFIG.scoring.movePenaltyPerPx), 0, 10),
-      safeExtraRadius: clamp(num(scoring.safeExtraRadius, DEFAULT_BOT_CONFIG.scoring.safeExtraRadius), 0, 100)
+      safeExtraRadius: clamp(num(scoring.safeExtraRadius, DEFAULT_BOT_CONFIG.scoring.safeExtraRadius), 0, 100),
+      grenadeMinDamageAdvantagePct: clamp(num(scoring.grenadeMinDamageAdvantagePct, DEFAULT_BOT_CONFIG.scoring.grenadeMinDamageAdvantagePct), 0, 2)
     }
   };
 }

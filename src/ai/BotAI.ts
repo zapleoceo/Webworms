@@ -152,11 +152,15 @@ function chooseBotActionScored(
 
   const targetRadius = 10;
 
-  let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weapon: Weapon; target: BotWormSnapshot } | null = null;
+  let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot } | null = null;
 
   for (const target of aliveEnemies) {
     const dist = Math.hypot(target.x - shooter.x, target.y - shooter.y);
     const ordered = pickWeaponByRange(weapons, dist);
+
+    let targetBest: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot } | null = null;
+    let bestBazooka: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot } | null = null;
+    let bestGrenade: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot } | null = null;
 
     for (let wIdx = 0; wIdx < ordered.length; wIdx++) {
       const w = ordered[wIdx];
@@ -249,11 +253,23 @@ function chooseBotActionScored(
             score -= risk * 0.6;
           }
 
-          if (!best || score > best.score) {
-            best = { score, global, power, weaponIndex: w.index, impact: res.end, weapon: simWeapon as any, target };
-          }
+          const cand = { score, global, power, weaponIndex: w.index, impact: res.end, weaponId: weapon.id, expectedDamage, target };
+          if (!targetBest || score > targetBest.score) targetBest = cand;
+          if (weapon.id === 'bazooka' && (!bestBazooka || score > bestBazooka.score)) bestBazooka = cand;
+          if (weapon.id === 'grenade' && (!bestGrenade || score > bestGrenade.score)) bestGrenade = cand;
         }
       }
+    }
+
+    if (targetBest?.weaponId === 'grenade' && bestBazooka && bestGrenade) {
+      const minPct = botCfg.scoring.grenadeMinDamageAdvantagePct ?? 0;
+      if (bestGrenade.expectedDamage < bestBazooka.expectedDamage * (1 + minPct)) {
+        targetBest = bestBazooka;
+      }
+    }
+
+    if (targetBest && (!best || targetBest.score > best.score)) {
+      best = targetBest;
     }
   }
 
