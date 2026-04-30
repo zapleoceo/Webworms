@@ -159,6 +159,62 @@ export async function heartbeatRoom(request: Request, env: any, corsHeaders: Rec
   return new Response(JSON.stringify({ success: true, inQueue: true, expired: false, matched: false }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }
 
+export async function leaveRoom(request: Request, env: any, corsHeaders: Record<string, string>, logEvent: (event: string, data: Record<string, unknown>) => void, maskId: (id: string | null | undefined) => string | null): Promise<Response> {
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/');
+  const roomId = parts[3];
+  let playerId: string | null = null;
+  try {
+    const body = await request.json() as any;
+    playerId = body?.playerId || null;
+  } catch {}
+
+  if (!roomId || !playerId) {
+    return new Response(JSON.stringify({ error: 'Bad Request' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  const roomStr = await env.ROOMS.get(roomId);
+  if (!roomStr) {
+    return new Response(JSON.stringify({ success: true, noop: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  let room: any;
+  try {
+    room = JSON.parse(roomStr);
+  } catch {
+    await env.ROOMS.delete(roomId);
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  const isHost = room?.hostId === playerId;
+  const isClient = room?.clientId === playerId;
+
+  if (!isHost && !isClient) {
+    return new Response(JSON.stringify({ success: true, noop: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  if (isHost) {
+    await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE host_id = ? OR room_id = ?`).bind(playerId, roomId).run();
+    await env.ROOMS.delete(roomId);
+    logEvent('room.leave.host', { roomId, hostId: maskId(playerId), status: room?.status ?? null });
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  if (room?.status === 'reserved' && room?.hostId) {
+    room.clientId = null;
+    room.status = 'waiting';
+    room.reservedAt = null;
+    room.activeAt = null;
+    await env.ROOMS.put(roomId, JSON.stringify(room), { expirationTtl: 3600 });
+    await env.DB.prepare(`INSERT OR REPLACE INTO MatchmakingQueue (room_id, host_id, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)`).bind(roomId, room.hostId).run();
+    logEvent('room.leave.client.requeue', { roomId, hostId: maskId(room.hostId), clientId: maskId(playerId) });
+    return new Response(JSON.stringify({ success: true, requeued: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  logEvent('room.leave.client', { roomId, hostId: maskId(room?.hostId ?? null), clientId: maskId(playerId), status: room?.status ?? null });
+  return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+}
+
 export async function joinRoomState(request: Request, env: any, corsHeaders: Record<string, string>, logEvent: (event: string, data: Record<string, unknown>) => void, maskId: (id: string | null | undefined) => string | null): Promise<Response> {
   const url = new URL(request.url);
   const parts = url.pathname.split('/');

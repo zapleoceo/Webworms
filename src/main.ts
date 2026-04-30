@@ -457,6 +457,8 @@ touchActions.forEach(({ id, action }) => {
 
 
 let currentMatchToken: string | null = null;
+let currentRoomId: string | null = null;
+let currentRoomPlayerId: string | null = null;
 
   // Start Game Helpers
   async function startGame(mode: 'training' | 'ai' | 'friend' | 'random') {
@@ -474,6 +476,7 @@ let currentMatchToken: string | null = null;
   // Request match token from backend if not training
   if (mode !== 'training') {
     const sessionId = localStorage.getItem('sessionId');
+    currentRoomPlayerId = sessionId;
     if (sessionId) {
       const res = await APIClient.startMatch(sessionId);
       if (res && res.success) {
@@ -563,7 +566,6 @@ let currentMatchToken: string | null = null;
         mapData: mapData
       });
       dbg && console.log('[LOADER] multiplayer init ms', Math.round(performance.now() - t0));
-      window.presenter.localTeam = 'team1';
     })();
   } else {
     const dbg = APIClient.isDebugEnabled();
@@ -665,6 +667,12 @@ let currentMatchToken: string | null = null;
     const savedHostRoomId = localStorage.getItem('friendHostRoomId') || undefined;
     const isHostResume = !!(joinRoomId && savedHostRoomId && joinRoomId === savedHostRoomId);
 
+    const prevRoomId = localStorage.getItem('ww_last_room_id');
+    if (prevRoomId && prevRoomId !== joinRoomId) {
+      APIClient.leaveRoom(prevRoomId, userSessionId);
+      localStorage.removeItem('ww_last_room_id');
+    }
+
     syncModule.onReady = () => {
       const ready = gameInitPromise || Promise.resolve();
       ready.then(() => {
@@ -698,6 +706,8 @@ let currentMatchToken: string | null = null;
 
     try {
       const { roomId, isJoining } = await multiplayerController.connect(mode, joinRoomId, isHostResume);
+      currentRoomId = roomId;
+      localStorage.setItem('ww_last_room_id', roomId);
       if (!isJoining) {
         // We are the host, waiting for someone
         window.presenter.localTeam = 'team1';
@@ -840,7 +850,20 @@ document.getElementById('btn-cancel-leave')?.addEventListener('click', () => {
 
 document.getElementById('btn-confirm-leave')?.addEventListener('click', () => {
   document.getElementById('leave-confirm-modal')!.style.display = 'none';
+  if (currentRoomId && currentRoomPlayerId) {
+    APIClient.leaveRoom(currentRoomId, currentRoomPlayerId);
+    localStorage.removeItem('ww_last_room_id');
+    currentRoomId = null;
+  }
   window.presenter.handleInput('surrender', true);
+});
+
+window.addEventListener('pagehide', () => {
+  const roomId = localStorage.getItem('ww_last_room_id');
+  const playerId = localStorage.getItem('sessionId');
+  if (roomId && playerId) {
+    APIClient.leaveRoom(roomId, playerId);
+  }
 });
 
 // Helper to process sprites for UI (remove background)

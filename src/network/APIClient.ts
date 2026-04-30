@@ -305,6 +305,24 @@ export class APIClient {
     return null;
   }
 
+  static leaveRoom(roomId: string, playerId: string): void {
+    try {
+      const url = `${this.BASE_URL}/rooms/${roomId}/leave`;
+      const payload = JSON.stringify({ playerId });
+      const blob = new Blob([payload], { type: 'application/json' });
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        navigator.sendBeacon(url, blob);
+        return;
+      }
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true
+      }).catch(() => {});
+    } catch {}
+  }
+
   static async getTurnIceServers(ttlSeconds: number = 3600): Promise<any[] | null> {
     try {
       const res = await fetch(`${this.BASE_URL}/turn/ice-servers?ttl=${ttlSeconds}&t=${Date.now()}`);

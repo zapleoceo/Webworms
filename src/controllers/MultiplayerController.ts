@@ -29,6 +29,7 @@ export class MultiplayerController {
     this.presenter.onClientTick = () => this.tickClientInterpolation();
 
     this.sync.onPlayerAction = (action, active, payload) => {
+      if (this.presenter.isHost && !this.isRemotePlayersTurn()) return;
       if (action === 'analog') {
         this.presenter.handleAnalogInput(payload.x, payload.y, true);
       } else if (action === 'switchWorm') {
@@ -44,12 +45,12 @@ export class MultiplayerController {
     };
 
     this.sync.onInitReceived = (initData) => {
-      if (this.presenter.localTeam !== 'team2') return;
+      if (this.presenter.isHost) return;
       this.applyHostInit(initData);
     };
 
     this.sync.onStateReceived = (stateData) => {
-      if (this.presenter.localTeam !== 'team2') return;
+      if (this.presenter.isHost) return;
       if (!this.hasInit) {
         this.pendingState = stateData;
         return;
@@ -72,6 +73,14 @@ export class MultiplayerController {
     try {
       this.sync.peerConnection?.close();
     } catch {}
+  }
+
+  private isRemotePlayersTurn(): boolean {
+    const cp = this.presenter.state.getCurrentPlayer?.();
+    const activeTeam = cp?.team || 'team1';
+    const localTeam = this.presenter.localTeam;
+    const remoteTeam = localTeam === 'team1' ? 'team2' : (localTeam === 'team2' ? 'team1' : 'team2');
+    return activeTeam === remoteTeam;
   }
 
   private enqueueHostState(stateData: any) {
