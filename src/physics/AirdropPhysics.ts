@@ -205,6 +205,29 @@ export function integrateAirdrop(
       }
     }
 
+    let clamped = false;
+    try {
+      const dvx = logo.vx - traceVel0.vx;
+      const dvy = logo.vy - traceVel0.vy;
+      const dv = Math.hypot(dvx, dvy);
+      const speed0 = Math.hypot(traceVel0.vx, traceVel0.vy);
+      const dvCap = Math.max(180, speed0 * 2.2);
+      if (dv > dvCap) {
+        const s = dvCap / dv;
+        logo.vx = traceVel0.vx + dvx * s;
+        logo.vy = traceVel0.vy + dvy * s;
+        clamped = true;
+      }
+      const speed1 = Math.hypot(logo.vx, logo.vy);
+      const speedCap = Math.max(320, speed0 * 1.6 + 140);
+      if (speed1 > speedCap) {
+        const s2 = speedCap / speed1;
+        logo.vx *= s2;
+        logo.vy *= s2;
+        clamped = true;
+      }
+    } catch {}
+
     const hasContact = contacts.length > 0;
     if (logo.touchedGround || hasContact) {
       const scale = logo.touchedGround ? 1 : 0.55;
@@ -252,7 +275,8 @@ export function integrateAirdrop(
             contacts: contacts.length,
             avgN: { x: avgNx, y: avgNy },
             maxPen,
-            touchedGround: logo.touchedGround
+            touchedGround: logo.touchedGround,
+            clamped: clamped ? 1 : 0
           });
         } catch {}
       }

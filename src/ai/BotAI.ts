@@ -239,7 +239,15 @@ function chooseBotActionScored(
           );
 
           const distEnd = Math.hypot(res.end.x - target.x, res.end.y - target.y);
-          const miss = weapon.id === 'grenade' ? distEnd : res.minDistToTarget;
+          let miss = weapon.id === 'grenade' ? distEnd : res.minDistToTarget;
+          if (weapon.spread > 0) {
+            const spreadRad = (weapon.spread * (Math.PI / 180)) * 0.5;
+            const travel = Math.max(0, Math.hypot(target.x - muzzle.x, target.y - muzzle.y));
+            const dev = Math.tan(spreadRad) * travel;
+            const multi = Math.max(1, weapon.projectilesPerShot || 1);
+            const factor = multi > 1 ? 0.25 : 0.6;
+            miss += dev * factor;
+          }
 
           const falloff = clamp(1 - miss / Math.max(1, simWeapon.explosionRadius), 0, 1);
           const expectedDamage = simWeapon.damage * falloff;

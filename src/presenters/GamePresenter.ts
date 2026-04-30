@@ -388,17 +388,25 @@ export class GamePresenter {
       const currentPlayer = this.state.getCurrentPlayer();
       if (!currentPlayer) return;
 
-      const wasMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0;
+      const hadBurst = this.blasterBurstRemaining > 0 && this.blasterBurstOwnerIndex === this.state.currentPlayerIndex;
+      const wasMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0 || hadBurst;
       
       // Update Physics
       this.physics.update(this.state, dt);
 
       if (this.state.mode === 'aivai' && this.onPhysicsTrace) {
         this.physicsSampleAccum += dt;
-        if (this.physicsSampleAccum >= 0.1) {
-          this.physicsSampleAccum = 0;
+        const wantsFast = this.state.projectiles.length > 0 || (this.state.brandLogos || []).length > 0;
+        const sampleInterval = wantsFast ? 0.1 : 0.3;
+        if (this.physicsSampleAccum >= sampleInterval) {
+          this.physicsSampleAccum -= sampleInterval;
           const projs = this.state.projectiles.map((p: any, idx: number) => [p.weaponId, p.x, p.y, p.vx, p.vy, p.radius, idx]);
-          const props = this.state.props.map((p: any, idx: number) => [p.x, p.y, p.vx, p.vy, p.radius, p.rotation, p.angularVelocity, idx]);
+          const propsTopN = 8;
+          const props = this.state.props
+            .map((p: any, idx: number) => ({ p, idx, s: Math.hypot(p.vx || 0, p.vy || 0) }))
+            .sort((a: any, b: any) => b.s - a.s)
+            .slice(0, propsTopN)
+            .map((it: any) => [it.p.x, it.p.y, it.p.vx, it.p.vy, it.p.radius, it.p.rotation, it.p.angularVelocity, it.idx]);
           const logos = (this.state.brandLogos || []).map((l: any, idx: number) => [l.x, l.y, l.vx, l.vy, l.angle, l.angularVelocity, l.collisionWidth, l.collisionHeight, l.isDynamic ? 1 : 0, l.touchedGround ? 1 : 0, idx]);
           const worms = this.state.players.map((w: any, idx: number) => [w.team, w.x, w.y, w.vx, w.vy, w.health, idx]);
           this.lastPhysSample = { t: this.matchDuration, projs, props, logos };
@@ -413,8 +421,9 @@ export class GamePresenter {
         }
       }
       
-      const isMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0;
-      const hasProjectiles = this.state.projectiles.length > 0;
+      const hasBurst = this.blasterBurstRemaining > 0 && this.blasterBurstOwnerIndex === this.state.currentPlayerIndex;
+      const isMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0 || hasBurst;
+      const hasProjectiles = this.state.projectiles.length > 0 || hasBurst;
       const isStable = !hasProjectiles;
 
       if (this.turnTimeLeft > 0 && this.state.mode !== 'training') {

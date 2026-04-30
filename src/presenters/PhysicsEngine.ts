@@ -990,6 +990,28 @@ export class PhysicsEngine {
         const vBefore = { vx: proj.vx, vy: proj.vy };
         const posBefore = { x: proj.x, y: proj.y };
         this.bounceOnNormal(proj as any, nx, ny, bounce, friction, proj.radius + 0.5);
+        let clamped = false;
+        try {
+          const dvx = proj.vx - vBefore.vx;
+          const dvy = proj.vy - vBefore.vy;
+          const dv = Math.hypot(dvx, dvy);
+          const speed0 = Math.hypot(vBefore.vx, vBefore.vy);
+          const dvCap = Math.max(280, speed0 * 2.2);
+          if (dv > dvCap) {
+            const s = dvCap / dv;
+            proj.vx = vBefore.vx + dvx * s;
+            proj.vy = vBefore.vy + dvy * s;
+            clamped = true;
+          }
+          const speed1 = Math.hypot(proj.vx, proj.vy);
+          const speedCap = Math.max(420, speed0 * 1.6 + 180);
+          if (speed1 > speedCap) {
+            const s2 = speedCap / speed1;
+            proj.vx *= s2;
+            proj.vy *= s2;
+            clamped = true;
+          }
+        } catch {}
         if (this.onTrace) {
           try {
             this.onTrace({
@@ -1006,7 +1028,8 @@ export class PhysicsEngine {
               vBefore,
               vAfter: { vx: proj.vx, vy: proj.vy },
               posBefore,
-              posAfter: { x: proj.x, y: proj.y }
+              posAfter: { x: proj.x, y: proj.y },
+              clamped: clamped ? 1 : 0
             });
           } catch {}
         }
