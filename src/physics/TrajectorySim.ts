@@ -225,7 +225,9 @@ function simulateGrenade(
     y = hitY;
 
     if (collided && !resting && y >= 0) {
-      const nrm = estimateNormal(terrain, x, y);
+      let nrm = estimateNormal(terrain, x, y);
+      const align = vx * nrm.x + vy * nrm.y;
+      if (align > 0) nrm = { x: -nrm.x, y: -nrm.y };
       const vDot = vx * nrm.x + vy * nrm.y;
       const vnx = nrm.x * vDot;
       const vny = nrm.y * vDot;
@@ -263,4 +265,3 @@ export function simulateTrajectory(
   }
   return simulateProjectile(terrain, params, target, targetRadius);
 }
-

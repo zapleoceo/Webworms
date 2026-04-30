@@ -882,9 +882,34 @@ export class PhysicsEngine {
           }
         }
 
+        const vDotN = proj.vx * nx + proj.vy * ny;
+        if (vDotN > 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+
         const bounce = (proj as any).bounce ?? 0.45;
         const friction = (proj as any).friction ?? 0.85;
         this.bounceOnNormal(proj as any, nx, ny, bounce, friction, proj.radius + 0.5);
+        if (hitTerrain) {
+          for (let k = 0; k < 6; k++) {
+            let inside = false;
+            const px = Math.floor(proj.x);
+            const py = Math.floor(proj.y);
+            for (const o of terrainOffsets) {
+              const x = px + o.dx;
+              const y = py + o.dy;
+              if (x < 0 || x >= state.width || y < 0 || y >= state.height) continue;
+              if (state.landscape.getMaterial(x, y) > 0) {
+                inside = true;
+                break;
+              }
+            }
+            if (!inside) break;
+            proj.x += nx * 0.9;
+            proj.y += ny * 0.9;
+          }
+        }
         return;
       }
 
