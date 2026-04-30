@@ -182,7 +182,7 @@ export class MultiplayerSync {
   }
 
   private flushLocalIce() {
-    if (!this.signalingReady) return;
+    if (!this.signalingReady || !this.roomId) return;
     const type = this.isHost ? 'ice-host' : 'ice-client';
     const batch = this.localIceCandidates.slice(this.lastSentIceIndex);
     this.lastSentIceIndex = this.localIceCandidates.length;
@@ -239,7 +239,7 @@ export class MultiplayerSync {
     } as any);
 
     this.peerConnection.onicecandidate = (event) => {
-      if (event.candidate && this.roomId) {
+      if (event.candidate) {
         const cand = event.candidate.candidate;
         const typMatch = / typ ([a-z0-9]+)/i.exec(cand);
         const typ = typMatch?.[1] ?? 'unknown';
