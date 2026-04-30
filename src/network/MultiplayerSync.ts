@@ -232,13 +232,9 @@ export class MultiplayerSync {
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' }
     ];
-    const hasTurn = Array.isArray(turnIce) && turnIce.some((s: any) => {
-      const urls = Array.isArray(s?.urls) ? s.urls : (typeof s?.urls === 'string' ? [s.urls] : []);
-      return urls.some((u: any) => typeof u === 'string' && (u.startsWith('turn:') || u.startsWith('turns:')));
-    });
     this.peerConnection = new RTCPeerConnection({
       iceServers,
-      iceTransportPolicy: hasTurn ? 'relay' : 'all'
+      iceTransportPolicy: 'all'
     } as any);
 
     this.peerConnection.onicecandidate = (event) => {
