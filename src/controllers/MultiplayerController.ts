@@ -15,6 +15,10 @@ export class MultiplayerController {
   public readonly sync: MultiplayerSync;
   private presenter: GamePresenter;
   private userId: string;
+  private hasInit: boolean = false;
+  private pendingState: any | null = null;
+  private lastSeq: number = 0;
+  private projectileById: Map<number, Projectile> = new Map();
 
   constructor(presenter: GamePresenter, userId: string) {
     this.presenter = presenter;
@@ -36,8 +40,17 @@ export class MultiplayerController {
       }
     };
 
+    this.sync.onInitReceived = (initData) => {
+      if (this.presenter.localTeam !== 'team2') return;
+      this.applyHostInit(initData);
+    };
+
     this.sync.onStateReceived = (stateData) => {
       if (this.presenter.localTeam !== 'team2') return;
+      if (!this.hasInit) {
+        this.pendingState = stateData;
+        return;
+      }
       this.applyHostState(stateData);
     };
 
@@ -59,25 +72,9 @@ export class MultiplayerController {
   }
 
   private applyHostState(stateData: any) {
-    if (this.presenter.state.mapSeed !== stateData.mapSeed || (stateData.mapData && this.presenter.state.mapData !== stateData.mapData)) {
-      this.presenter.state.mapSeed = stateData.mapSeed;
-      this.presenter.state.mapData = stateData.mapData;
-      Random.setSeed(stateData.mapSeed);
-
-      if (stateData.mapData) {
-        const fullUrl = stateData.mapData.startsWith('http') ? stateData.mapData : APIClient.BASE_URL.replace('/api', '') + stateData.mapData;
-        this.presenter.isPaused = true;
-
-        this.presenter.state.landscape.generateFromImage(fullUrl).then(() => {
-          this.presenter.state.width = this.presenter.state.landscape.width;
-          this.presenter.state.height = this.presenter.state.landscape.height;
-          this.rebuildWorms(stateData.mapSeed);
-          this.presenter.isPaused = false;
-        }).catch(() => {
-          this.presenter.isPaused = false;
-        });
-      }
-    }
+    const seq = typeof stateData?.seq === 'number' ? stateData.seq : 0;
+    if (seq > 0 && seq <= this.lastSeq) return;
+    if (seq > 0) this.lastSeq = seq;
 
     const oldCurrentPlayerIndex = this.presenter.state.currentPlayerIndex;
     this.presenter.state.currentPlayerIndex = stateData.currentPlayerIndex;
@@ -94,13 +91,15 @@ export class MultiplayerController {
       this.presenter.state.lastPlayedIndex = stateData.lastPlayedIndex;
     }
 
+    const smooth = (cur: number, target: number, a: number) => cur + (target - cur) * a;
+    const a = 0.45;
     stateData.players.forEach((pData: any, i: number) => {
       if (this.presenter.state.players[i]) {
         const p = this.presenter.state.players[i];
-        p.x = pData.x;
-        p.y = pData.y;
-        p.vx = pData.vx;
-        p.vy = pData.vy;
+        p.x = smooth(p.x, pData.x, a);
+        p.y = smooth(p.y, pData.y, a);
+        p.vx = smooth(p.vx, pData.vx, a);
+        p.vy = smooth(p.vy, pData.vy, a);
         p.health = pData.health;
         p.aimAngle = pData.aimAngle;
         p.facingRight = pData.facingRight;
@@ -121,21 +120,82 @@ export class MultiplayerController {
       }
     });
 
-    this.presenter.state.projectiles = stateData.projectiles.map((projData: any) => {
+    const nextProjectiles: Projectile[] = [];
+    const seen = new Set<number>();
+    for (const projData of stateData.projectiles || []) {
+      const id = typeof projData?.id === 'number' ? projData.id : null;
       const weapon = WEAPONS[projData.weaponId] || WEAPONS['bazooka'];
-      if (projData.weaponId === 'grenade') {
-        const p = new GrenadeProjectile(projData.x, projData.y, projData.vx, projData.vy, weapon, 3);
-        if (typeof projData.fuseRemaining === 'number') p.fuseRemaining = projData.fuseRemaining;
-        return p;
+
+      if (id === null) {
+        if (projData.weaponId === 'grenade') {
+          const gp = new GrenadeProjectile(projData.x, projData.y, projData.vx, projData.vy, weapon, 3);
+          if (typeof projData.fuseRemaining === 'number') gp.fuseRemaining = projData.fuseRemaining;
+          nextProjectiles.push(gp);
+        } else {
+          nextProjectiles.push(new Projectile(projData.x, projData.y, projData.vx, projData.vy, weapon));
+        }
+        continue;
       }
-      return new Projectile(projData.x, projData.y, projData.vx, projData.vy, weapon);
-    });
+
+      let p = this.projectileById.get(id);
+      if (!p) {
+        p = projData.weaponId === 'grenade'
+          ? new GrenadeProjectile(projData.x, projData.y, projData.vx, projData.vy, weapon, 3)
+          : new Projectile(projData.x, projData.y, projData.vx, projData.vy, weapon);
+        (p as any).netId = id;
+        this.projectileById.set(id, p);
+      }
+      p.x = smooth(p.x, projData.x, 0.55);
+      p.y = smooth(p.y, projData.y, 0.55);
+      p.vx = smooth(p.vx, projData.vx, 0.55);
+      p.vy = smooth(p.vy, projData.vy, 0.55);
+      if (p instanceof GrenadeProjectile && typeof projData.fuseRemaining === 'number') {
+        p.fuseRemaining = projData.fuseRemaining;
+      }
+      nextProjectiles.push(p);
+      seen.add(id);
+    }
+    for (const [id] of this.projectileById) {
+      if (!seen.has(id)) this.projectileById.delete(id);
+    }
+    this.presenter.state.projectiles = nextProjectiles;
 
     if (stateData.craters && stateData.craters.length > 0) {
       stateData.craters.forEach((crater: any) => {
         this.presenter.state.landscape.createCrater(crater.x, crater.y, crater.r);
       });
     }
+  }
+
+  private applyHostInit(initData: any) {
+    const mapSeed = initData?.mapSeed;
+    const mapData = initData?.mapData;
+    if (typeof mapSeed === 'number') {
+      this.presenter.state.mapSeed = mapSeed;
+      Random.setSeed(mapSeed);
+    }
+    if (typeof mapData === 'string') {
+      this.presenter.state.mapData = mapData;
+      const fullUrl = mapData.startsWith('http') ? mapData : APIClient.BASE_URL.replace('/api', '') + mapData;
+      this.presenter.isPaused = true;
+      this.presenter.state.landscape.generateFromImage(fullUrl).then(() => {
+        this.presenter.state.width = this.presenter.state.landscape.width;
+        this.presenter.state.height = this.presenter.state.landscape.height;
+        this.rebuildWorms(typeof mapSeed === 'number' ? mapSeed : 1);
+        this.presenter.isPaused = false;
+        this.hasInit = true;
+        const pending = this.pendingState;
+        this.pendingState = null;
+        if (pending) this.applyHostState(pending);
+      }).catch(() => {
+        this.presenter.isPaused = false;
+      });
+      return;
+    }
+    this.hasInit = true;
+    const pending = this.pendingState;
+    this.pendingState = null;
+    if (pending) this.applyHostState(pending);
   }
 
   private rebuildWorms(mapSeed: number) {

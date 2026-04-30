@@ -23,6 +23,7 @@ export class GamePresenter {
   private activeInputs: Set<string> = new Set(); // Track held keys/buttons
   private shotsFiredThisTurnByWeaponId: Record<string, number> = {};
   private static readonly MINIGUN_SHOTS_PER_TURN = 25;
+  private nextProjectileNetId = 1;
   
   // Track analog joystick inputs (-1.0 to 1.0)
   private analogX: number = 0;
@@ -176,13 +177,12 @@ export class GamePresenter {
     this.state.cameraY = Math.max(0, (worldHeight - this.initialHeight) / 2);
     this.activeInputs.clear();
     this.shotsFiredThisTurnByWeaponId = {};
+    this.nextProjectileNetId = 1;
     
     // Reset timers
     this.matchDuration = 0;
     this.hasFiredThisTurn = false;
     this.state.hasFiredThisTurn = false;
-    this.shotsFiredThisTurnByWeaponId = {};
-    this.shotsFiredThisTurnByWeaponId = {};
     this.turnTimeLeft = this.maxTurnTime;
     this.state.turnTimeLeft = this.turnTimeLeft;
 
@@ -873,6 +873,7 @@ export class GamePresenter {
       const proj = weapon.id === 'grenade'
         ? GrenadeWeapon.createProjectile(startX, startY, vx, vy, projWeapon as any)
         : new Projectile(startX, startY, vx, vy, projWeapon as any);
+      (proj as any).netId = this.nextProjectileNetId++;
       (proj as any).owner = player; // Attach owner for stats tracking
       this.state.projectiles.push(proj);
     }

@@ -27,6 +27,7 @@ export class MultiplayerSync {
   private iceDebounce: number | null = null;
 
   public onStateReceived?: (stateData: any) => void;
+  public onInitReceived?: (initData: any) => void;
   public onPlayerAction?: (action: string, active: boolean, payload?: any) => void;
   public onPeerDisconnected?: () => void;
   public onReady?: () => void;
@@ -379,6 +380,8 @@ export class MultiplayerSync {
     this.dataChannel.onopen = () => {
       console.log('WebRTC Data Channel Opened!');
       this.stopHeartbeat();
+      this.initSent = false;
+      this.syncSeq = 0;
       if (this.onReady) this.onReady();
       
       // Start heartbeat
@@ -407,6 +410,8 @@ export class MultiplayerSync {
         const msg = JSON.parse(event.data);
         if (msg.type === 'action' && this.onPlayerAction) {
           this.onPlayerAction(msg.action, msg.active, msg.payload);
+        } else if (msg.type === 'init' && this.onInitReceived) {
+          this.onInitReceived(msg.state);
         } else if (msg.type === 'sync' && this.onStateReceived) {
           this.onStateReceived(msg.state);
         } else if (msg.type === 'ping') {
@@ -448,6 +453,16 @@ export class MultiplayerSync {
   }
 
   private lastSyncTime = 0;
+  private syncSeq = 0;
+  private initSent = false;
+  private static readonly MAX_BUFFERED_BYTES = 256 * 1024;
+
+  private sendInit(state: any): void {
+    if (!this.isHost) return;
+    if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
+    this.dataChannel.send(JSON.stringify({ type: 'init', state: { mapSeed: state.mapSeed, mapData: state.mapData } }));
+    this.initSent = true;
+  }
 
   public sendStateSync(state: any): void {
     if (!this.isHost) return; // Only host dictates absolute state
@@ -458,9 +473,12 @@ export class MultiplayerSync {
     this.lastSyncTime = now;
 
     if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      const buffered = (this.dataChannel as any).bufferedAmount;
+      if (typeof buffered === 'number' && buffered > MultiplayerSync.MAX_BUFFERED_BYTES) return;
+      if (!this.initSent) this.sendInit(state);
+
       const statePayload = {
-        mapSeed: state.mapSeed,
-        mapData: state.mapData, // Added for custom maps
+        seq: ++this.syncSeq,
         currentPlayerIndex: state.currentPlayerIndex,
         wind: state.wind,
         turnTimeLeft: state.turnTimeLeft,
@@ -483,6 +501,7 @@ export class MultiplayerSync {
           ropeLength: p.ropeLength
         })),
         projectiles: state.projectiles.map((p: any) => ({
+          id: p.netId,
           x: p.x,
           y: p.y,
           vx: p.vx,
