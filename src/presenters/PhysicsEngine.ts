@@ -6,6 +6,7 @@ import { MathUtils } from '../utils/MathUtils';
 import { Random } from '../utils/Random';
 import { AudioManager } from '../utils/AudioManager';
 import { RopeTool } from '../equipment/items/RopeTool';
+import { circleOffsets } from '../physics/TrajectorySim';
 
 export class PhysicsEngine {
   public gravity: number = 195; // pixels per second squared (Increased by 30% from 150)
@@ -725,6 +726,38 @@ export class PhysicsEngine {
     const dist = Math.hypot(newX - oldX, newY - oldY);
     const steps = Math.max(1, Math.ceil(dist)); // roughly 1 step per pixel
     const pr = Math.max(1, Math.floor(proj.radius * 0.8)); // slightly smaller than visual radius for forgiveness
+    const terrainOffsets = circleOffsets(pr);
+
+    const sweepMinX = Math.min(oldX, newX) - proj.radius - 12;
+    const sweepMaxX = Math.max(oldX, newX) + proj.radius + 12;
+    const sweepMinY = Math.min(oldY, newY) - proj.radius - 12;
+    const sweepMaxY = Math.max(oldY, newY) + proj.radius + 12;
+
+    const playerCandidates: any[] = [];
+    for (const player of state.players) {
+      if (player.health <= 0) continue;
+      const r = Math.max(player.width || 0, player.height || 0) * 0.8 + 4;
+      const rr = r + proj.radius;
+      if (player.x < sweepMinX - rr || player.x > sweepMaxX + rr || player.y < sweepMinY - rr || player.y > sweepMaxY + rr) continue;
+      playerCandidates.push({ player, r });
+    }
+
+    const propCandidates: any[] = [];
+    for (const prop of state.props) {
+      const r = prop.radius + proj.radius;
+      if (prop.x < sweepMinX - r || prop.x > sweepMaxX + r || prop.y < sweepMinY - r || prop.y > sweepMaxY + r) continue;
+      propCandidates.push({ prop, r });
+    }
+
+    const logoCandidates: any[] = [];
+    if (state.brandLogos) {
+      for (const logo of state.brandLogos) {
+        const halfW = logo.collisionWidth / 2 + proj.radius;
+        const halfH = logo.collisionHeight / 2 + proj.radius;
+        if (logo.x < sweepMinX - halfW || logo.x > sweepMaxX + halfW || logo.y < sweepMinY - halfH || logo.y > sweepMaxY + halfH) continue;
+        logoCandidates.push(logo);
+      }
+    }
 
     let hitTerrain = false;
     let hitEntity = false;
@@ -738,9 +771,9 @@ export class PhysicsEngine {
       const checkY = oldY + (newY - oldY) * t;
 
       // 1. Check Players
-      for (const player of state.players) {
-        if (player.health <= 0) continue;
-        const playerRadius = Math.max(player.width || 0, player.height || 0) * 0.8 + 4;
+      for (const c of playerCandidates) {
+        const player = c.player;
+        const playerRadius = c.r;
         
         // Prevent immediate self-collision when shooting
         if (player === (proj as any).owner && (proj as any).framesAlive !== undefined && (proj as any).framesAlive < 5) {
@@ -757,8 +790,9 @@ export class PhysicsEngine {
       if (hitEntity) break;
 
       // 2. Check Props
-      for (const prop of state.props) {
-        if (MathUtils.distance(checkX, checkY, prop.x, prop.y) < prop.radius + proj.radius) {
+      for (const c of propCandidates) {
+        const prop = c.prop;
+        if (MathUtils.distance(checkX, checkY, prop.x, prop.y) < c.r) {
           hitEntity = true;
           hitX = checkX;
           hitY = checkY;
@@ -768,8 +802,8 @@ export class PhysicsEngine {
       if (hitEntity) break;
 
       // 3. Check BrandLogos
-      if (state.brandLogos) {
-        for (const logo of state.brandLogos) {
+      if (logoCandidates.length > 0) {
+        for (const logo of logoCandidates) {
           const halfW = logo.collisionWidth / 2;
           const halfH = logo.collisionHeight / 2;
 
@@ -797,20 +831,18 @@ export class PhysicsEngine {
       const px = Math.floor(checkX);
       const py = Math.floor(checkY);
 
-      for (let y = py - pr; y <= py + pr; y++) {
-        for (let x = px - pr; x <= px + pr; x++) {
-          if (x >= 0 && x < state.width && y >= 0 && y < state.height) {
-            const mat = state.landscape.getMaterial(x, y);
-            if (mat > 0) {
-              hitTerrain = true;
-              hitMaterial = mat;
-              hitX = checkX;
-              hitY = checkY;
-              break;
-            }
-          }
+      for (const o of terrainOffsets) {
+        const x = px + o.dx;
+        const y = py + o.dy;
+        if (x < 0 || x >= state.width || y < 0 || y >= state.height) continue;
+        const mat = state.landscape.getMaterial(x, y);
+        if (mat > 0) {
+          hitTerrain = true;
+          hitMaterial = mat;
+          hitX = checkX;
+          hitY = checkY;
+          break;
         }
-        if (hitTerrain) break;
       }
       if (hitTerrain) break;
     }

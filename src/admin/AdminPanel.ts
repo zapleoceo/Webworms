@@ -8,6 +8,8 @@ export class AdminPanel {
 
   private cropper: Cropper | null = null;
   private editingLogoId: string | null = null;
+  private lastMaps: any[] = [];
+  private upscaleAllAbort: boolean = false;
 
   constructor() {
     this.renderInitialUI();
@@ -55,7 +57,12 @@ export class AdminPanel {
             <section id="section-maps" class="admin-section active">
               <div class="section-header">
                 <h2>Custom Maps</h2>
-                <button id="load-maps" class="secondary-btn small-btn">Refresh</button>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                  <button id="load-maps" class="secondary-btn small-btn">Refresh</button>
+                  <button id="upscale-all-maps-btn" class="secondary-btn small-btn">Upscale ALL 1000h</button>
+                  <button id="upscale-all-maps-cancel-btn" class="danger-btn small-btn" style="display:none;">Cancel</button>
+                  <span id="upscale-all-maps-progress" style="font-size:12px; color:#ccc;"></span>
+                </div>
               </div>
               <div class="upload-map-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
                 <h3>Upload New Map</h3>
@@ -450,6 +457,8 @@ export class AdminPanel {
     document.getElementById('load-maps')?.addEventListener('click', () => this.loadMapsData());
     document.getElementById('load-spritesets')?.addEventListener('click', () => this.loadSpriteSetsData());
     document.getElementById('load-weapons')?.addEventListener('click', () => this.loadWeaponsData());
+    document.getElementById('upscale-all-maps-btn')?.addEventListener('click', () => this.upscaleAllMapsToHeight(1000));
+    document.getElementById('upscale-all-maps-cancel-btn')?.addEventListener('click', () => { this.upscaleAllAbort = true; });
     
     // Maps Upload Events
     const mapFileInput = document.getElementById('map-file') as HTMLInputElement;
@@ -759,6 +768,7 @@ export class AdminPanel {
       if (!res.ok) throw new Error('Failed to fetch maps');
       
       const maps = await res.json();
+      this.lastMaps = Array.isArray(maps) ? maps : [];
       this.renderMapsTable(maps);
     } catch (e) {
       console.error(e);
@@ -781,7 +791,7 @@ export class AdminPanel {
         <td>${map.name}</td>
         <td>${map.width} x ${map.height}</td>
         <td style="white-space: nowrap;">
-          <button class="secondary-btn small-btn upscale-map-btn" data-id="${map.id}" style="margin-right: 5px;">Upscale 4K</button>
+          <button class="secondary-btn small-btn upscale-map-btn" data-id="${map.id}" style="margin-right: 5px;">Upscale 1000h</button>
           <button class="secondary-btn small-btn delete-map-btn" data-id="${map.id}">Delete</button>
         </td>
       </tr>
@@ -800,91 +810,108 @@ export class AdminPanel {
     const id = btn.dataset.id;
     if (!id) return;
 
-    if (!confirm('Are you sure you want to upscale this map to 4K? This will overwrite the current map data.')) return;
+    if (!confirm('Are you sure you want to upscale this map to 1000px height? This will overwrite the current map data.')) return;
 
     const originalText = btn.innerText;
     btn.innerText = 'Processing...';
     btn.disabled = true;
 
     try {
-      // Fetch full map data
-      const res = await fetch(APIClient.BASE_URL + `/maps/${id}`);
-      if (!res.ok) throw new Error('Failed to fetch map data');
-      const mapObj = await res.json();
-      
-      const mapUrl = APIClient.BASE_URL.replace('/api', '') + mapObj.image_data + '?t=' + Date.now();
-      
-      // Upscale via canvas
-      const img = new Image();
-      img.crossOrigin = "Anonymous";
-      
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = mapUrl;
-      });
-
-      const canvas = document.createElement('canvas');
-      // Set to 4K resolution (3840 x 2160)
-      const TARGET_WIDTH = 3840;
-      const TARGET_HEIGHT = 2160;
-      
-      canvas.width = TARGET_WIDTH;
-      canvas.height = TARGET_HEIGHT;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas 2D context not available');
-
-      // Use image smoothing for better upscaling (or disable for pixel art)
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-
-      const scale = Math.min(TARGET_WIDTH / img.width, TARGET_HEIGHT / img.height);
-      const drawW = img.width * scale;
-      const drawH = img.height * scale;
-      const drawX = (TARGET_WIDTH - drawW) / 2;
-      const drawY = (TARGET_HEIGHT - drawH) / 2;
-      ctx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
-      ctx.drawImage(img, drawX, drawY, drawW, drawH);
-
-      // Use PNG to preserve transparency. 
-      // To ensure it doesn't hit the 25MB KV limit, we can just use standard PNG. 
-      // 4K PNG with large areas of transparent/solid colors compresses extremely well (often < 1-2MB).
-      // We only hit limits if it's a photograph. This is a game map.
-      const newBase64 = canvas.toDataURL('image/png');
-
-      // Update map in database
-      const author = (this.adminHeaders.get('X-Admin-Email') || '').trim();
-      const baseName = String(mapObj?.name || 'Unnamed Map').replace(/\s*\(\s*\d+\s*x\s*\d+\s*\)\s*(by\s+.+)?\s*$/i, '').trim();
-      const newName = `${baseName} (${TARGET_WIDTH}x${TARGET_HEIGHT})${author ? ` by ${author}` : ''}`;
-      const updateRes = await fetch(APIClient.BASE_URL + `/admin/maps/${id}`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
-          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
-        },
-        body: JSON.stringify({
-          name: newName,
-          image_data: newBase64,
-          width: TARGET_WIDTH,
-          height: TARGET_HEIGHT
-        })
-      });
-
-      if (updateRes.ok) {
-        alert('Map upscaled to 4K successfully!');
-        this.loadMapsData();
-      } else {
-        const err = await updateRes.json();
-        alert('Failed to update map: ' + (err.error || 'Unknown error'));
-      }
+      await this.upscaleMapToHeight(id, 1000);
+      alert('Map upscaled to 1000h successfully!');
+      this.loadMapsData();
     } catch (err: any) {
       console.error(err);
       alert('Error upscaling map: ' + err.message);
     } finally {
       btn.innerText = originalText;
       btn.disabled = false;
+    }
+  }
+
+  private normalizeMapName(name: string, width: number, height: number): string {
+    const m = String(name || 'Unnamed Map').match(/^(.*?)(\s*\(\s*\d+\s*x\s*\d+\s*\))?(\s*by\s+.+)?\s*$/i);
+    const base = (m?.[1] || 'Unnamed Map').trim();
+    const by = (m?.[3] || '').trim();
+    return `${base} (${width}x${height})${by ? ` ${by}` : ''}`;
+  }
+
+  private async upscaleMapToHeight(id: string, targetHeight: number): Promise<void> {
+    const res = await fetch(APIClient.BASE_URL + `/maps/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch map data');
+    const mapObj = await res.json();
+    const mapUrl = APIClient.BASE_URL.replace('/api', '') + mapObj.image_data + '?t=' + Date.now();
+
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Failed to load map image'));
+      img.src = mapUrl;
+    });
+
+    const targetW = Math.max(1, Math.round(img.width * (targetHeight / Math.max(1, img.height))));
+    const targetH = Math.max(1, Math.round(targetHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context not available');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.clearRect(0, 0, targetW, targetH);
+    ctx.drawImage(img, 0, 0, targetW, targetH);
+
+    const newBase64 = canvas.toDataURL('image/png');
+    const newName = this.normalizeMapName(mapObj?.name || 'Unnamed Map', targetW, targetH);
+    const updateRes = await fetch(APIClient.BASE_URL + `/admin/maps/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+        'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+      },
+      body: JSON.stringify({
+        name: newName,
+        image_data: newBase64,
+        width: targetW,
+        height: targetH
+      })
+    });
+    if (!updateRes.ok) {
+      const err = await updateRes.json().catch(() => ({} as any));
+      throw new Error(err?.error || 'Failed to update map');
+    }
+  }
+
+  private async upscaleAllMapsToHeight(targetHeight: number) {
+    if (!confirm(`Upscale ALL custom maps to ${targetHeight}px height? This will overwrite the current map data for each map.`)) return;
+    const btn = document.getElementById('upscale-all-maps-btn') as HTMLButtonElement | null;
+    const cancelBtn = document.getElementById('upscale-all-maps-cancel-btn') as HTMLButtonElement | null;
+    const progressEl = document.getElementById('upscale-all-maps-progress') as HTMLElement | null;
+    const maps = Array.isArray(this.lastMaps) ? this.lastMaps : [];
+    if (maps.length === 0) return;
+
+    this.upscaleAllAbort = false;
+    if (btn) btn.disabled = true;
+    if (cancelBtn) cancelBtn.style.display = 'inline-block';
+
+    try {
+      for (let i = 0; i < maps.length; i++) {
+        if (this.upscaleAllAbort) break;
+        const m = maps[i];
+        if (progressEl) progressEl.innerText = `Processing ${i + 1}/${maps.length}: ${m.name}`;
+        await this.upscaleMapToHeight(String(m.id), targetHeight);
+      }
+      if (progressEl) progressEl.innerText = this.upscaleAllAbort ? 'Cancelled' : 'Done';
+      await this.loadMapsData();
+    } catch (e: any) {
+      if (progressEl) progressEl.innerText = 'Error';
+      alert('Error upscaling maps: ' + (e?.message || String(e)));
+    } finally {
+      if (btn) btn.disabled = false;
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      this.upscaleAllAbort = false;
     }
   }
 
