@@ -237,6 +237,18 @@ export class BotTurnController {
             this.digShotsThisTurn += 1;
             this.debug('dig_fire', { weaponIndex: noisy.weaponIndex });
           }
+        } else {
+          const fallback = chooseBotAction(rng, snap.world, shooter, enemies, allies, botCfg);
+          const closest = enemies
+            .map(e => ({ e, d: Math.hypot(e.x - shooter.x, e.y - shooter.y) }))
+            .sort((a, b) => a.d - b.d)[0]?.e;
+          if (fallback && closest) {
+            const dir = closest.x >= shooter.x ? -1 : 1;
+            const rx = Math.max(30, Math.min(snap.world.terrain.width - 30, shooter.x + dir * 140));
+            this.plan = { moveTo: { x: rx, y: shooter.y }, action: { weaponIndex: fallback.weaponIndex, facingRight: fallback.facingRight, aimAngle: fallback.aimAngle, power: fallback.power } };
+            this.moveStartedAt = now;
+            this.debug('plan', { moveTo: { x: Math.round(rx), y: Math.round(shooter.y) }, weaponIndex: fallback.weaponIndex, targetId: closest.id, ropeRemaining });
+          }
         }
       }
     }

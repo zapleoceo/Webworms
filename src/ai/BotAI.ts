@@ -256,10 +256,11 @@ function chooseBotActionScored(
             continue;
           }
           let unsafe = false;
+          const allySafe = safeRadius + 26;
           for (const ally of allies) {
             if (ally.health <= 0) continue;
             const d = Math.hypot(res.end.x - ally.x, res.end.y - ally.y);
-            if (d < safeRadius) {
+            if (d < allySafe) {
               unsafe = true;
               break;
             }
@@ -712,6 +713,9 @@ export function chooseBotPlan(
   moveSeconds: number,
   ropeAttachBudget: number
 ): BotPlan | null {
+  const base = chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg);
+  if (!base) return null;
+
   const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
   const maxMoveDist = Math.max(0, maxSpeed * Math.max(0, moveSeconds));
   const ropeRange = 252 * 0.85;
@@ -741,6 +745,7 @@ export function chooseBotPlan(
   }
 
   const aliveEnemies = enemies.filter(e => e.health > 0);
+  const aliveAllies = allies.filter(a => a.health > 0 && a.id !== shooter.id);
   const minDistToEnemy = (w: BotWormSnapshot): number => {
     if (aliveEnemies.length === 0) return Infinity;
     let best = Infinity;
@@ -750,9 +755,67 @@ export function chooseBotPlan(
     }
     return best;
   };
+  const minDistToAlly = (w: BotWormSnapshot): number => {
+    if (aliveAllies.length === 0) return Infinity;
+    let best = Infinity;
+    for (const a of aliveAllies) {
+      const d = Math.hypot(a.x - w.x, a.y - w.y);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+  const closestEnemy = (w: BotWormSnapshot): BotWormSnapshot | null => {
+    if (aliveEnemies.length === 0) return null;
+    let best: BotWormSnapshot | null = null;
+    let bestD = Infinity;
+    for (const e of aliveEnemies) {
+      const d = Math.hypot(e.x - w.x, e.y - w.y);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    return best;
+  };
+
+  const rayOpenFrac = (x0: number, y0: number, ang: number, maxLen: number): number => {
+    const step = 10;
+    let free = 0;
+    for (let d = 10; d <= maxLen; d += step) {
+      const x = x0 + Math.cos(ang) * d;
+      const y = y0 + Math.sin(ang) * d;
+      const px = Math.floor(x);
+      const py = Math.floor(y);
+      if (px < 0 || px >= world.terrain.width || py < 0 || py >= world.terrain.height) break;
+      if (world.terrain.isSolid(px, py)) break;
+      free = d;
+    }
+    return free / maxLen;
+  };
+
+  const opennessScore = (w: BotWormSnapshot): number => {
+    const e = closestEnemy(w);
+    if (!e) return 0;
+    const dx = e.x - w.x;
+    const dy = e.y - w.y;
+    const ang0 = Math.atan2(dy, dx);
+    const muzzleY = w.y - w.height * 0.35;
+    const muzzleX = w.x;
+    const maxLen = 320;
+    const a = rayOpenFrac(muzzleX, muzzleY, ang0 - 0.22, maxLen);
+    const b = rayOpenFrac(muzzleX, muzzleY, ang0, maxLen);
+    const c = rayOpenFrac(muzzleX, muzzleY, ang0 + 0.22, maxLen);
+    const frac = (a + b + c) / 3;
+    return frac * 90;
+  };
+
   const d0 = minDistToEnemy(shooter);
-  const nearDist = 170;
-  const retreatPenaltyPerPx = 2.0;
+  const a0 = minDistToAlly(shooter);
+  const nearDist = 210;
+  const allyNearDist = 150;
+  const retreatBonusPerPx = 0.45;
+  const allyBonusPerPx = 0.25;
+  const positionWeight = 1.0;
 
   const planPathToX = buildSurfacePathPlanner(world.terrain, shooter, moveSeconds, ropeAttachBudget);
 
@@ -766,12 +829,16 @@ export function chooseBotPlan(
     const movePenalty = path.cost * botCfg.scoring.movePenaltyPerPx;
     const s2: BotWormSnapshot = { ...shooter, x, y };
     const scored = chooseBotActionScored(rng, world, s2, enemies, allies, botCfg);
-    if (!scored) continue;
     const d1 = minDistToEnemy(s2);
-    const retreatPenalty = (d0 < nearDist && d1 > d0) ? ((d1 - d0) * retreatPenaltyPerPx) : 0;
-    const totalScore = scored.score - movePenalty - retreatPenalty;
+    const a1 = minDistToAlly(s2);
+    const retreatBonus = (d0 < nearDist && d1 > d0) ? ((d1 - d0) * retreatBonusPerPx) : 0;
+    const allyBonus = (a0 < allyNearDist && a1 > a0) ? ((a1 - a0) * allyBonusPerPx) : 0;
+    const posScore = retreatBonus + allyBonus + opennessScore(s2);
+    const shotScore = scored ? scored.score : base.score;
+    const totalScore = shotScore - movePenalty + posScore * positionWeight;
     if (!best || totalScore > best.score) {
-      best = { score: totalScore, plan: { moveTo: path.next, action: scored.action } };
+      const moveTo = path.next || { x: s2.x, y: s2.y };
+      best = { score: totalScore, plan: { moveTo, action: (scored ? scored.action : base.action) } };
     }
   }
 
