@@ -1120,12 +1120,6 @@ export class CanvasRenderer {
     }
     this.ctx.restore();
     
-    if (state.turnTimeLeft !== Infinity) {
-      this.ctx.fillStyle = 'white';
-      this.ctx.font = 'bold 24px Courier New';
-      this.ctx.textAlign = 'center';
-      const timeStr = Math.ceil(state.turnTimeLeft).toString();
-      this.ctx.fillText(`TIME: ${timeStr}`, this.canvas.width / 2, 30);
-    }
+    // Timer is displayed via HUD DOM (#turn-timer)
   }
 }
