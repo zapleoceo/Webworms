@@ -52,6 +52,8 @@ const gameScreen = document.getElementById('game-screen')!;
 const gameOverScreen = document.getElementById('game-over-screen')!;
 const winnerText = document.getElementById('game-over-title')!;
 const mobileControls = document.getElementById('mobile-controls')!;
+const controlsUI = document.getElementById('controls-ui') as HTMLElement | null;
+const controlsToggleBtn = document.getElementById('controls-toggle') as HTMLButtonElement | null;
 const profileScreen = document.getElementById('profile-screen')!;
 const btnOpenAuth = document.getElementById('btn-open-auth')!;
 const btnUserProfile = document.getElementById('btn-user-profile') as HTMLButtonElement;
@@ -63,6 +65,65 @@ const loaderWormImageEl = document.getElementById('loader-worm-image') as HTMLIm
 const enemyDifficultyEl = document.getElementById('enemy-difficulty') as HTMLElement | null;
 
 let currentAIDifficultyForMatch: AIDifficulty | null = null;
+let controlsBound = false;
+let controlsAutoCloseTimer: number | null = null;
+
+function setControlsOpen(open: boolean, persist: boolean = true) {
+  if (!controlsUI) return;
+  controlsUI.classList.toggle('is-open', open);
+  if (persist) {
+    try {
+      localStorage.setItem('ww_controls_open', open ? '1' : '0');
+    } catch {}
+  }
+  if (controlsAutoCloseTimer) {
+    clearTimeout(controlsAutoCloseTimer);
+    controlsAutoCloseTimer = null;
+  }
+}
+
+function ensureControlsBoundOnce() {
+  if (controlsBound) return;
+  controlsBound = true;
+  if (!controlsToggleBtn || !controlsUI) return;
+  controlsToggleBtn.addEventListener('click', () => {
+    const open = controlsUI.classList.contains('is-open');
+    setControlsOpen(!open, true);
+  });
+}
+
+function syncControlsForViewport(inGame: boolean) {
+  if (!controlsUI) return;
+  if (!inGame) {
+    controlsUI.style.display = 'none';
+    controlsUI.classList.remove('is-open');
+    return;
+  }
+  ensureControlsBoundOnce();
+  controlsUI.style.display = 'flex';
+  if (window.innerWidth <= 768) {
+    mobileControls.style.display = 'flex';
+  } else {
+    mobileControls.style.display = 'none';
+  }
+}
+
+function autoShowControlsOnce() {
+  if (!controlsUI) return;
+  let seen = false;
+  try {
+    seen = localStorage.getItem('ww_controls_seen') === '1';
+  } catch {}
+  if (seen) return;
+  try {
+    localStorage.setItem('ww_controls_seen', '1');
+  } catch {}
+  setControlsOpen(true, false);
+  controlsAutoCloseTimer = window.setTimeout(() => {
+    controlsAutoCloseTimer = null;
+    setControlsOpen(false, false);
+  }, 8000);
+}
 
 function getDifficultyLabel(d: AIDifficulty): string {
   return d.toUpperCase();
@@ -324,7 +385,7 @@ window.botDebugMatrix = () => {
 };
 
 window.addEventListener('resize', () => {
-  // We no longer change internal canvas resolution. CSS object-fit handles responsive scaling.
+  syncControlsForViewport(gameScreen.classList.contains('active'));
 });
 
 const renderer = new CanvasRenderer(canvas);
@@ -635,14 +696,13 @@ let currentRoomPlayerId: string | null = null;
   }
 
   function showControls() {
-    const controlsHelp = document.getElementById('controls-help') as HTMLElement;
-    if (window.innerWidth <= 768) {
-      mobileControls.style.display = 'flex';
-      if (controlsHelp) controlsHelp.style.display = 'none';
-    } else {
-      mobileControls.style.display = 'none';
-      if (controlsHelp) controlsHelp.style.display = 'block';
-    }
+    syncControlsForViewport(true);
+    let open = false;
+    try {
+      open = localStorage.getItem('ww_controls_open') === '1';
+    } catch {}
+    setControlsOpen(open, false);
+    autoShowControlsOnce();
   }
 
   // Handle Multiplayer Mode
@@ -1111,8 +1171,7 @@ function bindPresenterEvents() {
     gameScreen.style.display = 'none'; // Fallback
 
     mobileControls.style.display = 'none';
-    const controlsHelp = document.getElementById('controls-help') as HTMLElement;
-    if (controlsHelp) controlsHelp.style.display = 'none';
+    syncControlsForViewport(false);
 
     gameOverScreen.style.display = '';
     gameOverScreen.classList.add('active');

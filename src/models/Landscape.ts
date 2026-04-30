@@ -141,12 +141,13 @@ export class Landscape {
             continue;
           }
 
-          const isBlack = r < 10 && g < 10 && b < 10;
-          if (isBlack) {
-            this.grid[pixelIndex] = 255;
-          } else {
-            this.grid[pixelIndex] = 1;
+          const isNearBlack = r < 10 && g < 10 && b < 10;
+          if (isNearBlack && this.pixelData) {
+            this.pixelData[i] = 11;
+            this.pixelData[i + 1] = 27;
+            this.pixelData[i + 2] = 58;
           }
+          this.grid[pixelIndex] = 1;
         }
         
         // Ensure boundaries are solid (optional, but good for gameplay)
