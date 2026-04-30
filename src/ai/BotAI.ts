@@ -109,6 +109,30 @@ function pickWeaponByRange(weapons: Array<{ index: number; weapon: Weapon; id: s
 
 type ScoredAction = { action: BotAction; score: number; impact: { x: number; y: number } };
 
+function isCircleBlocked(terrain: TerrainQuery, x: number, y: number, r: number): boolean {
+  const cx = Math.floor(x);
+  const cy = Math.floor(y);
+  const rr = Math.max(1, Math.floor(r));
+  const pts = [
+    [0, 0],
+    [rr, 0],
+    [-rr, 0],
+    [0, rr],
+    [0, -rr],
+    [Math.floor(rr * 0.7), Math.floor(rr * 0.7)],
+    [Math.floor(-rr * 0.7), Math.floor(rr * 0.7)],
+    [Math.floor(rr * 0.7), Math.floor(-rr * 0.7)],
+    [Math.floor(-rr * 0.7), Math.floor(-rr * 0.7)]
+  ];
+  for (const [dx, dy] of pts) {
+    const tx = cx + dx;
+    const ty = cy + dy;
+    if (tx < 0 || tx >= terrain.width || ty < 0 || ty >= terrain.height) continue;
+    if (terrain.isSolid(tx, ty)) return true;
+  }
+  return false;
+}
+
 function chooseBotActionScored(
   rng: Rng,
   world: BotWorldSnapshot,
@@ -137,13 +161,25 @@ function chooseBotActionScored(
     for (let wIdx = 0; wIdx < ordered.length; wIdx++) {
       const w = ordered[wIdx];
       const weapon = w.weapon;
+        const simWeapon = weapon.id === 'blaster'
+          ? { ...weapon, damage: weapon.damage / 5, explosionRadius: weapon.explosionRadius / Math.sqrt(5), knockback: weapon.knockback / Math.sqrt(5) }
+          : weapon;
 
       for (const localAngle of angleList) {
         const global = (target.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
         for (const power of powerList) {
-          let speed = power * 4.2 * (weapon.speedModifier || 1);
-          if (weapon.id === 'blaster') speed = 750;
+            let speed = power * 4.2 * (weapon.speedModifier || 1);
           const muzzle = gunMuzzlePosition(shooter, global);
+          const projRadius = weapon.id === 'grenade' ? 6 : 3;
+          if (isCircleBlocked(world.terrain, muzzle.x, muzzle.y, projRadius)) continue;
+
+          const maxByRange = Number.isFinite(weapon.maxRange) && weapon.maxRange > 0 ? (weapon.maxRange / Math.max(1e-3, speed)) : Infinity;
+          const fuseSeconds = weapon.id === 'grenade' ? (typeof weapon.fuseSeconds === 'number' ? weapon.fuseSeconds : 3.0) : 0;
+          const maxTime = weapon.id === 'grenade'
+            ? Math.min(fuseSeconds + (1 / 60), maxByRange)
+            : Math.min(2.2, maxByRange);
+          if (!Number.isFinite(maxTime) || maxTime <= 0.05) continue;
+
           const res = simulateTrajectory(
             world.terrain,
             {
@@ -151,12 +187,14 @@ function chooseBotActionScored(
               velocity: { x: Math.cos(global) * speed, y: Math.sin(global) * speed },
               gravity: world.gravity,
               wind: world.wind,
-              windMultiplier: weapon.windMultiplier || 0,
-              radius: weapon.id === 'grenade' ? 6 : 3,
+              windMultiplier: simWeapon.windMultiplier || 0,
+              radius: projRadius,
               dt: 1 / 60,
-              maxTime: weapon.id === 'grenade' ? botCfg.grenade.fuseSeconds : 2.2,
+              maxTime,
               mode: weapon.id === 'grenade' ? 'grenade' : 'projectile',
-              grenade: weapon.id === 'grenade' ? botCfg.grenade : undefined
+              grenade: weapon.id === 'grenade'
+                ? { fuseSeconds, restitution: 0.45, friction: 0.85, stopSpeed: 0 }
+                : undefined
             },
             { x: target.x, y: target.y },
             targetRadius
@@ -165,14 +203,17 @@ function chooseBotActionScored(
           const distEnd = Math.hypot(res.end.x - target.x, res.end.y - target.y);
           const miss = weapon.id === 'grenade' ? distEnd : res.minDistToTarget;
 
-          const falloff = clamp(1 - miss / Math.max(1, weapon.explosionRadius), 0, 1);
-          const expectedDamage = weapon.damage * falloff;
+          const falloff = clamp(1 - miss / Math.max(1, simWeapon.explosionRadius), 0, 1);
+          const expectedDamage = simWeapon.damage * falloff;
           const isKill = expectedDamage >= target.health && target.health > 0;
           let score = expectedDamage * botCfg.scoring.damageWeight - miss * botCfg.scoring.missWeight;
           if (isKill) score += botCfg.scoring.killBonus;
           score += (rng() - 0.5) * 1e-6;
 
-          const safeRadius = weapon.explosionRadius + botCfg.scoring.safeExtraRadius;
+          const safeRadius = simWeapon.explosionRadius + botCfg.scoring.safeExtraRadius;
+          const selfSafe = simWeapon.explosionRadius + 18 + botCfg.scoring.safeExtraRadius;
+          const selfDist = Math.hypot(res.end.x - shooter.x, res.end.y - shooter.y);
+          if (selfDist < selfSafe) continue;
           let unsafe = false;
           for (const ally of allies) {
             if (ally.health <= 0) continue;
@@ -184,8 +225,32 @@ function chooseBotActionScored(
           }
           if (unsafe) continue;
 
+          if (weapon.id === 'grenade') {
+            const pert = 2 * (Math.PI / 180);
+            const res2 = simulateTrajectory(
+              world.terrain,
+              {
+                start: muzzle,
+                velocity: { x: Math.cos(global + pert) * speed, y: Math.sin(global + pert) * speed },
+                gravity: world.gravity,
+                wind: world.wind,
+                windMultiplier: weapon.windMultiplier || 0,
+                radius: projRadius,
+                dt: 1 / 60,
+                maxTime,
+                mode: 'grenade',
+                grenade: { fuseSeconds, restitution: 0.45, friction: 0.85, stopSpeed: 0 }
+              },
+              { x: target.x, y: target.y },
+              targetRadius
+            );
+            const miss2 = Math.hypot(res2.end.x - target.x, res2.end.y - target.y);
+            const risk = Math.abs(miss2 - miss);
+            score -= risk * 0.6;
+          }
+
           if (!best || score > best.score) {
-            best = { score, global, power, weaponIndex: w.index, impact: res.end, weapon, target };
+            best = { score, global, power, weaponIndex: w.index, impact: res.end, weapon: simWeapon as any, target };
           }
         }
       }
@@ -641,8 +706,15 @@ export function chooseDigAction(
       const global = (digPoint.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
       for (const power of powerList) {
         let speed = power * 4.2 * (weapon.speedModifier || 1);
-        if (weapon.id === 'blaster') speed = 750;
         const muzzle = gunMuzzlePosition(shooter, global);
+        const projRadius = weapon.id === 'grenade' ? 6 : 3;
+        if (isCircleBlocked(world.terrain, muzzle.x, muzzle.y, projRadius)) continue;
+        const maxByRange = Number.isFinite(weapon.maxRange) && weapon.maxRange > 0 ? (weapon.maxRange / Math.max(1e-3, speed)) : Infinity;
+        const fuseSeconds = weapon.id === 'grenade' ? (typeof weapon.fuseSeconds === 'number' ? weapon.fuseSeconds : 3.0) : 0;
+        const maxTime = weapon.id === 'grenade'
+          ? Math.min(fuseSeconds + (1 / 60), maxByRange)
+          : Math.min(2.2, maxByRange);
+        if (!Number.isFinite(maxTime) || maxTime <= 0.05) continue;
         const res = simulateTrajectory(
           world.terrain,
           {
@@ -651,11 +723,13 @@ export function chooseDigAction(
             gravity: world.gravity,
             wind: world.wind,
             windMultiplier: weapon.windMultiplier || 0,
-            radius: weapon.id === 'grenade' ? 6 : 3,
+            radius: projRadius,
             dt: 1 / 60,
-            maxTime: weapon.id === 'grenade' ? botCfg.grenade.fuseSeconds : 2.2,
+            maxTime,
             mode: weapon.id === 'grenade' ? 'grenade' : 'projectile',
-            grenade: weapon.id === 'grenade' ? botCfg.grenade : undefined
+            grenade: weapon.id === 'grenade'
+              ? { fuseSeconds, restitution: 0.45, friction: 0.85, stopSpeed: 0 }
+              : undefined
           },
           { x: digPoint.x, y: digPoint.y },
           12

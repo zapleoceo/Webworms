@@ -914,7 +914,14 @@ export class PhysicsEngine {
         let nx = 0;
         let ny = -1;
         if (hitTerrain) {
-          const n = this.getTerrainNormal(state, hitX, hitY);
+          const mvx = hitX - oldX;
+          const mvy = hitY - oldY;
+          const mn = Math.hypot(mvx, mvy) || 1;
+          const dirX = mvx / mn;
+          const dirY = mvy / mn;
+          const sampleX = hitX - dirX * (proj.radius + 0.75);
+          const sampleY = hitY - dirY * (proj.radius + 0.75);
+          const n = this.getTerrainNormal(state, sampleX, sampleY);
           nx = n.nx;
           ny = n.ny;
         } else {
@@ -963,8 +970,9 @@ export class PhysicsEngine {
               }
             }
             if (!inside) break;
-            proj.x += nx * 0.9;
-            proj.y += ny * 0.9;
+            const n2 = this.getTerrainNormal(state, proj.x, proj.y);
+            proj.x += n2.nx * 0.9;
+            proj.y += n2.ny * 0.9;
           }
         }
         return;

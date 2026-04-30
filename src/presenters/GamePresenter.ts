@@ -14,6 +14,7 @@ import { findSafeWormSpawn } from '../gameplay/SpawnSelector';
 import { BrandLogo } from '../models/BrandLogo';
 import { DEFAULT_AIRDROP_PHYSICS, normalizeAirdropPhysicsConfig } from '../physics/AirdropConfig';
 import { BotTurnController } from '../controllers/BotTurnController';
+import { terrainHitCircle } from '../physics/TrajectorySim';
 
 export class GamePresenter {
   public state: GameState;
@@ -24,6 +25,12 @@ export class GamePresenter {
   private shotsFiredThisTurnByWeaponId: Record<string, number> = {};
   private static readonly MINIGUN_SHOTS_PER_TURN = 25;
   private nextProjectileNetId = 1;
+  private blasterBurstOwnerIndex: number | null = null;
+  private blasterBurstRemaining: number = 0;
+  private blasterBurstTimer: number = 0;
+  private blasterBurstInterval: number = 0.06;
+  private blasterBurstSpeed: number = 0;
+  private blasterBurstWeaponOverride: any = null;
   
   // Track analog joystick inputs (-1.0 to 1.0)
   private analogX: number = 0;
@@ -521,7 +528,7 @@ export class GamePresenter {
       if (blockMinigun) {
         player.aimPower = 0;
       } else if (weapon && player.weaponCooldowns[weapon.id] <= 0) {
-        if (weapon.chargeSpeed <= 0) {
+        if (weapon.id === 'minigun' && weapon.chargeSpeed <= 0) {
           player.aimPower = 100;
           this.fireWeapon(player);
         } else {
@@ -535,6 +542,19 @@ export class GamePresenter {
       } else {
         // Prevent charging while reloading
         player.aimPower = 0;
+      }
+    }
+
+    if (this.blasterBurstRemaining > 0 && this.blasterBurstOwnerIndex === this.state.currentPlayerIndex) {
+      if (player.health <= 0 || this.state.mode !== 'training' && this.turnTimeLeft <= 0) {
+        this.blasterBurstRemaining = 0;
+      } else {
+        this.blasterBurstTimer -= dt;
+        while (this.blasterBurstRemaining > 0 && this.blasterBurstTimer <= 0) {
+          this.blasterBurstTimer += this.blasterBurstInterval;
+          this.spawnSingleProjectile(player, this.blasterBurstWeaponOverride, this.blasterBurstSpeed);
+          this.blasterBurstRemaining -= 1;
+        }
       }
     }
     
@@ -818,8 +838,16 @@ export class GamePresenter {
     // Apply cooldown (Dynamic: based on shot power, min 20% of base cooldown)
     const powerRatio = Math.max(0.2, power / 100);
     const actualCooldown = weapon.cooldown * powerRatio;
-    player.weaponCooldowns[weapon.id] = actualCooldown;
-    player.maxWeaponCooldowns[weapon.id] = actualCooldown;
+    if (weapon.id === 'blaster') {
+      const burstShots = 5;
+      const burstDuration = (burstShots - 1) * this.blasterBurstInterval;
+      const totalCooldown = actualCooldown + burstDuration;
+      player.weaponCooldowns[weapon.id] = totalCooldown;
+      player.maxWeaponCooldowns[weapon.id] = totalCooldown;
+    } else {
+      player.weaponCooldowns[weapon.id] = actualCooldown;
+      player.maxWeaponCooldowns[weapon.id] = actualCooldown;
+    }
 
     // Calculate vector based on angle and power
     // Determine global Aim Angle
@@ -840,13 +868,21 @@ export class GamePresenter {
       const baseRad = globalAimAngle;
     const speed = power * 4.2 * (weapon.speedModifier || 1);
 
-    // Spawn perfectly at the end of the visual gun barrel
-    // Worm is drawn from bottom center (player.height / 2), so we offset Y
-    const gunLength = 25;
-    const startX = player.x + Math.cos(baseRad) * gunLength;
-    const startY = (player.y - player.height / 2) + Math.sin(baseRad) * gunLength;
+    if (weapon.id === 'blaster') {
+      this.blasterBurstOwnerIndex = this.state.currentPlayerIndex;
+      this.blasterBurstRemaining = 5;
+      this.blasterBurstTimer = 0;
+      this.blasterBurstSpeed = speed;
+      const radiusScale = 1 / Math.sqrt(5);
+      this.blasterBurstWeaponOverride = {
+        ...weapon,
+        damage: weapon.damage / 5,
+        explosionRadius: weapon.explosionRadius * radiusScale,
+        knockback: weapon.knockback * radiusScale
+      };
+      return;
+    }
 
-    // Fire multiple projectiles if weapon supports it (e.g. shotgun)
     let pCount = Math.max(1, weapon.projectilesPerShot || 1);
     if (weapon.id === 'minigun') {
       const used = this.shotsFiredThisTurnByWeaponId.minigun || 0;
@@ -863,26 +899,61 @@ export class GamePresenter {
     };
 
     for (let i = 0; i < pCount; i++) {
-      // Calculate spread
-      let rad = baseRad;
-      if (weapon.spread > 0) {
-        const spreadRad = weapon.spread * (Math.PI / 180);
-        rad += (Random.next() - 0.5) * spreadRad;
-      }
-
-      const vx = Math.cos(rad) * speed;
-      const vy = Math.sin(rad) * speed; // Negative is up, positive is down
-      const proj = weapon.id === 'grenade'
-        ? GrenadeWeapon.createProjectile(startX, startY, vx, vy, projWeapon as any)
-        : new Projectile(startX, startY, vx, vy, projWeapon as any);
-      (proj as any).netId = this.nextProjectileNetId++;
-      (proj as any).owner = player; // Attach owner for stats tracking
-      this.state.projectiles.push(proj);
+      this.spawnSingleProjectile(player, projWeapon, speed, baseRad);
     }
 
     if (weapon.id === 'minigun') {
       this.shotsFiredThisTurnByWeaponId.minigun = (this.shotsFiredThisTurnByWeaponId.minigun || 0) + pCount;
     }
+  }
+
+  private spawnSingleProjectile(player: Worm, weapon: any, speed: number, baseRadOverride?: number): void {
+    let globalAimAngle = player.aimAngle;
+    if (!player.facingRight) {
+      globalAimAngle = Math.PI - player.aimAngle;
+    }
+    const baseRad = typeof baseRadOverride === 'number' ? baseRadOverride : globalAimAngle;
+
+    const gunLength = 25;
+    const originX = player.x;
+    const originY = (player.y - player.height / 2);
+    const dirX = Math.cos(baseRad);
+    const dirY = Math.sin(baseRad);
+    let startX = originX + dirX * gunLength;
+    let startY = originY + dirY * gunLength;
+    const pr = Math.max(1, Math.floor(((weapon.id === 'grenade') ? 6 : 3) * 0.8));
+    if (terrainHitCircle(this.state.landscape, startX, startY, pr).hit) {
+      let found = false;
+      for (let t = gunLength; t >= 0; t -= 1) {
+        const cx = originX + dirX * t;
+        const cy = originY + dirY * t;
+        if (!terrainHitCircle(this.state.landscape, cx, cy, pr).hit) {
+          startX = cx;
+          startY = cy;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        startX = originX;
+        startY = originY;
+      }
+    }
+
+    let rad = baseRad;
+    if (weapon.spread > 0) {
+      const spreadRad = weapon.spread * (Math.PI / 180);
+      rad += (Random.next() - 0.5) * spreadRad;
+    }
+
+    const vx = Math.cos(rad) * speed;
+    const vy = Math.sin(rad) * speed;
+    const proj = weapon.id === 'grenade'
+      ? GrenadeWeapon.createProjectile(startX, startY, vx, vy, weapon as any)
+      : new Projectile(startX, startY, vx, vy, weapon as any);
+    (proj as any).netId = this.nextProjectileNetId++;
+    (proj as any).owner = player;
+    this.state.projectiles.push(proj);
   }
 
   private spawnAirdrop() {
@@ -963,6 +1034,8 @@ export class GamePresenter {
 
     this.hasFiredThisTurn = false;
     this.state.hasFiredThisTurn = false;
+    this.blasterBurstOwnerIndex = null;
+    this.blasterBurstRemaining = 0;
 
     // Keep track of which team went last
     const currentPlayer = this.state.getCurrentPlayer();
