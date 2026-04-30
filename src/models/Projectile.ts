@@ -14,6 +14,7 @@ export class Projectile {
   public windMultiplier: number;
   public color: string;
   public weaponId: string;
+  public rangeRemaining: number;
 
   constructor(x: number, y: number, vx: number, vy: number, weapon: Weapon) {
     this.x = x;
@@ -27,6 +28,7 @@ export class Projectile {
     this.windMultiplier = weapon.windMultiplier;
     this.color = weapon.color;
     this.weaponId = weapon.id;
+    this.rangeRemaining = weapon.maxRange > 0 ? weapon.maxRange : Infinity;
   }
 
   public updatePosition(dt: number): void {

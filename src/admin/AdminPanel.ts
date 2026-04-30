@@ -9,6 +9,10 @@ export class AdminPanel {
   private cropper: Cropper | null = null;
   private editingLogoId: string | null = null;
   private lastMaps: any[] = [];
+  private lastWeapons: any[] = [];
+  private selectedWeaponId: string | null = null;
+  private pendingWeaponIconSrc: string | null = null;
+  private pendingWeaponProjectileSrc: string | null = null;
   private upscaleAllAbort: boolean = false;
 
   constructor() {
@@ -369,42 +373,58 @@ export class AdminPanel {
                 <h2>Weapons</h2>
                 <button id="load-weapons" class="secondary-btn small-btn">Refresh</button>
               </div>
-              <div class="upload-form" style="margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px;">
-                <h3>Add New Weapon</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-                  <input type="text" id="wpn-name" placeholder="Weapon Name" class="retro-input">
-                  <input type="color" id="wpn-color" value="#ff0000" class="retro-input" style="height: 50px;">
-                  <input type="number" id="wpn-damage" placeholder="Damage (e.g. 45)" class="retro-input">
-                  <input type="number" id="wpn-radius" placeholder="Explosion Radius (e.g. 60)" class="retro-input">
-                  <input type="number" id="wpn-knockback" placeholder="Knockback (e.g. 15)" class="retro-input">
-                  <input type="number" id="wpn-wind" placeholder="Wind Multiplier (e.g. 1.0)" class="retro-input" step="0.1">
-                  <input type="number" id="wpn-spread" placeholder="Spread (e.g. 0)" class="retro-input" step="0.1">
-                  <input type="number" id="wpn-projectiles" placeholder="Projectiles Per Shot (e.g. 1)" class="retro-input">
-                  <input type="number" id="wpn-cooldown" placeholder="Cooldown (e.g. 1)" class="retro-input">
-                  <input type="number" id="wpn-chargespeed" placeholder="Charge Speed (e.g. 0.05)" class="retro-input" step="0.01">
-                  <input type="number" id="wpn-speedmod" placeholder="Speed Modifier (e.g. 1.0)" class="retro-input" step="0.1">
+              <div class="weapon-editor-layout">
+                <div class="weapon-list-panel">
+                  <div class="weapon-list-toolbar">
+                    <input id="weapon-search" type="text" class="retro-input" placeholder="Search..." />
+                    <button id="weapon-new-btn" class="secondary-btn small-btn">New</button>
+                  </div>
+                  <div id="weapon-list" class="weapon-list"></div>
                 </div>
-                <div style="display: flex; gap: 10px; margin-top: 10px; flex-direction: column;">
-                  <label>Icon Sprite (Optional): <input type="file" id="wpn-icon" accept="image/png"></label>
-                  <label>Projectile Sprite (Optional): <input type="file" id="wpn-projectile" accept="image/png"></label>
-                  <button id="create-weapon-btn" class="primary-btn small-btn" style="max-width: 200px; margin-top: 10px;">Create Weapon</button>
+
+                <div class="weapon-editor-panel">
+                  <div class="weapon-editor-header">
+                    <div id="weapon-score-badge" class="weapon-score-badge">Score: --</div>
+                    <div class="weapon-editor-actions">
+                      <button id="weapon-save-btn" class="primary-btn small-btn">Save</button>
+                      <button id="weapon-duplicate-btn" class="secondary-btn small-btn">Duplicate</button>
+                      <button id="weapon-delete-btn" class="danger-btn small-btn">Delete</button>
+                    </div>
+                  </div>
+
+                  <div class="weapon-editor-body">
+                    <div class="weapon-preview-row">
+                      <div class="weapon-preview">
+                        <div class="weapon-preview-label">Icon</div>
+                        <img id="weapon-icon-preview" class="weapon-preview-img" />
+                        <input type="file" id="weapon-icon-file" accept="image/png" />
+                      </div>
+                      <div class="weapon-preview">
+                        <div class="weapon-preview-label">Projectile</div>
+                        <img id="weapon-projectile-preview" class="weapon-preview-img" />
+                        <input type="file" id="weapon-projectile-file" accept="image/png" />
+                      </div>
+                    </div>
+
+                    <div class="weapon-form-grid">
+                      <input type="text" id="weapon-id" class="retro-input" placeholder="id" disabled />
+                      <input type="text" id="weapon-name" class="retro-input" placeholder="name" />
+                      <input type="color" id="weapon-color" class="retro-input" />
+                      <input type="number" id="weapon-damage" class="retro-input" placeholder="damage" />
+                      <input type="number" id="weapon-radius" class="retro-input" placeholder="explosionRadius" />
+                      <input type="number" id="weapon-knockback" class="retro-input" placeholder="knockback" />
+                      <input type="number" id="weapon-wind" class="retro-input" placeholder="windMultiplier" step="0.1" />
+                      <input type="number" id="weapon-spread" class="retro-input" placeholder="spread" step="0.1" />
+                      <input type="number" id="weapon-projectiles" class="retro-input" placeholder="projectilesPerShot" />
+                      <input type="number" id="weapon-cooldown" class="retro-input" placeholder="cooldown" step="0.05" />
+                      <input type="number" id="weapon-chargespeed" class="retro-input" placeholder="chargeSpeed" step="0.05" />
+                      <input type="number" id="weapon-speedmod" class="retro-input" placeholder="speedModifier" step="0.05" />
+                      <input type="number" id="weapon-maxrange" class="retro-input" placeholder="maxRange" />
+                    </div>
+
+                    <div class="weapon-derived" id="weapon-derived"></div>
+                  </div>
                 </div>
-              </div>
-              <div class="table-responsive">
-                <table class="admin-table">
-                  <thead>
-                    <tr>
-                      <th>Icon</th>
-                      <th>Name</th>
-                      <th>Damage</th>
-                      <th>Radius</th>
-                      <th>Projectiles</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody id="weapons-list-body">
-                  </tbody>
-                </table>
               </div>
             </section>
 
@@ -532,7 +552,17 @@ export class AdminPanel {
 
     // SpriteSets & Weapons Creation
     document.getElementById('create-spriteset-btn')?.addEventListener('click', () => this.handleCreateSpriteSet());
-    document.getElementById('create-weapon-btn')?.addEventListener('click', () => this.handleCreateWeapon());
+    document.getElementById('weapon-save-btn')?.addEventListener('click', () => this.saveSelectedWeapon());
+    document.getElementById('weapon-duplicate-btn')?.addEventListener('click', () => this.duplicateSelectedWeapon());
+    document.getElementById('weapon-delete-btn')?.addEventListener('click', () => this.deleteSelectedWeapon());
+    document.getElementById('weapon-new-btn')?.addEventListener('click', () => this.createNewWeapon());
+    document.getElementById('weapon-search')?.addEventListener('input', () => this.renderWeaponList());
+    document.getElementById('weapon-icon-file')?.addEventListener('change', (e) => this.handleWeaponSpriteFile(e, 'icon'));
+    document.getElementById('weapon-projectile-file')?.addEventListener('change', (e) => this.handleWeaponSpriteFile(e, 'projectile'));
+    document.querySelectorAll('#section-weapons .weapon-form-grid input').forEach(el => {
+      el.addEventListener('input', () => this.updateWeaponDerived());
+      el.addEventListener('change', () => this.updateWeaponDerived());
+    });
   }
 
   private switchTab(tabId: string, btnElement: HTMLElement) {
@@ -695,11 +725,6 @@ export class AdminPanel {
     // Bind spriteset delete buttons
     document.querySelectorAll('.delete-spriteset-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.deleteSpriteSet(e));
-    });
-
-    // Bind weapon delete buttons
-    document.querySelectorAll('.delete-weapon-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => this.deleteWeapon(e));
     });
   }
 
@@ -1627,30 +1652,350 @@ export class AdminPanel {
       const res = await fetch(APIClient.BASE_URL + '/weapons');
       if (res.ok) {
         const weapons = await res.json();
-        this.renderWeaponsTable(weapons);
+        this.lastWeapons = Array.isArray(weapons) ? weapons : [];
+        if (!this.selectedWeaponId && this.lastWeapons.length > 0) {
+          this.selectedWeaponId = this.lastWeapons[0].id;
+        }
+        this.renderWeaponList();
+        if (this.selectedWeaponId) {
+          this.selectWeapon(this.selectedWeaponId);
+        } else {
+          this.clearWeaponEditor();
+        }
       }
     } catch (e) {
       console.error(e);
     }
   }
 
-  private renderWeaponsTable(weapons: any[]) {
-    const tbody = document.getElementById('weapons-list-body');
-    if (!tbody) return;
+  private renderWeaponList() {
+    const listEl = document.getElementById('weapon-list');
+    const searchEl = document.getElementById('weapon-search') as HTMLInputElement | null;
+    if (!listEl) return;
 
-    tbody.innerHTML = weapons.map(w => `
-      <tr>
-        <td>${w.icon_src ? `<img src="${w.icon_src}" style="height: 40px; image-rendering: pixelated;">` : 'None'}</td>
-        <td><span style="color: ${w.color}">${w.name}</span></td>
-        <td>${w.damage}</td>
-        <td>${w.explosionRadius}</td>
-        <td>${w.projectilesPerShot}</td>
-        <td>
-          <button class="delete-weapon-btn danger-btn small-btn" data-id="${w.id}">Delete</button>
-        </td>
-      </tr>
-    `).join('');
-    this.bindDynamicEvents();
+    const q = (searchEl?.value || '').trim().toLowerCase();
+    const items = this.lastWeapons
+      .filter(w => {
+        if (!q) return true;
+        const id = (w?.id || '').toString().toLowerCase();
+        const name = (w?.name || '').toString().toLowerCase();
+        return id.includes(q) || name.includes(q);
+      })
+      .map(w => {
+        const score = this.computeWeaponScore100(w);
+        const selected = this.selectedWeaponId === w.id;
+        const cls = selected ? 'weapon-list-item selected' : 'weapon-list-item';
+        const icon = w.icon_src ? `<img src="${w.icon_src}" class="weapon-list-icon" />` : `<div class="weapon-list-icon placeholder"></div>`;
+        return `
+          <button class="${cls}" data-id="${w.id}">
+            ${icon}
+            <div class="weapon-list-meta">
+              <div class="weapon-list-name">${w.name}</div>
+              <div class="weapon-list-sub">${w.id}</div>
+            </div>
+            <div class="weapon-list-score">${score}</div>
+          </button>
+        `;
+      });
+
+    listEl.innerHTML = items.join('');
+    listEl.querySelectorAll<HTMLButtonElement>('.weapon-list-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        if (!id) return;
+        this.selectWeapon(id);
+        this.renderWeaponList();
+      });
+    });
+  }
+
+  private clearWeaponEditor() {
+    (document.getElementById('weapon-id') as HTMLInputElement | null)?.setAttribute('value', '');
+    const fields = [
+      'weapon-id','weapon-name','weapon-color','weapon-damage','weapon-radius','weapon-knockback','weapon-wind',
+      'weapon-spread','weapon-projectiles','weapon-cooldown','weapon-chargespeed','weapon-speedmod','weapon-maxrange'
+    ];
+    for (const id of fields) {
+      const el = document.getElementById(id) as HTMLInputElement | null;
+      if (!el) continue;
+      el.value = '';
+    }
+    const icon = document.getElementById('weapon-icon-preview') as HTMLImageElement | null;
+    const proj = document.getElementById('weapon-projectile-preview') as HTMLImageElement | null;
+    if (icon) icon.src = '';
+    if (proj) proj.src = '';
+    const derived = document.getElementById('weapon-derived');
+    if (derived) derived.innerHTML = '';
+    this.pendingWeaponIconSrc = null;
+    this.pendingWeaponProjectileSrc = null;
+    this.updateWeaponScoreBadge(null);
+  }
+
+  private selectWeapon(id: string) {
+    const w = this.lastWeapons.find(x => x.id === id);
+    if (!w) return;
+    this.selectedWeaponId = id;
+    this.pendingWeaponIconSrc = null;
+    this.pendingWeaponProjectileSrc = null;
+
+    (document.getElementById('weapon-id') as HTMLInputElement).value = w.id || '';
+    (document.getElementById('weapon-name') as HTMLInputElement).value = w.name || '';
+    (document.getElementById('weapon-color') as HTMLInputElement).value = w.color || '#ffffff';
+    (document.getElementById('weapon-damage') as HTMLInputElement).value = String(w.damage ?? 0);
+    (document.getElementById('weapon-radius') as HTMLInputElement).value = String(w.explosionRadius ?? 0);
+    (document.getElementById('weapon-knockback') as HTMLInputElement).value = String(w.knockback ?? 0);
+    (document.getElementById('weapon-wind') as HTMLInputElement).value = String(w.windMultiplier ?? 1);
+    (document.getElementById('weapon-spread') as HTMLInputElement).value = String(w.spread ?? 0);
+    (document.getElementById('weapon-projectiles') as HTMLInputElement).value = String(w.projectilesPerShot ?? 1);
+    (document.getElementById('weapon-cooldown') as HTMLInputElement).value = String(w.cooldown ?? 1);
+    (document.getElementById('weapon-chargespeed') as HTMLInputElement).value = String(w.chargeSpeed ?? 1);
+    (document.getElementById('weapon-speedmod') as HTMLInputElement).value = String(w.speedModifier ?? 1);
+    (document.getElementById('weapon-maxrange') as HTMLInputElement).value = String(w.maxRange ?? 1900);
+
+    const icon = document.getElementById('weapon-icon-preview') as HTMLImageElement | null;
+    const proj = document.getElementById('weapon-projectile-preview') as HTMLImageElement | null;
+    if (icon) icon.src = w.icon_src || '';
+    if (proj) proj.src = w.projectile_src || '';
+
+    this.updateWeaponDerived();
+  }
+
+  private updateWeaponScoreBadge(score100: number | null) {
+    const el = document.getElementById('weapon-score-badge');
+    if (!el) return;
+    if (score100 === null) {
+      el.textContent = 'Score: --';
+      el.setAttribute('data-score', '');
+      return;
+    }
+    el.textContent = `Score: ${score100}`;
+    el.setAttribute('data-score', String(score100));
+  }
+
+  private clamp01(x: number): number {
+    if (x < 0) return 0;
+    if (x > 1) return 1;
+    return x;
+  }
+
+  private norm(x: number, min: number, max: number): number {
+    if (!Number.isFinite(x)) return 0;
+    return this.clamp01((x - min) / (max - min));
+  }
+
+  private computeWeaponScore100(w: any): number {
+    const powerRef = 60;
+    const damage = Number(w.damage) || 0;
+    const radius = Number(w.explosionRadius) || 0;
+    const knockback = Number(w.knockback) || 0;
+    const wind = Number(w.windMultiplier) || 0;
+    const spread = Number(w.spread) || 0;
+    const pCount = Math.max(1, Number(w.projectilesPerShot) || 1);
+    const cooldown = Number(w.cooldown) || 0;
+    const chargeSpeed = Number(w.chargeSpeed) || 0;
+    const speedMod = Number(w.speedModifier) || 0;
+    const maxRange = Number(w.maxRange) || 0;
+
+    const spreadNorm = this.norm(spread, 0, 25);
+    const windNorm = this.norm(wind, 0, 1.5);
+    const speedNorm = this.norm(speedMod, 0.6, 1.6);
+    const radiusNorm = this.norm(radius, 8, 70);
+    const knockNorm = this.norm(knockback, 0, 350);
+    const rangeNorm = this.norm(maxRange, 600, 2400);
+    const pNorm = this.norm(pCount, 1, 6);
+
+    const hitFactor = this.clamp01(1 - 0.55 * spreadNorm - 0.35 * windNorm + 0.25 * speedNorm);
+    const aoeFactor = 0.35 + 0.65 * radiusNorm;
+
+    const chargeTime = chargeSpeed <= 0 ? 0 : (powerRef / 100) / Math.max(0.0001, chargeSpeed);
+    const cooldownEffective = cooldown * Math.max(0.2, powerRef / 100);
+    const cycleTime = Math.max(0.15, chargeTime + cooldownEffective);
+
+    const damageAdj = damage / pCount;
+    const rawDps = (damageAdj * pCount * hitFactor * aoeFactor) / cycleTime;
+    const rawDpsNorm = this.clamp01(rawDps / 120);
+    const utility = 0.25 * knockNorm + 0.10 * radiusNorm + 0.10 * rangeNorm;
+    const variancePenalty = 0.6 * spreadNorm + 0.4 * pNorm;
+    const score = this.clamp01(rawDpsNorm * 0.75 + utility * 0.25 - 0.15 * variancePenalty);
+    return Math.round(score * 100);
+  }
+
+  private getWeaponEditorValueNumber(id: string, fallback: number): number {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    const v = el ? Number(el.value) : NaN;
+    return Number.isFinite(v) ? v : fallback;
+  }
+
+  private getWeaponEditorValueString(id: string, fallback: string): string {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    const v = el ? el.value : '';
+    return v && v.trim().length > 0 ? v : fallback;
+  }
+
+  private gatherWeaponFromEditor(): any | null {
+    const id = this.getWeaponEditorValueString('weapon-id', '');
+    if (!id) return null;
+    return {
+      id,
+      name: this.getWeaponEditorValueString('weapon-name', id),
+      color: this.getWeaponEditorValueString('weapon-color', '#ffffff'),
+      damage: this.getWeaponEditorValueNumber('weapon-damage', 0),
+      explosionRadius: this.getWeaponEditorValueNumber('weapon-radius', 0),
+      knockback: this.getWeaponEditorValueNumber('weapon-knockback', 0),
+      windMultiplier: this.getWeaponEditorValueNumber('weapon-wind', 1),
+      spread: this.getWeaponEditorValueNumber('weapon-spread', 0),
+      projectilesPerShot: Math.max(1, Math.floor(this.getWeaponEditorValueNumber('weapon-projectiles', 1))),
+      cooldown: this.getWeaponEditorValueNumber('weapon-cooldown', 1),
+      chargeSpeed: this.getWeaponEditorValueNumber('weapon-chargespeed', 1),
+      speedModifier: this.getWeaponEditorValueNumber('weapon-speedmod', 1),
+      maxRange: this.getWeaponEditorValueNumber('weapon-maxrange', 1900),
+      icon_src: this.pendingWeaponIconSrc,
+      projectile_src: this.pendingWeaponProjectileSrc
+    };
+  }
+
+  private updateWeaponDerived() {
+    const w = this.gatherWeaponFromEditor();
+    if (!w) {
+      this.updateWeaponScoreBadge(null);
+      return;
+    }
+    const score100 = this.computeWeaponScore100(w);
+    this.updateWeaponScoreBadge(score100);
+
+    const derivedEl = document.getElementById('weapon-derived');
+    if (!derivedEl) return;
+    const powerRef = 60;
+    const chargeSpeed = Number(w.chargeSpeed) || 0;
+    const cooldown = Number(w.cooldown) || 0;
+    const chargeTime = chargeSpeed <= 0 ? 0 : (powerRef / 100) / Math.max(0.0001, chargeSpeed);
+    const cooldownEffective = cooldown * Math.max(0.2, powerRef / 100);
+    const cycleTime = chargeTime + cooldownEffective;
+    derivedEl.innerHTML = `
+      <div class="weapon-derived-row">
+        <div>cycleTime</div><div>${cycleTime.toFixed(2)}s</div>
+        <div>maxRange</div><div>${Math.round(Number(w.maxRange) || 0)}px</div>
+        <div>score</div><div>${score100}</div>
+      </div>
+    `;
+  }
+
+  private async handleWeaponSpriteFile(e: Event, kind: 'icon' | 'projectile') {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    const data = await this.fileToBase64(file);
+    if (kind === 'icon') {
+      this.pendingWeaponIconSrc = data;
+      const img = document.getElementById('weapon-icon-preview') as HTMLImageElement | null;
+      if (img) img.src = data;
+    } else {
+      this.pendingWeaponProjectileSrc = data;
+      const img = document.getElementById('weapon-projectile-preview') as HTMLImageElement | null;
+      if (img) img.src = data;
+    }
+  }
+
+  private async saveSelectedWeapon() {
+    const payload = this.gatherWeaponFromEditor();
+    if (!payload) return;
+
+    const exists = this.lastWeapons.some(w => w.id === payload.id);
+    const url = exists ? (APIClient.BASE_URL + '/admin/weapons/' + payload.id) : (APIClient.BASE_URL + '/admin/weapons');
+    const method = exists ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+        'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Failed to save: ' + (err.error || res.statusText));
+      return;
+    }
+    await this.loadWeaponsData();
+  }
+
+  private async duplicateSelectedWeapon() {
+    const payload = this.gatherWeaponFromEditor();
+    if (!payload) return;
+    payload.id = 'wpn_' + Math.random().toString(36).substring(2, 8).toLowerCase();
+    payload.name = `${payload.name} copy`;
+
+    const res = await fetch(APIClient.BASE_URL + '/admin/weapons', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+        'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Failed to duplicate: ' + (err.error || res.statusText));
+      return;
+    }
+
+    await this.loadWeaponsData();
+    this.selectedWeaponId = payload.id;
+    this.renderWeaponList();
+    this.selectWeapon(payload.id);
+  }
+
+  private async deleteSelectedWeapon() {
+    const id = this.selectedWeaponId;
+    if (!id) return;
+    if (!confirm('Are you sure?')) return;
+
+    const res = await fetch(APIClient.BASE_URL + '/admin/weapons/' + id, {
+      method: 'DELETE',
+      headers: {
+        'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
+        'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
+      }
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Failed to delete: ' + (err.error || res.statusText));
+      return;
+    }
+
+    this.selectedWeaponId = null;
+    await this.loadWeaponsData();
+  }
+
+  private createNewWeapon() {
+    this.selectedWeaponId = null;
+    this.pendingWeaponIconSrc = null;
+    this.pendingWeaponProjectileSrc = null;
+    const id = 'wpn_' + Math.random().toString(36).substring(2, 8).toLowerCase();
+    (document.getElementById('weapon-id') as HTMLInputElement).value = id;
+    (document.getElementById('weapon-name') as HTMLInputElement).value = 'New Weapon';
+    (document.getElementById('weapon-color') as HTMLInputElement).value = '#ffffff';
+    (document.getElementById('weapon-damage') as HTMLInputElement).value = '10';
+    (document.getElementById('weapon-radius') as HTMLInputElement).value = '30';
+    (document.getElementById('weapon-knockback') as HTMLInputElement).value = '100';
+    (document.getElementById('weapon-wind') as HTMLInputElement).value = '1.0';
+    (document.getElementById('weapon-spread') as HTMLInputElement).value = '0';
+    (document.getElementById('weapon-projectiles') as HTMLInputElement).value = '1';
+    (document.getElementById('weapon-cooldown') as HTMLInputElement).value = '1.0';
+    (document.getElementById('weapon-chargespeed') as HTMLInputElement).value = '1.0';
+    (document.getElementById('weapon-speedmod') as HTMLInputElement).value = '1.0';
+    (document.getElementById('weapon-maxrange') as HTMLInputElement).value = '1900';
+    const icon = document.getElementById('weapon-icon-preview') as HTMLImageElement | null;
+    const proj = document.getElementById('weapon-projectile-preview') as HTMLImageElement | null;
+    if (icon) icon.src = '';
+    if (proj) proj.src = '';
+    this.updateWeaponDerived();
   }
 
   private fileToBase64(file: File): Promise<string> {
@@ -1716,75 +2061,6 @@ export class AdminPanel {
     }
   }
 
-  private async handleCreateWeapon() {
-    const nameInput = document.getElementById('wpn-name') as HTMLInputElement;
-    const colorInput = document.getElementById('wpn-color') as HTMLInputElement;
-    const damageInput = document.getElementById('wpn-damage') as HTMLInputElement;
-    const radiusInput = document.getElementById('wpn-radius') as HTMLInputElement;
-    const knockbackInput = document.getElementById('wpn-knockback') as HTMLInputElement;
-    const windInput = document.getElementById('wpn-wind') as HTMLInputElement;
-    const spreadInput = document.getElementById('wpn-spread') as HTMLInputElement;
-    const projectilesInput = document.getElementById('wpn-projectiles') as HTMLInputElement;
-    const cooldownInput = document.getElementById('wpn-cooldown') as HTMLInputElement;
-    const chargeSpeedInput = document.getElementById('wpn-chargespeed') as HTMLInputElement;
-    const speedModInput = document.getElementById('wpn-speedmod') as HTMLInputElement;
-
-    const iconInput = document.getElementById('wpn-icon') as HTMLInputElement;
-    const projInput = document.getElementById('wpn-projectile') as HTMLInputElement;
-
-    if (!nameInput.value || !damageInput.value) {
-      alert("Name and Damage are required.");
-      return;
-    }
-
-    const btn = document.getElementById('create-weapon-btn') as HTMLButtonElement;
-    btn.disabled = true;
-    btn.innerText = 'Uploading...';
-
-    try {
-      const icon_src = iconInput.files?.[0] ? await this.fileToBase64(iconInput.files[0]) : null;
-      const projectile_src = projInput.files?.[0] ? await this.fileToBase64(projInput.files[0]) : null;
-
-      const res = await fetch(APIClient.BASE_URL + '/admin/weapons', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
-          'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
-        },
-        body: JSON.stringify({
-          name: nameInput.value,
-          color: colorInput.value,
-          damage: parseFloat(damageInput.value) || 0,
-          explosionRadius: parseFloat(radiusInput.value) || 0,
-          knockback: parseFloat(knockbackInput.value) || 0,
-          windMultiplier: parseFloat(windInput.value) || 0,
-          spread: parseFloat(spreadInput.value) || 0,
-          projectilesPerShot: parseInt(projectilesInput.value) || 1,
-          cooldown: parseInt(cooldownInput.value) || 0,
-          chargeSpeed: parseFloat(chargeSpeedInput.value) || 0.05,
-          speedModifier: parseFloat(speedModInput.value) || 1.0,
-          icon_src, projectile_src
-        })
-      });
-
-      if (res.ok) {
-        alert("Weapon Created!");
-        nameInput.value = ''; damageInput.value = '';
-        iconInput.value = ''; projInput.value = '';
-        this.loadWeaponsData();
-      } else {
-        alert("Error creating weapon");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Upload failed");
-    } finally {
-      btn.disabled = false;
-      btn.innerText = 'Create Weapon';
-    }
-  }
-
   private async deleteSpriteSet(e: Event) {
     if (!confirm('Are you sure?')) return;
     const id = (e.target as HTMLButtonElement).dataset.id;
@@ -1798,16 +2074,4 @@ export class AdminPanel {
     this.loadSpriteSetsData();
   }
 
-  private async deleteWeapon(e: Event) {
-    if (!confirm('Are you sure?')) return;
-    const id = (e.target as HTMLButtonElement).dataset.id;
-    await fetch(APIClient.BASE_URL + '/admin/weapons/' + id, {
-      method: 'DELETE',
-      headers: {
-        'X-Admin-Email': this.adminHeaders.get('X-Admin-Email') || '',
-        'X-Admin-Password': this.adminHeaders.get('X-Admin-Password') || ''
-      }
-    });
-    this.loadWeaponsData();
-  }
 }

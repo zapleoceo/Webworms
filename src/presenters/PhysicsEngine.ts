@@ -899,6 +899,15 @@ export class PhysicsEngine {
     proj.x = hitX;
     proj.y = hitY;
 
+    const traveled = Math.hypot(hitX - oldX, hitY - oldY);
+    if (Number.isFinite(proj.rangeRemaining)) {
+      proj.rangeRemaining -= traveled;
+      if (proj.rangeRemaining <= 0) {
+        this.explode(proj, state, 1.0);
+        return;
+      }
+    }
+
     if (hitTerrain || hitEntity) {
       const isGrenade = typeof (proj as any).fuseRemaining === 'number';
       if (isGrenade) {
@@ -1029,8 +1038,10 @@ export class PhysicsEngine {
         const dx = player.x - proj.x;
         const dy = player.y - proj.y;
         const norm = Math.sqrt(dx*dx + dy*dy) || 1;
-        player.vx += (dx / norm) * 150 * damageRatio;
-        player.vy -= 150 * damageRatio; // push up
+        const baseKnockback = Math.max(0, Math.min(600, proj.knockback || 0));
+        const k = baseKnockback * damageRatio;
+        player.vx += (dx / norm) * k;
+        player.vy += (dy / norm) * k;
         player.isJumping = true;
       }
     }

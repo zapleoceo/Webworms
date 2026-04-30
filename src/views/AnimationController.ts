@@ -18,6 +18,11 @@ export class AnimationController {
     }
   }
 
+  public setSpriteConfig(key: string, conf: SpriteConfig): void {
+    this.configs.set(key, conf);
+    this.loadAndProcessSprite(key, conf.src);
+  }
+
   private loadAndProcessSprite(key: string, src: string) {
     const img = new Image();
     img.crossOrigin = "Anonymous";

@@ -396,6 +396,202 @@ body.admin-mode {
   margin-top: 12px;
 }
 
+.weapon-editor-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.weapon-list-panel,
+.weapon-editor-panel {
+  background: rgba(0,0,0,0.45);
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.weapon-list-toolbar {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.weapon-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: min(70vh, 640px);
+  -webkit-overflow-scrolling: touch;
+}
+
+.weapon-list-item {
+  display: grid;
+  grid-template-columns: 46px 1fr 44px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  color: #e0e0e0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.weapon-list-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.weapon-list-item.selected {
+  background: rgba(76, 175, 80, 0.14);
+}
+
+.weapon-list-icon {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.35);
+}
+
+.weapon-list-icon.placeholder {
+  display: block;
+  background: rgba(0,0,0,0.35);
+}
+
+.weapon-list-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.weapon-list-name {
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.weapon-list-sub {
+  font-size: 0.8rem;
+  color: #a0a0b5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.weapon-list-score {
+  font-weight: bold;
+  text-align: right;
+  color: #ffeb3b;
+}
+
+.weapon-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.weapon-score-badge {
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: bold;
+}
+
+.weapon-editor-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.weapon-editor-body {
+  padding: 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: min(70vh, 640px);
+}
+
+.weapon-preview-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.weapon-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.weapon-preview-label {
+  color: #cfcfd8;
+  font-size: 0.9rem;
+}
+
+.weapon-preview-img {
+  width: 100%;
+  height: 120px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.35);
+}
+
+.weapon-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.weapon-derived {
+  margin-top: 12px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #cfcfd8;
+}
+
+.weapon-derived-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 1fr 120px 1fr 80px;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .weapon-editor-layout {
+    grid-template-columns: 1fr;
+  }
+  .weapon-list {
+    max-height: 38vh;
+  }
+  .weapon-editor-body {
+    max-height: 52vh;
+  }
+  .weapon-preview-row {
+    grid-template-columns: 1fr;
+  }
+  .weapon-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .weapon-derived-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 @media (max-width: 520px) {
   .bot-settings-scroll {
     max-height: 60vh;

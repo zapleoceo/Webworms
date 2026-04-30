@@ -4,7 +4,7 @@ import { GamePresenter } from './presenters/GamePresenter';
 import { CanvasRenderer } from './views/CanvasRenderer';
 import { InputHandler } from './views/InputHandler';
 import { APIClient } from './network/APIClient';
-import { getEquipmentDefinition } from './equipment/EquipmentRegistry';
+import { applyEquipmentOverrides, getEquipmentDefinition } from './equipment/EquipmentRegistry';
 import { MultiplayerSync } from './network/MultiplayerSync';
 import { AudioManager } from './utils/AudioManager';
 import { PaymentController } from './controllers/PaymentController';
@@ -17,6 +17,7 @@ import { getAIDifficulty, setAIDifficulty } from './ai/AIStorage';
 import { normalizeBotConfig } from './ai/BotConfig';
 import type { AIDifficulty } from './ai/AIDifficulty';
 import { debugSurfacePathMatrix, terrainFromLandscape } from './ai/BotAI';
+import { applyWeaponOverrides } from './models/Weapon';
 
 declare global {
   interface Window {
@@ -34,7 +35,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260430_0538';
+  const buildVersion = '20260430_0622';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -510,6 +511,13 @@ let currentMatchToken: string | null = null;
   bindPresenterEvents();
 
   let gameInitPromise: Promise<void> | null = null;
+
+  const weaponList = await APIClient.getWeapons();
+  const weaponOverrides = applyWeaponOverrides(weaponList);
+  applyEquipmentOverrides({ icons: weaponOverrides.icons, names: weaponOverrides.names });
+  for (const [id, src] of Object.entries(weaponOverrides.projectiles)) {
+    window.renderer.setProjectileSprite(id, src);
+  }
 
   if (mode === 'friend' || mode === 'random') {
     gameInitPromise = (async () => {

@@ -115,6 +115,27 @@ async function ensureDbInitialized(env: Env): Promise<void> {
     `).run();
 
     await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS Weapons (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        damage INTEGER NOT NULL,
+        explosionRadius INTEGER NOT NULL,
+        knockback INTEGER NOT NULL,
+        windMultiplier REAL NOT NULL,
+        spread REAL NOT NULL,
+        projectilesPerShot INTEGER NOT NULL,
+        cooldown REAL NOT NULL,
+        chargeSpeed REAL NOT NULL,
+        speedModifier REAL NOT NULL,
+        maxRange INTEGER NOT NULL DEFAULT 1900,
+        icon_src TEXT,
+        projectile_src TEXT,
+        color TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS Users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE,
@@ -148,6 +169,46 @@ async function ensureDbInitialized(env: Env): Promise<void> {
     try {
       await env.DB.exec(`ALTER TABLE Users ADD COLUMN premium_until INTEGER DEFAULT 0;`);
     } catch {}
+
+    try {
+      await env.DB.exec(`ALTER TABLE Weapons ADD COLUMN maxRange INTEGER DEFAULT 1900;`);
+    } catch {}
+
+    const seed = await env.DB.prepare(`
+      INSERT OR IGNORE INTO Weapons (
+        id, name, damage, explosionRadius, knockback, windMultiplier, spread, projectilesPerShot, cooldown, chargeSpeed, speedModifier, maxRange, icon_src, projectile_src, color
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    await seed.bind(
+      'bazooka', 'Bazooka', 25, 40, 220, 1.0, 0, 1, 1.0, 1.0, 1.0, 1900,
+      '/sprites/Weapon Icons/bazooka.1.png', '/sprites/Weapons/missile.png', '#FF4500'
+    ).run();
+
+    await seed.bind(
+      'minigun', 'Minigun', 4, 15, 40, 0.5, 15, 1, 0.1, 0, 1.0, 1400,
+      '/sprites/Weapon Icons/minigun.1.png', '/sprites/Weapons/bullet.png', '#FFA500'
+    ).run();
+
+    await seed.bind(
+      'triple', 'Triple-barrel', 15, 25, 120, 1.0, 20, 3, 1.5, 1.0, 1.2, 1700,
+      '/sprites/Weapon Icons/shotgun.1.png', '/sprites/Weapons/bullet.png', '#FFD700'
+    ).run();
+
+    await seed.bind(
+      'rocket', 'Rocket Launcher', 40, 60, 320, 1.2, 0, 1, 2.0, 1.0, 1.0, 2100,
+      '/sprites/Weapon Icons/hmissile.1.png', '/sprites/Weapons/hmissil1.png', '#FF1493'
+    ).run();
+
+    await seed.bind(
+      'blaster', 'Blaster', 10, 15, 60, 0.1, 2, 1, 0.3, 0, 1.6, 1700,
+      '/sprites/Weapon Icons/laser.1.png', '/sprites/Weapons/bullet.png', '#7FFFD4'
+    ).run();
+
+    await seed.bind(
+      'grenade', 'Grenade', 35, 55, 260, 0.6, 0, 1, 1.5, 1.0, 0.9, 1100,
+      '/sprites/Weapon Icons/grenade.1.png', '/sprites/Weapons/grenade.png', '#9ACD32'
+    ).run();
   })();
   dbInitDb = env.DB;
   return dbInitPromise;

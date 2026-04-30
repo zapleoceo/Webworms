@@ -27,6 +27,23 @@ export function getEquipmentDefinition(id: string): EquipmentDefinition | undefi
   return EQUIPMENT[id];
 }
 
+export function applyEquipmentOverrides(overrides: { icons?: Record<string, string>; names?: Record<string, string> }): void {
+  if (overrides.icons) {
+    for (const [id, src] of Object.entries(overrides.icons)) {
+      const def = EQUIPMENT[id];
+      if (!def || typeof src !== 'string' || src.length === 0) continue;
+      def.icon = src;
+    }
+  }
+  if (overrides.names) {
+    for (const [id, name] of Object.entries(overrides.names)) {
+      const def = EQUIPMENT[id];
+      if (!def || typeof name !== 'string' || name.length === 0) continue;
+      def.name = name;
+    }
+  }
+}
+
 export function isWeaponEquipment(id: string): boolean {
   return EQUIPMENT[id]?.kind === 'weapon';
 }

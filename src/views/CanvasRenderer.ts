@@ -62,6 +62,11 @@ export class CanvasRenderer {
     this.wormImages['brand_android'] = this.loadImg('/brand_android.svg?v=3');
   }
 
+  public setProjectileSprite(weaponId: string, src: string): void {
+    if (!weaponId || !src) return;
+    this.animCtrl.setSpriteConfig(`proj_${weaponId}`, { src, frameWidth: 60, frameHeight: 60, frameCount: 32 });
+  }
+
   public render(state: GameState): void {
     this.clear();
 

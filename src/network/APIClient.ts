@@ -97,6 +97,16 @@ export class APIClient {
     }
   }
 
+  public static async getWeapons(): Promise<any[]> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/weapons`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  }
+
   public static async getTurnTime(): Promise<number> {
     try {
       const res = await fetch(`${this.BASE_URL}/settings/turn_time`);

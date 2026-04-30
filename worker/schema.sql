@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS Weapons (
   cooldown INTEGER NOT NULL,
   chargeSpeed REAL NOT NULL,
   speedModifier REAL NOT NULL,
+  maxRange INTEGER NOT NULL DEFAULT 1900,
   icon_src TEXT,
   projectile_src TEXT,
   color TEXT NOT NULL,

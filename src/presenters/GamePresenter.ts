@@ -480,7 +480,6 @@ export class GamePresenter {
     const player = this.state.getCurrentPlayer();
     if (!player) return;
 
-    const chargeSpeed = 100; // max power per second
     // Halved speeds as per user request + floaty worms physics
     const moveForce = 100 * player.speedMultiplier; // pixels per second squared (acceleration)
     const maxSpeed = this.getMaxSpeed(player);
@@ -511,13 +510,17 @@ export class GamePresenter {
     if (this.activeInputs.has('fire')) {
       const weapon = player.getCurrentWeapon();
       if (weapon && player.weaponCooldowns[weapon.id] <= 0) {
-        player.changePower(chargeSpeed * dt);
-        // Auto-fire at max power if holding the button
-        if (player.aimPower >= 100) {
+        if (weapon.chargeSpeed <= 0) {
+          player.aimPower = 100;
           this.fireWeapon(player);
+        } else {
+          const rate = 100 * weapon.chargeSpeed;
+          player.changePower(rate * dt);
+          if (player.aimPower >= 100) {
+            this.fireWeapon(player);
+          }
+          if (Math.random() < 0.1) AudioManager.playCharge(player.aimPower);
         }
-        // Only play charge sound occasionally so it's not a crazy mess of AudioContext calls
-        if (Math.random() < 0.1) AudioManager.playCharge(player.aimPower);
       } else {
         // Prevent charging while reloading
         player.aimPower = 0;
@@ -818,8 +821,7 @@ export class GamePresenter {
       }
 
       const baseRad = globalAimAngle;
-    let speed = power * 4.2 * (weapon.speedModifier || 1);
-    if (weapon.id === 'blaster') speed = 750;
+    const speed = power * 4.2 * (weapon.speedModifier || 1);
 
     // Spawn perfectly at the end of the visual gun barrel
     // Worm is drawn from bottom center (player.height / 2), so we offset Y
@@ -828,7 +830,16 @@ export class GamePresenter {
     const startY = (player.y - player.height / 2) + Math.sin(baseRad) * gunLength;
 
     // Fire multiple projectiles if weapon supports it (e.g. shotgun)
-    for (let i = 0; i < weapon.projectilesPerShot; i++) {
+    const pCount = Math.max(1, weapon.projectilesPerShot || 1);
+    const radiusScale = pCount > 1 ? 1 / Math.sqrt(pCount) : 1;
+    const projWeapon = {
+      ...weapon,
+      damage: weapon.damage / pCount,
+      explosionRadius: weapon.explosionRadius * radiusScale,
+      knockback: weapon.knockback * radiusScale
+    };
+
+    for (let i = 0; i < pCount; i++) {
       // Calculate spread
       let rad = baseRad;
       if (weapon.spread > 0) {
@@ -839,8 +850,8 @@ export class GamePresenter {
       const vx = Math.cos(rad) * speed;
       const vy = Math.sin(rad) * speed; // Negative is up, positive is down
       const proj = weapon.id === 'grenade'
-        ? GrenadeWeapon.createProjectile(startX, startY, vx, vy, weapon)
-        : new Projectile(startX, startY, vx, vy, weapon);
+        ? GrenadeWeapon.createProjectile(startX, startY, vx, vy, projWeapon as any)
+        : new Projectile(startX, startY, vx, vy, projWeapon as any);
       (proj as any).owner = player; // Attach owner for stats tracking
       this.state.projectiles.push(proj);
     }
