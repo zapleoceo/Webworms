@@ -12,6 +12,7 @@ export interface Weapon {
   chargeSpeed: number; // multiplier for how fast it charges (1.0 = normal, 0 = instant fire)
   speedModifier: number; // Speed of the projectile
   maxRange: number; // pixels (0 = unlimited)
+  fuseSeconds?: number; // grenade fuse (seconds)
 }
 
 export const WEAPONS: Record<string, Weapon> = {
@@ -103,7 +104,8 @@ export const WEAPONS: Record<string, Weapon> = {
     cooldown: 1.5,
     chargeSpeed: 1.0,
     speedModifier: 0.9,
-    maxRange: 1100
+    maxRange: 1100,
+    fuseSeconds: 3.0
   }
 };
 
@@ -133,6 +135,7 @@ export function applyWeaponOverrides(list: any[]): { icons: Record<string, strin
     if (typeof w.chargeSpeed === 'number') target.chargeSpeed = w.chargeSpeed;
     if (typeof w.speedModifier === 'number') target.speedModifier = w.speedModifier;
     if (typeof w.maxRange === 'number') target.maxRange = w.maxRange;
+    if (typeof w.fuseSeconds === 'number') (target as any).fuseSeconds = w.fuseSeconds;
     if (typeof w.color === 'string') target.color = w.color;
 
     if (typeof w.icon_src === 'string' && w.icon_src.length > 0) icons[id] = w.icon_src;

@@ -991,8 +991,28 @@ export class PhysicsEngine {
 
     // Out of bounds / Hitting the unbreakable cosmic barrier (30px border)
     if (proj.x <= 30 || proj.x >= state.width - 30 || proj.y >= state.height - 30) {
-      this.explode(proj, state, 0.3); // Minimal crater on border
-      return;
+      const isGrenade = typeof (proj as any).fuseRemaining === 'number';
+      if (!isGrenade) {
+        this.explode(proj, state, 0.3); // Minimal crater on border
+        return;
+      }
+
+      if (proj.x <= 30) {
+        proj.x = 30 + proj.radius + 0.5;
+        proj.vx = Math.abs(proj.vx) * ((proj as any).bounce ?? 0.45);
+        return;
+      }
+      if (proj.x >= state.width - 30) {
+        proj.x = state.width - 30 - proj.radius - 0.5;
+        proj.vx = -Math.abs(proj.vx) * ((proj as any).bounce ?? 0.45);
+        return;
+      }
+      if (proj.y >= state.height - 30) {
+        proj.y = state.height - 30 - proj.radius - 0.5;
+        proj.vy = -Math.abs(proj.vy) * ((proj as any).bounce ?? 0.45);
+        proj.vx *= (proj as any).friction ?? 0.85;
+        return;
+      }
     }
   }
 

@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS Weapons (
   chargeSpeed REAL NOT NULL,
   speedModifier REAL NOT NULL,
   maxRange INTEGER NOT NULL DEFAULT 1900,
+  fuseSeconds REAL NOT NULL DEFAULT 3.0,
   icon_src TEXT,
   projectile_src TEXT,
   color TEXT NOT NULL,

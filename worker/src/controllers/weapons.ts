@@ -16,11 +16,12 @@ export async function createWeapon(request: Request, env: Env): Promise<Response
     return new Response(JSON.stringify({ error: 'Missing required parameters' }), { status: 400 });
   }
   const maxRange = typeof body.maxRange === 'number' ? body.maxRange : 1900;
+  const fuseSeconds = typeof body.fuseSeconds === 'number' ? body.fuseSeconds : 3.0;
 
   await env.DB.prepare(`
     INSERT INTO Weapons (
-      id, name, damage, explosionRadius, knockback, windMultiplier, spread, projectilesPerShot, cooldown, chargeSpeed, speedModifier, maxRange, icon_src, projectile_src, color
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, name, damage, explosionRadius, knockback, windMultiplier, spread, projectilesPerShot, cooldown, chargeSpeed, speedModifier, maxRange, fuseSeconds, icon_src, projectile_src, color
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     id,
     body.name,
@@ -34,6 +35,7 @@ export async function createWeapon(request: Request, env: Env): Promise<Response
     body.chargeSpeed,
     body.speedModifier,
     maxRange,
+    fuseSeconds,
     body.icon_src || null,
     body.projectile_src || null,
     body.color
@@ -52,11 +54,12 @@ export async function updateWeapon(request: Request, env: Env): Promise<Response
     return new Response(JSON.stringify({ error: 'Missing required parameters' }), { status: 400 });
   }
   const maxRange = typeof body.maxRange === 'number' ? body.maxRange : 1900;
+  const fuseSeconds = typeof body.fuseSeconds === 'number' ? body.fuseSeconds : 3.0;
 
   await env.DB.prepare(`
     UPDATE Weapons SET 
       name = ?, damage = ?, explosionRadius = ?, knockback = ?, windMultiplier = ?, spread = ?, 
-      projectilesPerShot = ?, cooldown = ?, chargeSpeed = ?, speedModifier = ?, maxRange = ?, icon_src = ?, projectile_src = ?, color = ?
+      projectilesPerShot = ?, cooldown = ?, chargeSpeed = ?, speedModifier = ?, maxRange = ?, fuseSeconds = ?, icon_src = ?, projectile_src = ?, color = ?
     WHERE id = ?
   `).bind(
     body.name,
@@ -70,6 +73,7 @@ export async function updateWeapon(request: Request, env: Env): Promise<Response
     body.chargeSpeed,
     body.speedModifier,
     maxRange,
+    fuseSeconds,
     body.icon_src || null,
     body.projectile_src || null,
     body.color,

@@ -460,6 +460,10 @@ export class AdminPanel {
                         <span class="weapon-field-label">Дальность</span>
                         <input type="number" id="weapon-maxrange" class="retro-input weapon-num" />
                       </label>
+                      <label class="weapon-field">
+                        <span class="weapon-field-label">Таймер</span>
+                        <input type="number" id="weapon-fuse" class="retro-input weapon-num" step="0.1" />
+                      </label>
                     </div>
 
                     <div class="weapon-derived" id="weapon-derived"></div>
@@ -1753,7 +1757,7 @@ export class AdminPanel {
     (document.getElementById('weapon-id') as HTMLInputElement | null)?.setAttribute('value', '');
     const fields = [
       'weapon-id','weapon-name','weapon-color','weapon-damage','weapon-radius','weapon-knockback','weapon-wind',
-      'weapon-spread','weapon-projectiles','weapon-cooldown','weapon-chargespeed','weapon-speedmod','weapon-maxrange'
+      'weapon-spread','weapon-projectiles','weapon-cooldown','weapon-chargespeed','weapon-speedmod','weapon-maxrange','weapon-fuse'
     ];
     for (const id of fields) {
       const el = document.getElementById(id) as HTMLInputElement | null;
@@ -1791,6 +1795,7 @@ export class AdminPanel {
     (document.getElementById('weapon-chargespeed') as HTMLInputElement).value = String(w.chargeSpeed ?? 1);
     (document.getElementById('weapon-speedmod') as HTMLInputElement).value = String(w.speedModifier ?? 1);
     (document.getElementById('weapon-maxrange') as HTMLInputElement).value = String(w.maxRange ?? 1900);
+    (document.getElementById('weapon-fuse') as HTMLInputElement).value = String(w.fuseSeconds ?? 3.0);
 
     const icon = document.getElementById('weapon-icon-preview') as HTMLImageElement | null;
     const proj = document.getElementById('weapon-projectile-preview') as HTMLImageElement | null;
@@ -1835,6 +1840,7 @@ export class AdminPanel {
     const chargeSpeed = Number(w.chargeSpeed) || 0;
     const speedMod = Number(w.speedModifier) || 0;
     const maxRange = Number(w.maxRange) || 0;
+    const fuseSeconds = Number(w.fuseSeconds) || 0;
 
     const spreadNorm = this.norm(spread, 0, 25);
     const windNorm = this.norm(wind, 0, 1.5);
@@ -1842,6 +1848,7 @@ export class AdminPanel {
     const radiusNorm = this.norm(radius, 8, 70);
     const knockNorm = this.norm(knockback, 0, 350);
     const rangeNorm = this.norm(maxRange, 600, 2400);
+    const fuseNorm = this.norm(fuseSeconds, 0.5, 6.0);
     const pNorm = this.norm(pCount, 1, 6);
 
     const hitFactor = this.clamp01(1 - 0.55 * spreadNorm - 0.35 * windNorm + 0.25 * speedNorm);
@@ -1854,7 +1861,7 @@ export class AdminPanel {
     const damageAdj = damage / pCount;
     const rawDps = (damageAdj * pCount * hitFactor * aoeFactor) / cycleTime;
     const rawDpsNorm = this.clamp01(rawDps / 120);
-    const utility = 0.25 * knockNorm + 0.10 * radiusNorm + 0.10 * rangeNorm;
+    const utility = 0.25 * knockNorm + 0.10 * radiusNorm + 0.10 * rangeNorm + 0.05 * fuseNorm;
     const variancePenalty = 0.6 * spreadNorm + 0.4 * pNorm;
     const score = this.clamp01(rawDpsNorm * 0.75 + utility * 0.25 - 0.15 * variancePenalty);
     return Math.round(score * 100);
@@ -1889,6 +1896,7 @@ export class AdminPanel {
       chargeSpeed: this.getWeaponEditorValueNumber('weapon-chargespeed', 1),
       speedModifier: this.getWeaponEditorValueNumber('weapon-speedmod', 1),
       maxRange: this.getWeaponEditorValueNumber('weapon-maxrange', 1900),
+      fuseSeconds: this.getWeaponEditorValueNumber('weapon-fuse', 3.0),
       icon_src: this.pendingWeaponIconSrc,
       projectile_src: this.pendingWeaponProjectileSrc
     };
@@ -2031,6 +2039,7 @@ export class AdminPanel {
     (document.getElementById('weapon-chargespeed') as HTMLInputElement).value = '1.0';
     (document.getElementById('weapon-speedmod') as HTMLInputElement).value = '1.0';
     (document.getElementById('weapon-maxrange') as HTMLInputElement).value = '1900';
+    (document.getElementById('weapon-fuse') as HTMLInputElement).value = '3.0';
     const icon = document.getElementById('weapon-icon-preview') as HTMLImageElement | null;
     const proj = document.getElementById('weapon-projectile-preview') as HTMLImageElement | null;
     if (icon) icon.src = '';
