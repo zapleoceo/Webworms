@@ -1072,7 +1072,7 @@ export class CanvasRenderer {
 
     // Draw center-top wind indicator
     const centerX = this.canvas.width / 2;
-    const topY = 84;
+    const topY = 3;
     
     this.ctx.save();
     this.ctx.textAlign = 'center';
