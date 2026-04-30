@@ -6,7 +6,17 @@ export class APIClient {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(url, { ...init, signal: controller.signal });
-      return await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        return await res.json();
+      }
+      const text = await res.text();
+      return {
+        success: false,
+        error: `Unexpected response (${res.status})`,
+        status: res.status,
+        body: text
+      };
     } finally {
       clearTimeout(timer);
     }
@@ -33,12 +43,13 @@ export class APIClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, username, password, referred_by: refCode })
-      }, 15000);
+      }, 30000);
       console.log('[APIClient] Register Response:', data);
       return data;
     } catch (e: any) {
       console.error('[APIClient] Backend connection error during register:', e);
-      return { success: false, error: 'Network connection failed. Backend might be unreachable.' };
+      const reason = e?.name === 'AbortError' ? 'Request timed out' : 'Network connection failed';
+      return { success: false, error: `${reason}. Backend might be unreachable.` };
     }
   }
 
@@ -49,12 +60,13 @@ export class APIClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
-      }, 15000);
+      }, 30000);
       console.log('[APIClient] Login Response:', data);
       return data;
     } catch (e: any) {
       console.error('[APIClient] Backend connection error during login:', e);
-      return { success: false, error: 'Network connection failed. Backend might be unreachable.' };
+      const reason = e?.name === 'AbortError' ? 'Request timed out' : 'Network connection failed';
+      return { success: false, error: `${reason}. Backend might be unreachable.` };
     }
   }
 
