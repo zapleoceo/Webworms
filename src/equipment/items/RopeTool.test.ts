@@ -27,5 +27,28 @@ describe('RopeTool', () => {
     RopeTool.applyConstraint(player, state, 1 / 60);
     expect(player.ropeNodes.length).toBeLessThanOrEqual(24);
   });
-});
 
+  test('pump direction matches screen left/right', () => {
+    const player: any = {
+      x: 0,
+      y: 100,
+      vx: 0,
+      vy: 0,
+      width: 12,
+      height: 20,
+      ropeActive: true,
+      ropeAnchorX: 0,
+      ropeAnchorY: 0,
+      ropeLength: 100,
+      ropeNodes: []
+    };
+
+    RopeTool.pump(player, 1, 100, 1);
+    expect(player.vx).toBeGreaterThan(0);
+
+    player.vx = 0;
+    player.vy = 0;
+    RopeTool.pump(player, -1, 100, 1);
+    expect(player.vx).toBeLessThan(0);
+  });
+});

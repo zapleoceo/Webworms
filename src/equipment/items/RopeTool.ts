@@ -3,8 +3,8 @@ import type { Worm } from '../../models/Worm';
 
 export class RopeTool {
   public static readonly MAX_DISTANCE = 252;
-  public static readonly MIN_LENGTH = 40;
-  public static readonly MAX_LENGTH = 252;
+  public static readonly MIN_LENGTH = 6;
+  public static readonly MAX_LENGTH = 600;
   public static readonly CAST_DURATION = 0.18;
   private static readonly MAX_NODES = 24;
 
@@ -58,17 +58,24 @@ export class RopeTool {
   }
 
   public static pump(player: Worm, dir: number, strength: number, dt: number): void {
-    const dx = player.x - player.ropeAnchorX;
-    const dy = player.y - player.ropeAnchorY;
+    const p1 = player.ropeNodes.length > 0 ? player.ropeNodes[0] : { x: player.ropeAnchorX, y: player.ropeAnchorY };
+    const dx = player.x - p1.x;
+    const dy = player.y - p1.y;
     const dist = Math.hypot(dx, dy) || 1;
-    const tx = -dy / dist;
-    const ty = dx / dist;
+    const nx = dx / dist;
+    const ny = dy / dist;
+    let tx = -ny;
+    let ty = nx;
+    if (tx * dir < 0) {
+      tx = -tx;
+      ty = -ty;
+    }
     const vTan = player.vx * tx + player.vy * ty;
-    const maxTan = 150;
+    const maxTan = 220;
     const k = Math.max(0, 1 - Math.abs(vTan) / maxTan);
     if (k <= 0) return;
-    player.vx += tx * dir * strength * k * dt;
-    player.vy += ty * dir * strength * k * dt;
+    player.vx += tx * strength * k * dt;
+    player.vy += ty * strength * k * dt;
   }
 
   private static segmentHitsTerrain(state: GameState, x0: number, y0: number, x1: number, y1: number): { hit: boolean; x: number; y: number } {
@@ -153,19 +160,8 @@ export class RopeTool {
 
     const nx = dx / dist;
     const ny = dy / dist;
-    const tx = -ny;
-    const ty = nx;
 
     const totalLen = RopeTool.polylineLength(player);
-    const tension = Math.max(0, Math.min(1, (totalLen - (player.ropeLength - 10)) / 10));
-
-    const vRad = player.vx * nx + player.vy * ny;
-    const vTan = player.vx * tx + player.vy * ty;
-    const tanDamp = Math.pow(1 - 0.55 * tension, dt);
-    const nextVTan = vTan * tanDamp;
-
-    player.vx = nx * vRad + tx * nextVTan;
-    player.vy = ny * vRad + ty * nextVTan;
 
     if (totalLen <= player.ropeLength) return;
 
