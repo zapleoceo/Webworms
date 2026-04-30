@@ -138,10 +138,16 @@ export async function heartbeatRoom(request: Request, env: any, corsHeaders: Rec
     if (roomStr) {
       try {
         const room = JSON.parse(roomStr);
-        const matched = (room?.status === 'reserved' || room?.status === 'active') && !!room?.clientId && room?.hostId === hostId;
+        const isHost = room?.hostId === hostId;
+        const matched = (room?.status === 'reserved' || room?.status === 'active') && !!room?.clientId && isHost;
         if (matched) {
           logEvent('mm.heartbeat.matched', { roomId, hostId: maskId(hostId), clientId: maskId(room?.clientId ?? null) });
           return new Response(JSON.stringify({ success: true, inQueue: false, expired: false, matched: true }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        }
+
+        if (isHost) {
+          logEvent('mm.heartbeat.maybe_matched', { roomId, hostId: maskId(hostId), status: room?.status ?? null });
+          return new Response(JSON.stringify({ success: true, inQueue: false, expired: false, matched: false }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
         }
       } catch {}
     }

@@ -135,4 +135,35 @@ describe('rooms', () => {
     expect(hbData.expired).toBe(false);
     expect(hbData.matched).toBe(true);
   });
+
+  it('heartbeat does not expire when room exists but queue row is missing', async () => {
+    const ctx1 = createExecutionContext();
+    const hostRes = await worker.fetch(
+      new Request('http://example.com/api/rooms/random', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: 'host-1' })
+      }),
+      env as any,
+      ctx1 as any
+    );
+    await waitOnExecutionContext(ctx1);
+    const { roomId } = await hostRes.json<any>();
+
+    await env.DB.prepare(`DELETE FROM MatchmakingQueue WHERE room_id = ? AND host_id = ?`).bind(roomId, 'host-1').run();
+
+    const ctxHb = createExecutionContext();
+    const hb = await worker.fetch(
+      new Request(`http://example.com/api/rooms/${roomId}/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostId: 'host-1' })
+      }),
+      env as any,
+      ctxHb as any
+    );
+    await waitOnExecutionContext(ctxHb);
+    const hbData = await hb.json<any>();
+    expect(hbData.expired).toBe(false);
+  });
 });
