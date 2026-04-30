@@ -100,16 +100,19 @@ function syncControlsForViewport(inGame: boolean) {
     return;
   }
   ensureControlsBoundOnce();
-  controlsUI.style.display = 'flex';
   if (window.innerWidth <= 768) {
     mobileControls.style.display = 'flex';
+    controlsUI.style.display = 'none';
+    setControlsOpen(false, false);
   } else {
     mobileControls.style.display = 'none';
+    controlsUI.style.display = 'flex';
   }
 }
 
 function autoShowControlsOnce() {
   if (!controlsUI) return;
+  if (window.innerWidth <= 768) return;
   let seen = false;
   try {
     seen = localStorage.getItem('ww_controls_seen') === '1';
