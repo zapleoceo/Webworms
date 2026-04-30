@@ -725,6 +725,10 @@ button:hover {
   transition: opacity 0.25s ease, transform 0.25s ease, border-color 0.25s ease, filter 0.25s ease;
 }
 
+.team-status.right-team .team-turn {
+  align-self: flex-end;
+}
+
 .team-status.turn-active .team-turn {
   border-color: var(--turn-accent);
   opacity: 1;
