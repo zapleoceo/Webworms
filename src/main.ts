@@ -67,6 +67,50 @@ const enemyDifficultyEl = document.getElementById('enemy-difficulty') as HTMLEle
 let currentAIDifficultyForMatch: AIDifficulty | null = null;
 let controlsBound = false;
 let controlsAutoCloseTimer: number | null = null;
+let wakeLockSentinel: any = null;
+let wakeLockWanted = false;
+
+async function requestWakeLock(): Promise<void> {
+  try {
+    if (!wakeLockWanted) return;
+    if (wakeLockSentinel) return;
+    if (document.visibilityState !== 'visible') return;
+    const nav: any = navigator as any;
+    if (!nav?.wakeLock?.request) return;
+    wakeLockSentinel = await nav.wakeLock.request('screen');
+    const cur = wakeLockSentinel;
+    if (cur?.addEventListener) {
+      cur.addEventListener('release', () => {
+        if (wakeLockSentinel === cur) wakeLockSentinel = null;
+        requestWakeLock().catch(() => {});
+      });
+    }
+  } catch {
+    wakeLockSentinel = null;
+  }
+}
+
+async function releaseWakeLock(): Promise<void> {
+  try {
+    if (wakeLockSentinel?.release) await wakeLockSentinel.release();
+  } catch {}
+  wakeLockSentinel = null;
+}
+
+function setWakeLockWanted(wanted: boolean): void {
+  wakeLockWanted = wanted;
+  if (wanted) {
+    requestWakeLock().catch(() => {});
+  } else {
+    releaseWakeLock().catch(() => {});
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (wakeLockWanted && document.visibilityState === 'visible') {
+    requestWakeLock().catch(() => {});
+  }
+});
 
 function setControlsOpen(open: boolean, persist: boolean = true) {
   if (!controlsUI) return;
@@ -541,6 +585,7 @@ let currentRoomPlayerId: string | null = null;
   // Start Game Helpers
   async function startGame(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random') {
     currentMode = mode;
+    setWakeLockWanted(true);
     setLoaderProgress(0, 'LOADING...');
     setLoaderDifficultyWorm(mode);
     setEnemyDifficultyLabel(mode);
@@ -965,6 +1010,7 @@ document.getElementById('btn-play-friends')!.addEventListener('click', () => {
 });
 
 document.getElementById('btn-return-menu')!.addEventListener('click', () => {
+  setWakeLockWanted(false);
   window.location.href = window.location.pathname;
 });
 
@@ -978,6 +1024,7 @@ document.getElementById('btn-cancel-leave')?.addEventListener('click', () => {
 
 document.getElementById('btn-confirm-leave')?.addEventListener('click', () => {
   document.getElementById('leave-confirm-modal')!.style.display = 'none';
+  setWakeLockWanted(false);
   if (currentRoomId && currentRoomPlayerId) {
     APIClient.leaveRoom(currentRoomId, currentRoomPlayerId);
     localStorage.removeItem('ww_last_room_id');
@@ -1235,6 +1282,7 @@ function bindPresenterEvents() {
   };
 
   window.presenter.onGameOver = (winner: any, stats: any) => {
+    setWakeLockWanted(false);
     gameScreen.classList.remove('active');
     gameScreen.style.display = 'none'; // Fallback
 
