@@ -223,7 +223,12 @@ async function ensureDbInitialized(env: Env): Promise<void> {
       await env.DB.exec(`ALTER TABLE Weapons ADD COLUMN fuseSeconds REAL DEFAULT 3.0;`);
     } catch {}
     await seedWeapons(env);
+    try {
+      await env.DB.exec(`UPDATE Weapons SET fuseSeconds = 3.0 WHERE id = 'grenade' AND (fuseSeconds IS NULL OR fuseSeconds = 0);`);
+    } catch {}
+
   })();
+  dbInitDb = env.DB;
   dbInitDb = env.DB;
   return dbInitPromise;
 }

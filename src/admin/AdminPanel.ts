@@ -1795,7 +1795,7 @@ export class AdminPanel {
     (document.getElementById('weapon-chargespeed') as HTMLInputElement).value = String(w.chargeSpeed ?? 1);
     (document.getElementById('weapon-speedmod') as HTMLInputElement).value = String(w.speedModifier ?? 1);
     (document.getElementById('weapon-maxrange') as HTMLInputElement).value = String(w.maxRange ?? 1900);
-    (document.getElementById('weapon-fuse') as HTMLInputElement).value = String(w.fuseSeconds ?? 3.0);
+    (document.getElementById('weapon-fuse') as HTMLInputElement).value = String(w.fuseSeconds ?? ((w.id === 'grenade') ? 3.0 : 0));
 
     const icon = document.getElementById('weapon-icon-preview') as HTMLImageElement | null;
     const proj = document.getElementById('weapon-projectile-preview') as HTMLImageElement | null;
