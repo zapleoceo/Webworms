@@ -71,14 +71,16 @@ let dbInitPromise: Promise<void> | null = null;
 let dbInitDb: Env['DB'] | null = null;
 
 async function ensureDbInitialized(env: Env): Promise<void> {
-  const existing = await env.DB.prepare(
-    `SELECT name FROM sqlite_master WHERE type='table' AND name='MatchmakingQueue'`
-  ).first<any>();
-
-  if (existing && existing.name === 'MatchmakingQueue') {
-    dbInitDb = env.DB;
-    dbInitPromise = Promise.resolve();
-    return dbInitPromise;
+  if (dbInitPromise && dbInitDb === env.DB) {
+    const mm = await env.DB.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='MatchmakingQueue'`
+    ).first<any>();
+    const wpn = await env.DB.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='Weapons'`
+    ).first<any>();
+    if (mm?.name === 'MatchmakingQueue' && wpn?.name === 'Weapons') return dbInitPromise;
+    dbInitPromise = null;
+    dbInitDb = null;
   }
 
   dbInitPromise = (async () => {
