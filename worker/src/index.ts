@@ -70,6 +70,44 @@ function logEvent(event: string, data: Record<string, unknown>) {
 let dbInitPromise: Promise<void> | null = null;
 let dbInitDb: Env['DB'] | null = null;
 
+async function seedWeapons(env: Env): Promise<void> {
+  const seedSql = `
+      INSERT OR IGNORE INTO Weapons (
+        id, name, damage, explosionRadius, knockback, windMultiplier, spread, projectilesPerShot, cooldown, chargeSpeed, speedModifier, maxRange, icon_src, projectile_src, color
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+  await env.DB.prepare(seedSql).bind(
+    'bazooka', 'Bazooka', 25, 40, 220, 1.0, 0, 1, 1.0, 1.0, 1.0, 1900,
+    '/sprites/Weapon Icons/bazooka.1.png', '/sprites/Weapons/missile.png', '#FF4500'
+  ).run();
+
+  await env.DB.prepare(seedSql).bind(
+    'minigun', 'Minigun', 4, 15, 40, 0.5, 15, 1, 0.1, 0, 1.0, 1400,
+    '/sprites/Weapon Icons/minigun.1.png', '/sprites/Weapons/bullet.png', '#FFA500'
+  ).run();
+
+  await env.DB.prepare(seedSql).bind(
+    'triple', 'Triple-barrel', 15, 25, 120, 1.0, 20, 3, 1.5, 1.0, 1.2, 1700,
+    '/sprites/Weapon Icons/shotgun.1.png', '/sprites/Weapons/bullet.png', '#FFD700'
+  ).run();
+
+  await env.DB.prepare(seedSql).bind(
+    'rocket', 'Rocket Launcher', 40, 60, 320, 1.2, 0, 1, 2.0, 1.0, 1.0, 2100,
+    '/sprites/Weapon Icons/hmissile.1.png', '/sprites/Weapons/hmissil1.png', '#FF1493'
+  ).run();
+
+  await env.DB.prepare(seedSql).bind(
+    'blaster', 'Blaster', 10, 15, 60, 0.1, 2, 1, 0.3, 0, 1.6, 1700,
+    '/sprites/Weapon Icons/laser.1.png', '/sprites/Weapons/bullet.png', '#7FFFD4'
+  ).run();
+
+  await env.DB.prepare(seedSql).bind(
+    'grenade', 'Grenade', 35, 55, 260, 0.6, 0, 1, 1.5, 1.0, 0.9, 1100,
+    '/sprites/Weapon Icons/grenade.1.png', '/sprites/Weapons/grenade.png', '#9ACD32'
+  ).run();
+}
+
 async function ensureDbInitialized(env: Env): Promise<void> {
   if (dbInitPromise && dbInitDb === env.DB) {
     const mm = await env.DB.prepare(
@@ -78,7 +116,11 @@ async function ensureDbInitialized(env: Env): Promise<void> {
     const wpn = await env.DB.prepare(
       `SELECT name FROM sqlite_master WHERE type='table' AND name='Weapons'`
     ).first<any>();
-    if (mm?.name === 'MatchmakingQueue' && wpn?.name === 'Weapons') return dbInitPromise;
+    if (mm?.name === 'MatchmakingQueue' && wpn?.name === 'Weapons') {
+      const bazooka = await env.DB.prepare(`SELECT id FROM Weapons WHERE id = ?`).bind('bazooka').first<any>();
+      if (!bazooka) await seedWeapons(env);
+      return dbInitPromise;
+    }
     dbInitPromise = null;
     dbInitDb = null;
   }
@@ -175,42 +217,7 @@ async function ensureDbInitialized(env: Env): Promise<void> {
     try {
       await env.DB.exec(`ALTER TABLE Weapons ADD COLUMN maxRange INTEGER DEFAULT 1900;`);
     } catch {}
-
-    const seedSql = `
-      INSERT OR IGNORE INTO Weapons (
-        id, name, damage, explosionRadius, knockback, windMultiplier, spread, projectilesPerShot, cooldown, chargeSpeed, speedModifier, maxRange, icon_src, projectile_src, color
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    await env.DB.prepare(seedSql).bind(
-      'bazooka', 'Bazooka', 25, 40, 220, 1.0, 0, 1, 1.0, 1.0, 1.0, 1900,
-      '/sprites/Weapon Icons/bazooka.1.png', '/sprites/Weapons/missile.png', '#FF4500'
-    ).run();
-
-    await env.DB.prepare(seedSql).bind(
-      'minigun', 'Minigun', 4, 15, 40, 0.5, 15, 1, 0.1, 0, 1.0, 1400,
-      '/sprites/Weapon Icons/minigun.1.png', '/sprites/Weapons/bullet.png', '#FFA500'
-    ).run();
-
-    await env.DB.prepare(seedSql).bind(
-      'triple', 'Triple-barrel', 15, 25, 120, 1.0, 20, 3, 1.5, 1.0, 1.2, 1700,
-      '/sprites/Weapon Icons/shotgun.1.png', '/sprites/Weapons/bullet.png', '#FFD700'
-    ).run();
-
-    await env.DB.prepare(seedSql).bind(
-      'rocket', 'Rocket Launcher', 40, 60, 320, 1.2, 0, 1, 2.0, 1.0, 1.0, 2100,
-      '/sprites/Weapon Icons/hmissile.1.png', '/sprites/Weapons/hmissil1.png', '#FF1493'
-    ).run();
-
-    await env.DB.prepare(seedSql).bind(
-      'blaster', 'Blaster', 10, 15, 60, 0.1, 2, 1, 0.3, 0, 1.6, 1700,
-      '/sprites/Weapon Icons/laser.1.png', '/sprites/Weapons/bullet.png', '#7FFFD4'
-    ).run();
-
-    await env.DB.prepare(seedSql).bind(
-      'grenade', 'Grenade', 35, 55, 260, 0.6, 0, 1, 1.5, 1.0, 0.9, 1100,
-      '/sprites/Weapon Icons/grenade.1.png', '/sprites/Weapons/grenade.png', '#9ACD32'
-    ).run();
+    await seedWeapons(env);
   })();
   dbInitDb = env.DB;
   return dbInitPromise;
