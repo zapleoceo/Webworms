@@ -686,6 +686,16 @@ button:hover {
   border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.2);
   min-width: 120px;
+  position: relative;
+  overflow: hidden;
+}
+
+.left-team {
+  --turn-accent: var(--color-primary);
+}
+
+.right-team {
+  --turn-accent: var(--color-danger);
 }
 
 .team-name {
@@ -693,6 +703,57 @@ button:hover {
   font-size: 1.2rem;
   margin-bottom: 5px;
   letter-spacing: 1px;
+}
+
+.team-turn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  font-family: var(--font-comic);
+  font-size: 0.9rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: rgba(255,255,255,0.85);
+  margin-bottom: 8px;
+  transform: translateY(4px);
+  opacity: 0.75;
+  transition: opacity 0.25s ease, transform 0.25s ease, border-color 0.25s ease, filter 0.25s ease;
+}
+
+.team-status.turn-active .team-turn {
+  border-color: var(--turn-accent);
+  opacity: 1;
+  transform: translateY(0px);
+  filter: brightness(1.1) drop-shadow(0 0 10px var(--turn-accent));
+  animation: turnPulse 1.2s ease-in-out infinite;
+}
+
+.team-status.turn-active::after {
+  content: '';
+  position: absolute;
+  left: -60%;
+  top: 0;
+  width: 60%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--turn-accent), transparent);
+  opacity: 0.9;
+  animation: turnScan 1.25s linear infinite;
+}
+
+@keyframes turnPulse {
+  0% { box-shadow: 0 0 0 rgba(0,0,0,0); }
+  50% { box-shadow: 0 0 18px rgba(0,0,0,0.35); }
+  100% { box-shadow: 0 0 0 rgba(0,0,0,0); }
+}
+
+@keyframes turnScan {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(260%); }
 }
 
 .hp-bar-container {
@@ -1145,6 +1206,7 @@ button:hover {
   .hud-top { padding: 10px; }
   .team-status { min-width: 90px; padding: 8px; }
   .team-name { font-size: 1rem; }
+  .team-turn { font-size: 0.75rem; padding: 3px 8px; margin-bottom: 6px; }
   /* Compact HUD elements for mobile */
   .timer-bubble { width: 40px; height: 40px; font-size: 1.2rem; }
   .wind-bubble { font-size: 0.8rem; padding: 4px 8px; }

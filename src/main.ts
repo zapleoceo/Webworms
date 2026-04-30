@@ -1029,10 +1029,15 @@ function updateWormSelectionUI(state: any) {
 function bindPresenterEvents() {
   const turnTimer = document.getElementById('turn-timer')!;
   const turnNotification = document.getElementById('turn-notification')!;
+  const localTurnLabel = document.getElementById('turn-label-local');
+  const enemyTurnLabel = document.getElementById('turn-label-enemy');
+  const localTeamStatus = document.querySelector('.team-status.left-team') as HTMLElement | null;
+  const enemyTeamStatus = document.querySelector('.team-status.right-team') as HTMLElement | null;
   const rewardText = document.getElementById('game-over-reward') || document.getElementById('game-over-stats')!;
   const statsText = document.getElementById('game-over-stats')!;
 
   let lastTurnPlayerIndex = -1;
+  let lastTurnActiveTeam: string | null = null;
 
   window.presenter.onStateUpdate = (state: any) => {
     // Sync state to client if host
@@ -1075,10 +1080,19 @@ function bindPresenterEvents() {
     const activeTeam = state.currentPlayerIndex !== undefined && state.players[state.currentPlayerIndex] 
       ? state.players[state.currentPlayerIndex].team 
       : 'team1';
-    const isMyTurn = window.presenter.localTeam === 'training' || activeTeam === window.presenter.localTeam;
+    const localTeam = window.presenter.localTeam;
+    const isMyTurn = localTeam === 'training' || (typeof localTeam === 'string' && activeTeam === localTeam);
 
     // Update Worm Selection UI
     updateWormSelectionUI(state);
+
+    if (lastTurnActiveTeam !== activeTeam) {
+      lastTurnActiveTeam = activeTeam;
+      if (localTurnLabel) localTurnLabel.textContent = isMyTurn ? 'YOUR TURN' : 'WAITING';
+      if (enemyTurnLabel) enemyTurnLabel.textContent = isMyTurn ? 'WAITING' : 'ENEMY TURN';
+      if (localTeamStatus) localTeamStatus.classList.toggle('turn-active', !!isMyTurn);
+      if (enemyTeamStatus) enemyTeamStatus.classList.toggle('turn-active', !isMyTurn && localTeam !== 'training');
+    }
 
     if (lastTurnPlayerIndex !== state.currentPlayerIndex) {
       lastTurnPlayerIndex = state.currentPlayerIndex;
@@ -1086,10 +1100,9 @@ function bindPresenterEvents() {
       turnNotification.innerText = isMyTurn ? 'YOUR TURN!' : 'ENEMY TURN!';
       turnNotification.style.color = isMyTurn ? 'var(--color-primary)' : 'var(--color-danger)';
 
-      // Auto-hide after 2s
       setTimeout(() => {
         turnNotification.style.display = 'none';
-      }, 2000);
+      }, 650);
     }
   };
 
