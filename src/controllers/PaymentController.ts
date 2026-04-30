@@ -84,8 +84,10 @@ export class PaymentController {
     const closeBtn = document.getElementById('btn-close-payment');
     if (closeBtn) closeBtn.addEventListener('click', () => this.closePaymentModal());
 
-    const plansWrap = document.getElementById('donate-plans') as any;
-    const plans = plansWrap?.querySelectorAll ? (plansWrap.querySelectorAll('.donate-plan') as NodeListOf<HTMLButtonElement>) : ([] as any);
+    const plansWrap = document.getElementById('donate-plans');
+    const plans: HTMLButtonElement[] = plansWrap?.querySelectorAll
+      ? Array.from(plansWrap.querySelectorAll<HTMLButtonElement>('.donate-plan'))
+      : [];
     plans.forEach((btn) => {
       btn.addEventListener('click', () => {
         const plan = (btn.dataset.plan || 'premium_7d_1') as any;
@@ -108,8 +110,10 @@ export class PaymentController {
       } catch {}
     }
 
-    const plansWrap = document.getElementById('donate-plans') as any;
-    const plans = plansWrap?.querySelectorAll ? (plansWrap.querySelectorAll('.donate-plan') as NodeListOf<HTMLButtonElement>) : ([] as any);
+    const plansWrap = document.getElementById('donate-plans');
+    const plans: HTMLButtonElement[] = plansWrap?.querySelectorAll
+      ? Array.from(plansWrap.querySelectorAll<HTMLButtonElement>('.donate-plan'))
+      : [];
     plans.forEach((btn) => btn.classList.toggle('is-selected', btn.dataset.plan === this.selectedPlanId));
   }
 }
