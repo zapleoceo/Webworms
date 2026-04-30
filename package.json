@@ -22,9 +22,7 @@
     "vitest": "3.0.0"
   },
   "dependencies": {
-    "canvas": "^3.2.3",
     "cropperjs": "^1.5.13",
-    "pngjs": "^7.0.0",
-    "puppeteer": "^24.42.0"
+    "pngjs": "^7.0.0"
   }
 }
