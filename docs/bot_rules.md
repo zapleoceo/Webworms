@@ -112,3 +112,8 @@
 - scoring.killBonus / damageWeight / missWeight / movePenaltyPerPx / safeExtraRadius
 - dig.enabled / dig.maxShotsPerTurn / dig.distances / dig.depthMin / dig.depthMax
 - movement.maxStrategyAttemptsPerTurn / maxStrategyFailuresPerTurn / replanWhenBannedAtLeast / replanCooldownSeconds
+
+## Спавн (безопасность)
+
+- Точки спауна валидируются точной проверкой AABB (коробка червя + clearance должна быть полностью в воздухе).
+- Y спауна привязан к поверхности: выбирается пиксель поверхности (solid с воздухом над ним), и червь ставится над ним.

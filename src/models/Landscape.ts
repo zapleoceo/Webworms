@@ -38,6 +38,53 @@ export class Landscape {
     return this.grid[y * this.width + x] > 0;
   }
 
+  public isSpawnFree(cx: number, cy: number, hw: number, hh: number, clearance: number, border: number = 30): boolean {
+    const left = Math.floor(cx - hw - clearance);
+    const right = Math.floor(cx + hw + clearance);
+    const top = Math.floor(cy - hh - clearance);
+    const bottom = Math.floor(cy + hh + clearance);
+
+    if (left < border || right >= this.width - border) return false;
+    if (top < border || bottom >= this.height - border) return false;
+
+    for (let y = top; y <= bottom; y++) {
+      const row = y * this.width;
+      for (let x = left; x <= right; x++) {
+        if (this.grid[row + x] > 0) return false;
+      }
+    }
+
+    const groundY = Math.floor(cy + hh + clearance + 1);
+    if (groundY < 0 || groundY >= this.height) return false;
+    const gx0 = Math.floor(cx - hw);
+    const gx1 = Math.floor(cx + hw);
+    for (let x = gx0; x <= gx1; x++) {
+      if (x < 0 || x >= this.width) continue;
+      if (this.grid[groundY * this.width + x] > 0) return true;
+    }
+    return false;
+  }
+
+  public findSpawnYAtX(cx: number, hw: number, hh: number, clearance: number, border: number = 30): number | null {
+    const x = Math.floor(cx);
+    if (x < border || x >= this.width - border) return null;
+    const y0 = Math.max(border + 1, 1);
+    const y1 = this.height - border - 1;
+    for (let y = y0; y <= y1; y++) {
+      const cur = this.getMaterial(x, y);
+      if (cur <= 0) continue;
+      const above = this.getMaterial(x, y - 1);
+      if (above > 0) continue;
+      let cy = (y - 1) - hh - clearance;
+      if (cy < border + hh + clearance) continue;
+      for (let up = 0; up < 24; up++) {
+        if (this.isSpawnFree(cx, cy, hw, hh, clearance, border)) return cy;
+        cy -= 1;
+      }
+    }
+    return null;
+  }
+
   // Backwards compatibility for tests
   public setSolid(x: number, y: number, solid: boolean): void {
     this.setMaterial(x, y, solid ? 1 : 0);
@@ -116,44 +163,13 @@ export class Landscape {
 
   public computeSpawnCandidates(hw: number, hh: number, clearance: number, stride: number): void {
     const candidates: { x: number; y: number }[] = [];
-    const isAirSample = (x: number, y: number): boolean => this.getMaterial(x, y) === 0;
-
-    const isAirBox = (cx: number, cy: number): boolean => {
-      const left = Math.floor(cx - hw - clearance);
-      const right = Math.floor(cx + hw + clearance);
-      const top = Math.floor(cy - hh - clearance);
-      const bottom = Math.floor(cy + hh + clearance);
-
-      const pts = [
-        [left, top],
-        [right, top],
-        [left, bottom],
-        [right, bottom],
-        [Math.floor(cx), Math.floor(cy)]
-      ];
-      for (const [px, py] of pts) {
-        if (!isAirSample(px, py)) return false;
-      }
-      return true;
-    };
-
-    const hasGround = (cx: number, cy: number): boolean => {
-      const y = Math.floor(cy + hh + clearance + 1);
-      const xs = [Math.floor(cx), Math.floor(cx - hw), Math.floor(cx + hw)];
-      for (const x of xs) {
-        if (this.getMaterial(x, y) > 0) return true;
-      }
-      return false;
-    };
-
-    for (let y = 60; y <= this.height - 80; y += stride) {
-      for (let x = 80; x <= this.width - 80; x += stride) {
-        if (!hasGround(x, y)) continue;
-        if (!isAirBox(x, y)) continue;
-        candidates.push({ x, y });
-      }
+    const x0 = 80;
+    const x1 = this.width - 80;
+    for (let x = x0; x <= x1; x += stride) {
+      const y = this.findSpawnYAtX(x, hw, hh, clearance);
+      if (y === null) continue;
+      candidates.push({ x, y });
     }
-
     this.spawnCandidates = candidates;
   }
 

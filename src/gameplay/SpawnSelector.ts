@@ -12,19 +12,7 @@ export function findSafeWormSpawn(
   const hw = 8;
   const hh = 14;
   const clearance = 4;
-
-  const isAirBox = (cx: number, cy: number): boolean => {
-    const left = Math.floor(cx - hw - clearance);
-    const right = Math.floor(cx + hw + clearance);
-    const top = Math.floor(cy - hh - clearance);
-    const bottom = Math.floor(cy + hh + clearance);
-    for (let y = top; y <= bottom; y += 2) {
-      for (let x = left; x <= right; x += 2) {
-        if (landscape.getMaterial(x, y) > 0) return false;
-      }
-    }
-    return true;
-  };
+  const border = 30;
 
   const isFarEnough = (x: number, y: number): boolean => {
     for (const p of existing) {
@@ -41,26 +29,23 @@ export function findSafeWormSpawn(
       const c = candidates[idx];
       if (!c) continue;
       if (!isFarEnough(c.x, c.y)) continue;
+      if (!landscape.isSpawnFree(c.x, c.y, hw, hh, clearance, border)) continue;
       return { x: c.x, y: c.y };
     }
     for (let i = 0; i < attempts; i++) {
       const idx = Math.floor(rng() * candidates.length);
       const c = candidates[idx];
       if (!c) continue;
+      if (!landscape.isSpawnFree(c.x, c.y, hw, hh, clearance, border)) continue;
       return { x: c.x, y: c.y };
     }
   }
 
   const tryPoint = (x: number): { ok: boolean; x: number; y: number } => {
-    const surfaceY = landscape.getTopSolidY(x);
-    const spawnY = surfaceY - hh - clearance - 1;
-    if (spawnY < 40 || spawnY > landscape.height - 40) return { ok: false, x, y: spawnY };
-    if (!isAirBox(x, spawnY)) return { ok: false, x, y: spawnY };
-    const yL = landscape.getTopSolidY(x - 14);
-    const yR = landscape.getTopSolidY(x + 14);
-    if (Math.abs(yR - yL) > 50) return { ok: false, x, y: spawnY };
-    if (!isFarEnough(x, spawnY)) return { ok: false, x, y: spawnY };
-    return { ok: true, x, y: spawnY };
+    const y = landscape.findSpawnYAtX(x, hw, hh, clearance, border);
+    if (y === null) return { ok: false, x, y: 0 };
+    if (!isFarEnough(x, y)) return { ok: false, x, y };
+    return { ok: true, x, y };
   };
 
   const centerX = 80 + rng() * (landscape.width - 160);
@@ -81,6 +66,13 @@ export function findSafeWormSpawn(
   }
 
   const fx = landscape.width / 2;
-  const fy = landscape.getTopSolidY(fx) - hh - clearance - 1;
-  return { x: fx, y: Math.max(40, fy) };
+  const fy = landscape.findSpawnYAtX(fx, hw, hh, clearance, border);
+  if (fy !== null) return { x: fx, y: fy };
+  const fallbackX0 = border + 80;
+  const fallbackX1 = landscape.width - border - 80;
+  for (let x = fallbackX0; x <= fallbackX1; x += 24) {
+    const y = landscape.findSpawnYAtX(x, hw, hh, clearance, border);
+    if (y !== null) return { x, y };
+  }
+  return { x: fx, y: border + hh + clearance + 2 };
 }
