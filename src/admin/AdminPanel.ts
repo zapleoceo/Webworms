@@ -162,6 +162,14 @@ export class AdminPanel {
                     </select>
                   </label>
                 </div>
+                <div style="margin-top: 10px;">
+                  <label class="bot-setting bot-setting-wide">
+                    <span class="bot-setting-label">Map</span>
+                    <select id="bot-aivai-map" class="retro-input bot-setting-input">
+                      <option value="" selected>Loading maps...</option>
+                    </select>
+                  </label>
+                </div>
                 <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; align-items:center;">
                   <button id="bot-aivai-start" class="primary-btn small-btn">Start</button>
                   <button id="bot-aivai-copy" class="secondary-btn small-btn">Copy link</button>
@@ -516,18 +524,37 @@ export class AdminPanel {
 
     const a1Sel = document.getElementById('bot-aivai-a1') as HTMLSelectElement | null;
     const a2Sel = document.getElementById('bot-aivai-a2') as HTMLSelectElement | null;
+    const mapSel = document.getElementById('bot-aivai-map') as HTMLSelectElement | null;
     const linkEl = document.getElementById('bot-aivai-link') as HTMLInputElement | null;
     const buildLink = () => {
       const a1 = (a1Sel?.value || 'easy').trim();
       const a2 = (a2Sel?.value || 'medium').trim();
-      return `${window.location.origin}/?mode=aivai&a1=${encodeURIComponent(a1)}&a2=${encodeURIComponent(a2)}`;
+      const map = (mapSel?.value || '').trim();
+      const mapPart = map ? `&map=${encodeURIComponent(map)}` : '';
+      return `${window.location.origin}/?mode=aivai&a1=${encodeURIComponent(a1)}&a2=${encodeURIComponent(a2)}${mapPart}`;
     };
     const syncLink = () => {
       if (linkEl) linkEl.value = buildLink();
     };
     a1Sel?.addEventListener('change', syncLink);
     a2Sel?.addEventListener('change', syncLink);
+    mapSel?.addEventListener('change', syncLink);
     syncLink();
+
+    if (mapSel) {
+      fetch('/api/maps')
+        .then(r => r.json())
+        .then((maps: any[]) => {
+          const keep = mapSel.value;
+          mapSel.innerHTML = `<option value="">(default)</option>` + (Array.isArray(maps) ? maps.map(m => `<option value="${String(m.id)}">${String(m.name || m.id)}</option>`).join('') : '');
+          if (keep) mapSel.value = keep;
+          syncLink();
+        })
+        .catch(() => {
+          mapSel.innerHTML = `<option value="">(default)</option>`;
+          syncLink();
+        });
+    }
 
     document.getElementById('bot-aivai-start')?.addEventListener('click', () => {
       const url = buildLink();

@@ -79,6 +79,8 @@ export class GamePresenter {
   public onStateUpdate: ((state: any) => void) | null = null;
 
   public botTurnController: BotTurnController | null = null;
+  public onPhysicsTrace?: (event: any) => void;
+  private physicsSampleAccum: number = 0;
 
 
   constructor(width: number, height: number) {
@@ -118,6 +120,9 @@ export class GamePresenter {
       this.soundManager.playHeavyImpact();
       const shake = this.state.airdropPhysics?.impactShakeTime;
       this.state.cameraShakeTime = typeof shake === 'number' ? shake : 0.3;
+    };
+    this.physics.onTrace = (e) => {
+      if (this.onPhysicsTrace) this.onPhysicsTrace(e);
     };
   }
 
@@ -307,6 +312,7 @@ export class GamePresenter {
 
     // Only host computes physics and updates timers
     if (this.isRunning && this.isHost) {
+      (this.state as any).matchDuration = this.matchDuration;
       // Find active player before physics step
       const currentPlayer = this.state.getCurrentPlayer();
       if (!currentPlayer) return;
@@ -315,6 +321,25 @@ export class GamePresenter {
       
       // Update Physics
       this.physics.update(this.state, dt);
+
+      if (this.state.mode === 'aivai' && this.onPhysicsTrace) {
+        this.physicsSampleAccum += dt;
+        if (this.physicsSampleAccum >= 0.1) {
+          this.physicsSampleAccum = 0;
+          const projs = this.state.projectiles.map((p: any, idx: number) => [p.weaponId, p.x, p.y, p.vx, p.vy, p.radius, idx]);
+          const props = this.state.props.map((p: any, idx: number) => [p.x, p.y, p.vx, p.vy, p.radius, p.rotation, p.angularVelocity, idx]);
+          const logos = (this.state.brandLogos || []).map((l: any, idx: number) => [l.x, l.y, l.vx, l.vy, l.angle, l.angularVelocity, l.collisionWidth, l.collisionHeight, l.isDynamic ? 1 : 0, l.touchedGround ? 1 : 0, idx]);
+          const worms = this.state.players.map((w: any, idx: number) => [w.team, w.x, w.y, w.vx, w.vy, w.health, idx]);
+          this.onPhysicsTrace({
+            type: 'physics_sample',
+            t: this.matchDuration,
+            projs,
+            props,
+            logos,
+            worms
+          });
+        }
+      }
       
       const isMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0;
       const hasProjectiles = this.state.projectiles.length > 0;

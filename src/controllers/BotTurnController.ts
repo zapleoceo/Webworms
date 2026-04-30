@@ -84,6 +84,7 @@ export class BotTurnController {
       const allies = snap.worms.filter((w: any) => w.team === shooter.team && w.health > 0);
       const dbg = chooseBotActionDebug(this.rngForTurn(presenter), snap.world, shooter, enemies, allies, botCfg);
       cb({
+        type: 'bot_decision',
         t: presenter.matchDuration || 0,
         stage,
         team: shooter.team,

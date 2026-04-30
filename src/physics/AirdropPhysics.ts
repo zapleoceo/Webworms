@@ -104,6 +104,11 @@ export function integrateAirdrop(
     logo.y += logo.vy * h;
     logo.angle = angleNorm(logo.angle + logo.angularVelocity * h);
 
+    const trace = (logo as any).onTrace as ((e: any) => void) | undefined;
+    const tracePos0 = { x: logo.x, y: logo.y };
+    const traceVel0 = { vx: logo.vx, vy: logo.vy };
+    const traceAng0 = { a: logo.angle, w: logo.angularVelocity };
+
     const c = Math.cos(logo.angle);
     const s = Math.sin(logo.angle);
     const comWorld = add({ x: logo.x, y: logo.y }, rot(comLocal, c, s));
@@ -148,13 +153,22 @@ export function integrateAirdrop(
       return;
     }
 
+    let avgNx = 0;
+    let avgNy = 0;
+    let maxPen = 0;
     for (const ctc of contacts) {
+      avgNx += ctc.n.x;
+      avgNy += ctc.n.y;
+      if (ctc.pen > maxPen) maxPen = ctc.pen;
       if (ctc.n.y < -0.35) logo.touchedGround = true;
       const slop = 1.0;
       const corr = clamp((ctc.pen - slop) * cfg.penetrationCorrection, 0, cfg.maxPenetration);
       logo.x += ctc.n.x * corr;
       logo.y += ctc.n.y * corr;
     }
+    const invC = 1 / Math.max(1, contacts.length);
+    avgNx *= invC;
+    avgNy *= invC;
 
     const restitutionScale = Math.max(0, (logo as any).bounceFactor ?? 1);
     const restitution = cfg.restitution * restitutionScale;
@@ -212,6 +226,36 @@ export function integrateAirdrop(
       logo.sleepAccum += h;
     } else {
       logo.sleepAccum = 0;
+    }
+
+    if (trace) {
+      const ax = (logo as any).__aivaiTraceAccum;
+      const next = (typeof ax === 'number' ? ax : 0) + h;
+      const dv = Math.hypot((logo.vx - traceVel0.vx), (logo.vy - traceVel0.vy));
+      const should = next >= 0.1 || dv > 65 || maxPen >= 3;
+      (logo as any).__aivaiTraceAccum = should ? 0 : next;
+      if (should) {
+        try {
+          trace({
+            type: 'physics_collision',
+            kind: 'airdrop_contact',
+            x0: tracePos0.x,
+            y0: tracePos0.y,
+            x1: logo.x,
+            y1: logo.y,
+            v0: traceVel0,
+            v1: { vx: logo.vx, vy: logo.vy },
+            a0: traceAng0.a,
+            w0: traceAng0.w,
+            a1: logo.angle,
+            w1: logo.angularVelocity,
+            contacts: contacts.length,
+            avgN: { x: avgNx, y: avgNy },
+            maxPen,
+            touchedGround: logo.touchedGround
+          });
+        } catch {}
+      }
     }
 
     if (logo.sleepAccum >= cfg.sleepTime) {

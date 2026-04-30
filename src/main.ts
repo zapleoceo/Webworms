@@ -664,7 +664,8 @@ let currentRoomPlayerId: string | null = null;
     let chosenMapName: string | null = null;
     if (maps && maps.length > 0) {
       // If a specific map is selected, try to use it. Otherwise use the first one.
-      const selectedMapId = mapTypeSelect.value;
+      const urlMap = new URLSearchParams(window.location.search).get('map');
+      const selectedMapId = urlMap || mapTypeSelect.value;
       let mapObj = maps.find((m: any) => m.id === selectedMapId);
       if (!mapObj) {
         mapObj = maps[0];
@@ -698,14 +699,25 @@ let currentRoomPlayerId: string | null = null;
         turnTime,
         botConfig,
         gameSettings,
-        events: []
+        events: [],
+        truncated: false
       };
-      window.presenter.onAIVaiTrace = (e: any) => {
-        if (aivaiLog) aivaiLog.events.push(e);
+      const pushEvent = (e: any) => {
+        if (!aivaiLog || aivaiLog.truncated) return;
+        if (aivaiLog.events.length >= 12000) {
+          aivaiLog.truncated = true;
+          return;
+        }
+        if (!e || typeof e !== 'object') return;
+        if (!('type' in e)) e.type = 'event';
+        aivaiLog.events.push(e);
       };
+      window.presenter.onAIVaiTrace = pushEvent;
+      window.presenter.onPhysicsTrace = pushEvent;
     } else {
       aivaiLog = null;
       window.presenter.onAIVaiTrace = undefined;
+      window.presenter.onPhysicsTrace = undefined;
     }
     await window.presenter.startGame({
       width: 1500,

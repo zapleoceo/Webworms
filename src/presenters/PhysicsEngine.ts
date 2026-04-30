@@ -20,6 +20,7 @@ export class PhysicsEngine {
   public onFallUpdate?: (vy: number) => void;
   public onLand?: () => void;
   public onHeavyImpact?: () => void;
+  public onTrace?: (event: any) => void;
   private fixedDt: number = 1 / 60;
   private accumulator: number = 0;
   private maxSubsteps: number = 8;
@@ -144,6 +145,11 @@ export class PhysicsEngine {
             b.vx += rv * 0.5;
             a.angularVelocity *= 0.6;
             b.angularVelocity *= 0.6;
+            if (this.onTrace) {
+              try {
+                this.onTrace({ type: 'physics_collision', t: (state as any).matchDuration || 0, kind: 'logo_logo', axis: 'x', ax: a.x, ay: a.y, avx: a.vx, avy: a.vy, bx: b.x, by: b.y, bvx: b.vx, bvy: b.vy });
+              } catch {}
+            }
           } else {
             const sy = Math.sign(dy) || 1;
             a.y -= sy * overlapY * 0.5;
@@ -153,6 +159,11 @@ export class PhysicsEngine {
             b.vy += rv * 0.5;
             a.angularVelocity *= 0.6;
             b.angularVelocity *= 0.6;
+            if (this.onTrace) {
+              try {
+                this.onTrace({ type: 'physics_collision', t: (state as any).matchDuration || 0, kind: 'logo_logo', axis: 'y', ax: a.x, ay: a.y, avx: a.vx, avy: a.vy, bx: b.x, by: b.y, bvx: b.vx, bvy: b.vy });
+              } catch {}
+            }
           }
         }
       }
@@ -161,6 +172,7 @@ export class PhysicsEngine {
     for (const logo of state.brandLogos) {
       const wasDynamic = logo.isDynamic;
       const touchedBefore = logo.touchedGround;
+      (logo as any).onTrace = this.onTrace;
       logo.update(dt, this.gravity, state.landscape, state.brandLogos);
 
       if (logo.isDynamic) {
@@ -182,6 +194,11 @@ export class PhysicsEngine {
             logo.y = worm.y - wHalfH - halfH;
             logo.vy = 0;
             logo.vx += (logo.x > worm.x ? 1 : -1) * 60;
+            if (this.onTrace) {
+              try {
+                this.onTrace({ type: 'physics_collision', t: (state as any).matchDuration || 0, kind: 'logo_worm', x: logo.x, y: logo.y, vx: logo.vx, vy: logo.vy });
+              } catch {}
+            }
             break;
           }
         }
@@ -263,6 +280,7 @@ export class PhysicsEngine {
       const bottomY = Math.floor(prop.y + prop.radius);
 
       if (state.landscape.isSolid(cx, bottomY)) {
+        const vBefore = { vx: prop.vx, vy: prop.vy };
         if ((prop as any).settleAge === undefined) (prop as any).settleAge = 0;
         (prop as any).settleAge += dt;
 
@@ -343,6 +361,21 @@ export class PhysicsEngine {
 
         prop.vx = along * cosA - perp * sinA;
         prop.vy = along * sinA + perp * cosA;
+        if (this.onTrace) {
+          try {
+            this.onTrace({
+              type: 'physics_collision',
+              t: (state as any).matchDuration || 0,
+              kind: 'prop_ground',
+              x: prop.x,
+              y: prop.y,
+              radius: prop.radius,
+              vBefore,
+              vAfter: { vx: prop.vx, vy: prop.vy },
+              targetAngle
+            });
+          } catch {}
+        }
 
         prop.angularVelocity += norm(targetAngle - prop.rotation) * 18 * dt;
         prop.angularVelocity *= 0.9;
@@ -954,7 +987,29 @@ export class PhysicsEngine {
 
         const bounce = (proj as any).bounce ?? 0.45;
         const friction = (proj as any).friction ?? 0.85;
+        const vBefore = { vx: proj.vx, vy: proj.vy };
+        const posBefore = { x: proj.x, y: proj.y };
         this.bounceOnNormal(proj as any, nx, ny, bounce, friction, proj.radius + 0.5);
+        if (this.onTrace) {
+          try {
+            this.onTrace({
+              type: 'physics_collision',
+              t: (state as any).matchDuration || 0,
+              kind: 'projectile',
+              weaponId: proj.weaponId,
+              isGrenade: true,
+              hitTerrain,
+              hitEntity,
+              mat: hitMaterial,
+              pos: { x: hitX, y: hitY },
+              normal: { x: nx, y: ny },
+              vBefore,
+              vAfter: { vx: proj.vx, vy: proj.vy },
+              posBefore,
+              posAfter: { x: proj.x, y: proj.y }
+            });
+          } catch {}
+        }
         if (hitTerrain) {
           for (let k = 0; k < 6; k++) {
             let inside = false;
