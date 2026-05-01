@@ -38,6 +38,7 @@ export interface BotPlan {
   moveTo?: { x: number; y: number };
   action: BotAction;
   intent?: 'attack' | 'approach';
+  intentReason?: Record<string, any>;
 }
 
 export type BotCandidateSummary = {
@@ -803,6 +804,7 @@ export function chooseBotPlan(
   difficulty: AIDifficulty = 'medium',
   shotMemory: ShotMemoryEntry[] = []
 ): BotPlan | null {
+  let intentReason: Record<string, any> | undefined;
   const deepBottom = shooter.y > world.terrain.height - 90;
   const pitGeom = (() => {
     const t = world.terrain;
@@ -840,7 +842,7 @@ export function chooseBotPlan(
 
   if (deepBottom) {
     const moveTo = { x: clamp(shooter.x, 30, world.terrain.width - 30), y: clamp(shooter.y - 260, 30, world.terrain.height - 30) };
-    return { moveTo, action: baseNoFireAction, intent: 'approach' };
+    return { moveTo, action: baseNoFireAction, intent: 'approach', intentReason: { deepBottom: 1 } };
   }
 
   if (pitGeom && base.trace) {
@@ -862,7 +864,7 @@ export function chooseBotPlan(
       const escapeX = clamp(shooter.x + dir * 28, 30, world.terrain.width - 30);
       const moveTo = { x: escapeX, y: escapeY };
       (base.trace as any).escapeMoveTo = moveTo;
-      return { moveTo, action: baseNoFireAction, intent: 'approach' };
+      return { moveTo, action: baseNoFireAction, intent: 'approach', intentReason: { pitDetected: 1, pitBadShot: badShot ? 1 : 0, pitMuzzleBlocked: muzzleBlocked } };
     }
   }
 
@@ -890,6 +892,9 @@ export function chooseBotPlan(
     (base.trace as any).approachNoRes = noRes;
     (base.trace as any).approachMuzzleBlocked = muzzleBlocked;
     (base.trace as any).approachExpectedDamage = chosen.expectedDamage;
+    if (approachMode) {
+      intentReason = { approachMode: 1, approachNoRes: noRes, approachMuzzleBlocked: muzzleBlocked, approachExpectedDamage: chosen.expectedDamage };
+    }
   }
 
   const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
@@ -1018,7 +1023,7 @@ export function chooseBotPlan(
     if (!best || totalScore > best.score) {
       const moveTo = path.next || { x: s2.x, y: s2.y };
       const action = approachMode ? baseNoFireAction : (scored ? scored.action : base.action);
-      best = { score: totalScore, plan: { moveTo, action, intent: approachMode ? 'approach' : 'attack' } };
+      best = { score: totalScore, plan: { moveTo, action, intent: approachMode ? 'approach' : 'attack', intentReason } };
     }
   }
 

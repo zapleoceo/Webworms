@@ -14,7 +14,7 @@ export class BotTurnController {
   private lastTurnIndex: number = -1;
   private firedThisTurn: boolean = false;
   private plannedThisTurn: boolean = false;
-  private plan: { moveTo?: { x: number; y: number }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string }; intent?: 'attack' | 'approach' } | null = null;
+  private plan: { moveTo?: { x: number; y: number }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string }; intent?: 'attack' | 'approach'; intentReason?: any } | null = null;
   private moveStartedAt: number = 0;
 
   private ropeAttachUsed: number = 0;
@@ -408,7 +408,7 @@ export class BotTurnController {
         this.lastWorkerUsed = 1;
         this.lastThinkSrc = 'worker';
         this.lastDecisionDebug = wr.debug || null;
-        this.plan = { moveTo: wr.plan.moveTo, action: { weaponIndex: wr.plan.action.weaponIndex, facingRight: wr.plan.action.facingRight, aimAngle: wr.plan.action.aimAngle, power: wr.plan.action.power, targetId: wr.plan.action.targetId }, intent: wr.plan.intent };
+        this.plan = { moveTo: wr.plan.moveTo, action: { weaponIndex: wr.plan.action.weaponIndex, facingRight: wr.plan.action.facingRight, aimAngle: wr.plan.action.aimAngle, power: wr.plan.action.power, targetId: wr.plan.action.targetId }, intent: wr.plan.intent, intentReason: wr.plan.intentReason };
         this.moveStartedAt = now;
         this.plannedThisTurn = true;
         this.planningInProgress = false;
@@ -490,6 +490,8 @@ export class BotTurnController {
         cliffIsGap: cliff.isGapOrCliff ? 1 : 0,
         cliffIsVoid: cliff.isDeepVoid ? 1 : 0,
         bannedTurn: Array.from(this.bannedTurn),
+        intent: this.plan.intent || 'attack',
+        intentReason: this.plan.intentReason || null,
         aiV: AI_V,
         thinkSrc: this.lastThinkSrc,
         workerMs: this.lastWorkerMs,
