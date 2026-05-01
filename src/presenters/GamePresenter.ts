@@ -293,7 +293,9 @@ export class GamePresenter {
     for (let i = 0; i < 3; i++) {
       const s = findSafeWormSpawn(this.state.landscape, this.state.mapSeed || 1, `team1:${i}`, spawnPoints, 150);
       spawnPoints.push(s);
-      const loadout = Array.isArray(settings?.loadout) ? settings.loadout : getLoadoutForWorm(settings.mode, this.state.mapSeed || 1, 'team1', i);
+      const loadout = settings.mode === 'training'
+        ? getLoadoutForWorm('training', this.state.mapSeed || 1, 'team1', i)
+        : (Array.isArray(settings?.loadout) ? settings.loadout : getLoadoutForWorm(settings.mode as any, this.state.mapSeed || 1, 'team1', i));
       const a1d = (settings.aiDifficultyByTeam && settings.aiDifficultyByTeam.team1) ? settings.aiDifficultyByTeam.team1 : 'easy';
       const p = new Worm(
         s.x,
@@ -311,7 +313,9 @@ export class GamePresenter {
     for (let i = 0; i < 3; i++) {
       const s = findSafeWormSpawn(this.state.landscape, this.state.mapSeed || 1, `team2:${i}`, spawnPoints, 150);
       spawnPoints.push(s);
-      const loadout = Array.isArray(settings?.loadout) ? settings.loadout : getLoadoutForWorm(settings.mode, this.state.mapSeed || 1, 'team2', i);
+      const loadout = settings.mode === 'training'
+        ? getLoadoutForWorm('training', this.state.mapSeed || 1, 'team2', i)
+        : (Array.isArray(settings?.loadout) ? settings.loadout : getLoadoutForWorm(settings.mode as any, this.state.mapSeed || 1, 'team2', i));
       const a2d = (settings.aiDifficultyByTeam && settings.aiDifficultyByTeam.team2) ? settings.aiDifficultyByTeam.team2 : (settings.aiDifficulty || 'medium');
       const p = new Worm(
         s.x,
