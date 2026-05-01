@@ -789,9 +789,15 @@ export class PhysicsEngine {
       }
     }
 
-    proj.vy += this.gravity * dt;
-    if (state.wind) {
-      proj.vx += state.wind * dt * proj.windMultiplier; // Apply wind based on weapon stats
+    const isGrenade = typeof (proj as any).fuseRemaining === 'number';
+    if (isGrenade && (proj as any).resting) {
+      proj.vx = 0;
+      proj.vy = 0;
+    } else {
+      proj.vy += this.gravity * dt;
+      if (state.wind) {
+        proj.vx += state.wind * dt * proj.windMultiplier; // Apply wind based on weapon stats
+      }
     }
 
     const oldX = proj.x;
@@ -942,7 +948,6 @@ export class PhysicsEngine {
     }
 
     if (hitTerrain || hitEntity) {
-      const isGrenade = typeof (proj as any).fuseRemaining === 'number';
       if (isGrenade) {
         let nx = 0;
         let ny = -1;
@@ -1052,6 +1057,16 @@ export class PhysicsEngine {
             proj.x += n2.nx * 0.9;
             proj.y += n2.ny * 0.9;
           }
+        }
+        const stopSpeed = Number.isFinite((proj as any).stopSpeed) ? Math.max(0, Number((proj as any).stopSpeed)) : 0;
+        const speed = Math.hypot(proj.vx, proj.vy);
+        if (stopSpeed > 0 && speed <= stopSpeed) {
+          proj.vx = 0;
+          proj.vy = 0;
+          (proj as any).resting = true;
+        } else {
+          if (Math.abs(proj.vx) < 0.75) proj.vx = 0;
+          if (Math.abs(proj.vy) < 0.75) proj.vy = 0;
         }
         return;
       }
