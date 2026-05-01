@@ -7,6 +7,8 @@ export class GrenadeProjectile extends Projectile {
   public friction: number = 0.85;
   public stopSpeed: number = 28;
   public resting: boolean = false;
+  public rotation: number = 0;
+  public angularVelocity: number = 0;
 
   constructor(x: number, y: number, vx: number, vy: number, weapon: Weapon, fuseSeconds: number = 3) {
     super(x, y, vx, vy, weapon);

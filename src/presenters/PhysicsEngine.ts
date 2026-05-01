@@ -774,6 +774,29 @@ export class PhysicsEngine {
     proj.y += ny * pushOut;
   }
 
+  private normAngle(a: number): number {
+    const t = Math.PI * 2;
+    let r = a % t;
+    if (r < 0) r += t;
+    return r;
+  }
+
+  private updateGrenadeSpin(proj: any): void {
+    const stopSpeed = Number.isFinite(proj.stopSpeed) ? Math.max(0, Number(proj.stopSpeed)) : 0;
+    const speed = Math.hypot(proj.vx || 0, proj.vy || 0);
+    if (stopSpeed > 0 && speed <= stopSpeed) {
+      proj.angularVelocity = 0;
+      return;
+    }
+    const k = 0.04;
+    const omegaMin = 2;
+    const omegaMax = 18;
+    const mag = Math.max(omegaMin, Math.min(omegaMax, speed * k));
+    if (proj.vx > 1) proj.angularVelocity = mag;
+    else if (proj.vx < -1) proj.angularVelocity = -mag;
+    else proj.angularVelocity = 0;
+  }
+
   private updateProjectile(proj: Projectile, state: GameState, dt: number): void {
     if ((proj as any).framesAlive === undefined) {
       (proj as any).framesAlive = 0;
@@ -793,11 +816,17 @@ export class PhysicsEngine {
     if (isGrenade && (proj as any).resting) {
       proj.vx = 0;
       proj.vy = 0;
+      (proj as any).angularVelocity = 0;
     } else {
       proj.vy += this.gravity * dt;
       if (state.wind) {
         proj.vx += state.wind * dt * proj.windMultiplier; // Apply wind based on weapon stats
       }
+    }
+    if (isGrenade) {
+      const rot0 = Number((proj as any).rotation) || 0;
+      const av = Number((proj as any).angularVelocity) || 0;
+      (proj as any).rotation = this.normAngle(rot0 + av * dt);
     }
 
     const oldX = proj.x;
@@ -1064,9 +1093,11 @@ export class PhysicsEngine {
           proj.vx = 0;
           proj.vy = 0;
           (proj as any).resting = true;
+          (proj as any).angularVelocity = 0;
         } else {
           if (Math.abs(proj.vx) < 0.75) proj.vx = 0;
           if (Math.abs(proj.vy) < 0.75) proj.vy = 0;
+          this.updateGrenadeSpin(proj as any);
         }
         return;
       }
@@ -1101,17 +1132,20 @@ export class PhysicsEngine {
       if (proj.x <= 30) {
         proj.x = 30 + proj.radius + 0.5;
         proj.vx = Math.abs(proj.vx) * ((proj as any).bounce ?? 0.45);
+        this.updateGrenadeSpin(proj as any);
         return;
       }
       if (proj.x >= state.width - 30) {
         proj.x = state.width - 30 - proj.radius - 0.5;
         proj.vx = -Math.abs(proj.vx) * ((proj as any).bounce ?? 0.45);
+        this.updateGrenadeSpin(proj as any);
         return;
       }
       if (proj.y >= state.height - 30) {
         proj.y = state.height - 30 - proj.radius - 0.5;
         proj.vy = -Math.abs(proj.vy) * ((proj as any).bounce ?? 0.45);
         proj.vx *= (proj as any).friction ?? 0.85;
+        this.updateGrenadeSpin(proj as any);
         return;
       }
     }

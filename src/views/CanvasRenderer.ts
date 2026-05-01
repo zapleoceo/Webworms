@@ -802,6 +802,10 @@ export class CanvasRenderer {
         // Map velocity angle to 32 frames
         // angle is -PI to PI
         let angle = Math.atan2(proj.vy, proj.vx);
+        if (proj.weaponId === 'grenade') {
+          const rot = (proj as any).rotation;
+          if (typeof rot === 'number' && Number.isFinite(rot)) angle = rot;
+        }
         
         // Frame 0 is pointing UP (-PI/2).
         // Let's normalize angle so -PI/2 maps to 0.
