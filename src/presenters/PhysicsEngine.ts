@@ -1223,7 +1223,10 @@ export class PhysicsEngine {
       if (dist <= finalRadius + playerRadius) {
         // Simple damage falloff
         const damageRatio = 1 - (dist / (finalRadius + playerRadius));
-        const actualDamage = proj.damage * damageRatio;
+        let actualDamage = proj.damage * damageRatio;
+        if (proj.weaponId === 'blaster' && dist <= playerRadius + proj.radius + 0.75) {
+          actualDamage = Math.max(actualDamage, proj.damage);
+        }
         player.takeDamage(actualDamage);
         this.addFloatingText(state, player.x, player.y - 20, `-${Math.round(actualDamage)}`, '#FF0000');
         if (this.onHurt) this.onHurt();
