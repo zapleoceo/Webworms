@@ -1242,6 +1242,7 @@ function updateWormSelectionUI(state: any) {
 
 function bindPresenterEvents() {
   const turnTimer = document.getElementById('turn-timer')!;
+  const windIndicator = document.getElementById('wind-indicator') as HTMLElement | null;
   const turnNotification = document.getElementById('turn-notification')!;
   const localTurnLabel = document.getElementById('turn-label-local');
   const enemyTurnLabel = document.getElementById('turn-label-enemy');
@@ -1291,6 +1292,16 @@ function bindPresenterEvents() {
         turnTimer.classList.add('ticking');
       } else {
         turnTimer.classList.remove('ticking');
+      }
+    }
+
+    if (windIndicator) {
+      const w = Number(state.wind) || 0;
+      if (w === 0) {
+        windIndicator.style.display = 'none';
+      } else {
+        windIndicator.style.display = 'block';
+        windIndicator.textContent = `WIND: ${Math.round(w)}`;
       }
     }
 

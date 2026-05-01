@@ -6,15 +6,20 @@ export class APIClient {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(url, { ...init, signal: controller.signal });
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        return await res.json();
+      const headers: any = (res as any)?.headers;
+      const contentType =
+        (typeof headers?.get === 'function' ? headers.get('content-type') : (headers?.['content-type'] || headers?.['Content-Type'])) || '';
+
+      const hasJson = typeof (res as any)?.json === 'function';
+      const hasText = typeof (res as any)?.text === 'function';
+      if (contentType.includes('application/json') || (hasJson && !hasText)) {
+        return await (res as any).json();
       }
-      const text = await res.text();
+      const text = hasText ? await (res as any).text() : '';
       return {
         success: false,
-        error: `Unexpected response (${res.status})`,
-        status: res.status,
+        error: `Unexpected response (${(res as any).status})`,
+        status: (res as any).status,
         body: text
       };
     } finally {
@@ -32,6 +37,10 @@ export class APIClient {
       }
     }
     return { success: false, error: last?.name === 'AbortError' ? 'Request timed out' : (last?.message || 'Network error') };
+  }
+
+  static async fetchForMultiplayer(path: string, init: RequestInit, timeoutMs: number, retries: number): Promise<any> {
+    return await this.fetchJsonWithRetry(`${this.BASE_URL}${path}`, init, timeoutMs, retries);
   }
 
   static isDebugEnabled(): boolean {
@@ -272,12 +281,11 @@ export class APIClient {
 
   static async createRoom(hostId: string) {
     try {
-      const response = await fetch(`${this.BASE_URL}/rooms`, {
+      return await this.fetchJsonWithRetry(`${this.BASE_URL}/rooms`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hostId })
-      });
-      return await response.json();
+      }, 12000, 2);
     } catch (e) {
       console.warn('Backend not running locally, returning mock room');
       return { roomId: 'ROOM_LOCAL' };
@@ -289,15 +297,13 @@ export class APIClient {
       if (this.isDebugEnabled()) {
         console.log('[APIClient] joinRoomState', { roomId, playerId: this.maskId(playerId) });
       }
-      const response = await fetch(`${this.BASE_URL}/rooms/${roomId}/join`, {
+      const data = await this.fetchJsonWithRetry(`${this.BASE_URL}/rooms/${roomId}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        console.error('[APIClient] joinRoomState error', { roomId, status: response.status, error: data?.error });
-        return { success: false, error: data.error };
+      }, 12000, 2);
+      if (data?.success === false && data?.error) {
+        console.error('[APIClient] joinRoomState error', { roomId, error: data?.error });
       }
       return data;
     } catch (e) {
@@ -309,18 +315,17 @@ export class APIClient {
   static async joinRandomRoom(playerId: string) {
     try {
       console.log('[APIClient] joinRandomRoom', { playerId: this.maskId(playerId) });
-      const response = await fetch(`${this.BASE_URL}/rooms/random`, {
+      const data = await this.fetchJsonWithRetry(`${this.BASE_URL}/rooms/random`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        console.error('[APIClient] joinRandomRoom error', { status: response.status, error: data?.error });
-        return { success: false, error: data.error };
+      }, 12000, 2);
+      if (data?.success === false && data?.error) {
+        console.error('[APIClient] joinRandomRoom error', { error: data?.error });
+        return data;
       }
       console.log('[APIClient] joinRandomRoom ok', { roomId: data?.roomId, isHost: data?.isHost });
-      return data; // { roomId, isHost }
+      return data;
     } catch (e) {
       console.error('[APIClient] joinRandomRoom exception', e);
       return { success: false, error: 'Network error joining random room' };
@@ -339,22 +344,19 @@ export class APIClient {
 
   static async heartbeatRoom(roomId: string, hostId: string) {
     try {
-      const res = await fetch(`${this.BASE_URL}/rooms/${roomId}/heartbeat`, {
+      const data = await this.fetchJsonWithRetry(`${this.BASE_URL}/rooms/${roomId}/heartbeat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hostId })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.expired) {
-          console.warn('[APIClient] heartbeat expired', { roomId, hostId: this.maskId(hostId) });
-        } else if (data?.matched) {
-          if (this.isDebugEnabled()) console.log('[APIClient] heartbeat matched', { roomId, hostId: this.maskId(hostId) });
-        } else if (this.isDebugEnabled()) {
-          console.log('[APIClient] heartbeat ok', { roomId, hostId: this.maskId(hostId), inQueue: data?.inQueue });
-        }
-        return data;
+      }, 12000, 1);
+      if (data?.expired) {
+        console.warn('[APIClient] heartbeat expired', { roomId, hostId: this.maskId(hostId) });
+      } else if (data?.matched) {
+        if (this.isDebugEnabled()) console.log('[APIClient] heartbeat matched', { roomId, hostId: this.maskId(hostId) });
+      } else if (this.isDebugEnabled()) {
+        console.log('[APIClient] heartbeat ok', { roomId, hostId: this.maskId(hostId), inQueue: data?.inQueue });
       }
+      return data;
     } catch {}
     return null;
   }
@@ -379,14 +381,7 @@ export class APIClient {
 
   static async getTurnIceServers(ttlSeconds: number = 3600): Promise<any[] | null> {
     try {
-      const res = await fetch(`${this.BASE_URL}/turn/ice-servers?ttl=${ttlSeconds}&t=${Date.now()}`);
-      if (!res.ok) {
-        if (this.isDebugEnabled()) {
-          console.warn('[APIClient] getTurnIceServers error', { status: res.status, body: await res.text() });
-        }
-        return null;
-      }
-      const data = await res.json();
+      const data = await this.fetchJsonWithRetry(`${this.BASE_URL}/turn/ice-servers?ttl=${ttlSeconds}&t=${Date.now()}`, { method: 'GET' }, 12000, 1);
       const iceServers = Array.isArray(data?.iceServers) ? data.iceServers : null;
       if (this.isDebugEnabled()) console.log('[APIClient] getTurnIceServers ok', { count: iceServers?.length ?? 0 });
       return iceServers;

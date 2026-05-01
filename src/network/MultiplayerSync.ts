@@ -26,6 +26,7 @@ export class MultiplayerSync {
   private localIceCandidates: any[] = [];
   private iceDebounce: number | null = null;
   private disconnectTimer: number | null = null;
+  private dataChannelHeartbeatInterval: number | null = null;
 
   public onStateReceived?: (stateData: any) => void;
   public onInitReceived?: (initData: any) => void;
@@ -35,6 +36,92 @@ export class MultiplayerSync {
   public onMatchmakingExpired?: () => void;
 
   constructor() {}
+
+  dispose(): void {
+    try {
+      if (this.dataChannelHeartbeatInterval) {
+        clearInterval(this.dataChannelHeartbeatInterval);
+        this.dataChannelHeartbeatInterval = null;
+      }
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval);
+        this.heartbeatInterval = null;
+      }
+      if (this.pollingTimer) {
+        clearInterval(this.pollingTimer);
+        this.pollingTimer = null;
+      }
+      if (this.iceDebounce) {
+        clearTimeout(this.iceDebounce);
+        this.iceDebounce = null;
+      }
+      if (this.disconnectTimer) {
+        clearTimeout(this.disconnectTimer);
+        this.disconnectTimer = null;
+      }
+    } catch {}
+
+    try {
+      this.signalingReady = false;
+      if (this.signalingSocket) {
+        try {
+          this.signalingSocket.onopen = null;
+          this.signalingSocket.onmessage = null;
+          this.signalingSocket.onerror = null;
+          this.signalingSocket.onclose = null;
+        } catch {}
+        try {
+          this.signalingSocket.close();
+        } catch {}
+      }
+    } catch {}
+    this.signalingSocket = null;
+    this.usePollingSignaling = false;
+
+    try {
+      if (this.dataChannel) {
+        try {
+          this.dataChannel.onopen = null;
+          this.dataChannel.onclose = null;
+          this.dataChannel.onmessage = null;
+        } catch {}
+        try {
+          this.dataChannel.close();
+        } catch {}
+      }
+    } catch {}
+    this.dataChannel = null;
+
+    try {
+      if (this.peerConnection) {
+        try {
+          this.peerConnection.onicecandidate = null;
+          this.peerConnection.onconnectionstatechange = null;
+          this.peerConnection.oniceconnectionstatechange = null;
+          this.peerConnection.onicegatheringstatechange = null;
+          this.peerConnection.onsignalingstatechange = null;
+          this.peerConnection.ondatachannel = null;
+        } catch {}
+        try {
+          this.peerConnection.close();
+        } catch {}
+      }
+    } catch {}
+    this.peerConnection = null;
+
+    this.roomId = null;
+    this.isHost = false;
+    this.signalingReady = false;
+    this.lastSnapshot = '';
+    this.lastIceHostLen = 0;
+    this.lastIceClientLen = 0;
+    this.lastSentIceIndex = 0;
+    this.pendingRemoteIce = [];
+    this.localIceCandidates = [];
+    this.seenIceTypes.clear();
+    this.localPlayerId = null;
+    this.isRandomMatchmaking = false;
+  }
 
   private debugEnabled(): boolean {
     return APIClient.isDebugEnabled();
@@ -119,12 +206,12 @@ export class MultiplayerSync {
     if (!this.roomId) throw new Error('Room is not set');
 
     if (this.usePollingSignaling) {
-      const res = await fetch(`/api/rooms/${this.roomId}/signal`, {
+      const data = await APIClient.fetchForMultiplayer(`/rooms/${this.roomId}/signal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, payload })
-      });
-      if (!res.ok) throw new Error('Signaling HTTP failed');
+      }, 12000, 1);
+      if (data?.success === false) throw new Error('Signaling HTTP failed');
       return;
     }
     if (!this.signalingReady || !this.signalingSocket || this.signalingSocket.readyState !== WebSocket.OPEN) {
@@ -197,9 +284,8 @@ export class MultiplayerSync {
     const poll = async () => {
       if (!this.roomId || !this.peerConnection) return;
       try {
-        const res = await fetch(`/api/rooms/${this.roomId}/snapshot`, { method: 'GET' });
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await APIClient.fetchForMultiplayer(`/rooms/${this.roomId}/snapshot`, { method: 'GET' }, 12000, 1);
+        if (!data || data?.success === false) return;
         const str = JSON.stringify(data || {});
         if (str === this.lastSnapshot) return;
         this.lastSnapshot = str;
@@ -291,6 +377,21 @@ export class MultiplayerSync {
       if (this.debugEnabled()) this.log('signalingState', { roomId: this.roomId, state: this.peerConnection!.signalingState });
     };
 
+    const connectStart = performance.now();
+    const connectWatchdogMs = 30000;
+    const watchdog = window.setTimeout(() => {
+      try {
+        this.log('connect.watchdog.timeout', { roomId: this.roomId, isHost: this.isHost });
+      } catch {}
+      try {
+        this.dispose();
+      } catch {}
+      try {
+        if (this.onPeerDisconnected) this.onPeerDisconnected();
+      } catch {}
+    }, connectWatchdogMs);
+
+    try {
     if (isRandom) {
       const res = await APIClient.joinRandomRoom(playerId);
       if (res.error) throw new Error(res.error);
@@ -352,6 +453,10 @@ export class MultiplayerSync {
       await this.hostRoom();
     }
     return this.roomId!;
+    } finally {
+      clearTimeout(watchdog);
+      if (this.debugEnabled()) this.log('connect.done', { ms: Math.round(performance.now() - connectStart), roomId: this.roomId });
+    }
   }
 
   private async hostRoom(): Promise<void> {
@@ -385,7 +490,6 @@ export class MultiplayerSync {
   private setupDataChannel() {
     if (!this.dataChannel) return;
     
-    let heartbeatInterval: number;
     let lastHeartbeatReceived = Date.now();
 
     this.dataChannel.onopen = () => {
@@ -396,7 +500,8 @@ export class MultiplayerSync {
       if (this.onReady) this.onReady();
       
       // Start heartbeat
-      heartbeatInterval = window.setInterval(() => {
+      if (this.dataChannelHeartbeatInterval) clearInterval(this.dataChannelHeartbeatInterval);
+      this.dataChannelHeartbeatInterval = window.setInterval(() => {
         if (this.dataChannel?.readyState === 'open') {
           this.dataChannel.send(JSON.stringify({ type: 'ping' }));
         }
@@ -404,14 +509,20 @@ export class MultiplayerSync {
         // If we haven't received a message in 15 seconds, assume disconnected
         if (Date.now() - lastHeartbeatReceived > 15000) {
           console.warn('Heartbeat timeout! Peer disconnected.');
-          clearInterval(heartbeatInterval);
+          if (this.dataChannelHeartbeatInterval) {
+            clearInterval(this.dataChannelHeartbeatInterval);
+            this.dataChannelHeartbeatInterval = null;
+          }
           if (this.onPeerDisconnected) this.onPeerDisconnected();
         }
       }, 1000);
     };
 
     this.dataChannel.onclose = () => {
-      clearInterval(heartbeatInterval);
+      if (this.dataChannelHeartbeatInterval) {
+        clearInterval(this.dataChannelHeartbeatInterval);
+        this.dataChannelHeartbeatInterval = null;
+      }
       if (this.onPeerDisconnected) this.onPeerDisconnected();
     };
 

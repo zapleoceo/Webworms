@@ -71,7 +71,7 @@ export class MultiplayerController {
 
   dispose() {
     try {
-      this.sync.peerConnection?.close();
+      this.sync.dispose();
     } catch {}
   }
 

@@ -1065,66 +1065,9 @@ export class CanvasRenderer {
   }
 
   // Draw UI
-  private drawUI(state: GameState): void {
+  private drawUI(_state: GameState): void {
     this.ctx.fillStyle = 'white';
     this.ctx.font = '14px Courier New';
     this.ctx.textAlign = 'left';
-
-    // Draw center-top wind indicator
-    const centerX = this.canvas.width / 2;
-    const topY = 3;
-    
-    this.ctx.save();
-    this.ctx.textAlign = 'center';
-    this.ctx.font = 'bold 16px "Bangers", Courier New';
-    this.ctx.fillStyle = 'white';
-    this.ctx.shadowColor = 'black';
-    this.ctx.shadowBlur = 4;
-    this.ctx.shadowOffsetX = 2;
-    this.ctx.shadowOffsetY = 2;
-    this.ctx.fillText(`WIND: ${Math.round(state.wind)}`, centerX, topY);
-    
-    // Draw wind bar
-    const maxWind = 100;
-    const barWidth = 100;
-    const barHeight = 10;
-    const barX = centerX - barWidth / 2;
-    const barY = topY + 10;
-    
-    this.ctx.shadowColor = 'transparent';
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    this.ctx.fillRect(barX, barY, barWidth, barHeight);
-    
-    // Draw center line
-    this.ctx.fillStyle = 'white';
-    this.ctx.fillRect(centerX - 1, barY, 2, barHeight);
-    
-    if (state.wind !== 0) {
-      const windFill = (state.wind / maxWind) * (barWidth / 2);
-      this.ctx.fillStyle = state.wind > 0 ? '#00ff00' : '#ff0000';
-      if (state.wind > 0) {
-        this.ctx.fillRect(centerX, barY, windFill, barHeight);
-      } else {
-        this.ctx.fillRect(centerX + windFill, barY, Math.abs(windFill), barHeight);
-      }
-      
-      // Draw arrow
-      this.ctx.fillStyle = 'white';
-      this.ctx.beginPath();
-      const arrowY = barY + barHeight / 2;
-      if (state.wind > 0) {
-        this.ctx.moveTo(centerX + windFill + 5, arrowY);
-        this.ctx.lineTo(centerX + windFill - 5, arrowY - 5);
-        this.ctx.lineTo(centerX + windFill - 5, arrowY + 5);
-      } else {
-        this.ctx.moveTo(centerX + windFill - 5, arrowY);
-        this.ctx.lineTo(centerX + windFill + 5, arrowY - 5);
-        this.ctx.lineTo(centerX + windFill + 5, arrowY + 5);
-      }
-      this.ctx.fill();
-    }
-    this.ctx.restore();
-    
-    // Timer is displayed via HUD DOM (#turn-timer)
   }
 }
