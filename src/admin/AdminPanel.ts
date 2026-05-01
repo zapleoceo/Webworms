@@ -318,6 +318,10 @@ export class AdminPanel {
                       <span class="bot-setting-label">Replan cooldown, сек</span>
                       <input type="number" id="bot-move-replan-cooldown" class="retro-input bot-setting-input" step="0.1">
                     </label>
+                    <label class="bot-setting">
+                      <span class="bot-setting-label">Replans за ход</span>
+                      <input type="number" id="bot-move-max-replans" class="retro-input bot-setting-input" step="1">
+                    </label>
                   </div>
                 </div>
                 <div class="bot-settings-actions">
@@ -1481,6 +1485,7 @@ export class AdminPanel {
       this.setNumberInput('bot-move-max-fails', cfg.movement?.maxStrategyFailuresPerTurn);
       this.setNumberInput('bot-move-replan-banned', cfg.movement?.replanWhenBannedAtLeast);
       this.setNumberInput('bot-move-replan-cooldown', cfg.movement?.replanCooldownSeconds);
+      this.setNumberInput('bot-move-max-replans', cfg.movement?.maxReplansPerTurn);
     } catch {}
   }
 
@@ -1530,7 +1535,8 @@ export class AdminPanel {
           maxStrategyAttemptsPerTurn: this.getNumberInput('bot-move-max-attempts', 3),
           maxStrategyFailuresPerTurn: this.getNumberInput('bot-move-max-fails', 3),
           replanWhenBannedAtLeast: this.getNumberInput('bot-move-replan-banned', 3),
-          replanCooldownSeconds: this.getNumberInput('bot-move-replan-cooldown', 1.2)
+          replanCooldownSeconds: this.getNumberInput('bot-move-replan-cooldown', 1.2),
+          maxReplansPerTurn: this.getNumberInput('bot-move-max-replans', 4)
         }
       };
 

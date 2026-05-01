@@ -19,7 +19,7 @@ type PlanRequest = {
   botCfg: BotConfig;
   executeSeconds: number;
   ropeRemaining: number;
-  shotMemory?: Array<{ stateKey: string; shotKey: string; noRes: number; ff: number }>;
+  shotMemory?: Array<{ stateKey: string; shotKey: string; noRes: number; ff: number; targetId?: string; lastT?: number }>;
 };
 
 type PlanResponse = {

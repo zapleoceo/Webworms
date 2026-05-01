@@ -11,6 +11,7 @@ export type BotConfig = {
     maxStrategyFailuresPerTurn: number;
     replanWhenBannedAtLeast: number;
     replanCooldownSeconds: number;
+    maxReplansPerTurn: number;
   };
   dig: {
     enabled: boolean;
@@ -45,7 +46,7 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   ropeAttachLimit: { easy: 3, medium: 4, hard: 5 },
   aimErrorPct: { easy: 0.3, medium: 0.15, hard: 0.05 },
   powerErrorPct: { easy: 0.3, medium: 0.15, hard: 0.05 },
-  movement: { maxStrategyAttemptsPerTurn: 3, maxStrategyFailuresPerTurn: 3, replanWhenBannedAtLeast: 3, replanCooldownSeconds: 1.2 },
+  movement: { maxStrategyAttemptsPerTurn: 3, maxStrategyFailuresPerTurn: 3, replanWhenBannedAtLeast: 3, replanCooldownSeconds: 1.2, maxReplansPerTurn: 4 },
   dig: { enabled: true, maxShotsPerTurn: 1, distances: [80, 120, 160], depthMin: 10, depthMax: 40 },
   grenade: { fuseSeconds: 3, restitution: 0.45, friction: 0.85, stopSpeed: 28 },
   scoring: { killBonus: 4000, damageWeight: 1, missWeight: 1, movePenaltyPerPx: 0.35, safeExtraRadius: 14, grenadeMinDamageAdvantagePct: 0.18 }
@@ -86,10 +87,11 @@ export function normalizeBotConfig(raw: any): BotConfig {
       hard: clamp(num(power.hard, DEFAULT_BOT_CONFIG.powerErrorPct.hard), 0, 0.8)
     },
     movement: {
-      maxStrategyAttemptsPerTurn: clamp(int(movement.maxStrategyAttemptsPerTurn, DEFAULT_BOT_CONFIG.movement.maxStrategyAttemptsPerTurn), 1, 10),
+      maxStrategyAttemptsPerTurn: clamp(int(movement.maxStrategyAttemptsPerTurn, DEFAULT_BOT_CONFIG.movement.maxStrategyAttemptsPerTurn), 1, 15),
       maxStrategyFailuresPerTurn: clamp(int(movement.maxStrategyFailuresPerTurn, DEFAULT_BOT_CONFIG.movement.maxStrategyFailuresPerTurn), 1, 10),
       replanWhenBannedAtLeast: clamp(int(movement.replanWhenBannedAtLeast, DEFAULT_BOT_CONFIG.movement.replanWhenBannedAtLeast), 0, 10),
-      replanCooldownSeconds: clamp(num(movement.replanCooldownSeconds, DEFAULT_BOT_CONFIG.movement.replanCooldownSeconds), 0, 10)
+      replanCooldownSeconds: clamp(num(movement.replanCooldownSeconds, DEFAULT_BOT_CONFIG.movement.replanCooldownSeconds), 0, 10),
+      maxReplansPerTurn: clamp(int(movement.maxReplansPerTurn, DEFAULT_BOT_CONFIG.movement.maxReplansPerTurn), 0, 15)
     },
     dig: {
       enabled: Boolean(dig.enabled ?? DEFAULT_BOT_CONFIG.dig.enabled),

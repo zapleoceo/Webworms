@@ -37,6 +37,7 @@ export interface BotAction {
 export interface BotPlan {
   moveTo?: { x: number; y: number };
   action: BotAction;
+  intent?: 'attack' | 'approach';
 }
 
 export type BotCandidateSummary = {
@@ -63,7 +64,7 @@ export type BotDecisionTrace = {
   rejected: Record<string, number>;
 };
 
-type ShotMemoryEntry = { stateKey: string; shotKey: string; noRes: number; ff: number };
+type ShotMemoryEntry = { stateKey: string; shotKey: string; noRes: number; ff: number; targetId?: string; lastT?: number };
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
@@ -829,9 +830,17 @@ export function chooseBotPlan(
     : chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, false, difficulty, shotMemory);
   if (!base) return null;
 
+  const baseNoFireAction: BotAction = {
+    weaponIndex: -1,
+    facingRight: base.action.facingRight,
+    aimAngle: base.action.aimAngle,
+    power: base.action.power,
+    targetId: base.action.targetId
+  };
+
   if (deepBottom) {
     const moveTo = { x: clamp(shooter.x, 30, world.terrain.width - 30), y: clamp(shooter.y - 260, 30, world.terrain.height - 30) };
-    return { moveTo, action: base.action };
+    return { moveTo, action: baseNoFireAction, intent: 'approach' };
   }
 
   if (pitGeom && base.trace) {
@@ -853,12 +862,39 @@ export function chooseBotPlan(
       const escapeX = clamp(shooter.x + dir * 28, 30, world.terrain.width - 30);
       const moveTo = { x: escapeX, y: escapeY };
       (base.trace as any).escapeMoveTo = moveTo;
-      return { moveTo, action: base.action };
+      return { moveTo, action: baseNoFireAction, intent: 'approach' };
     }
   }
 
+  let approachMode = false;
+  if (base.trace) {
+    const chosen = base.trace.chosen;
+    const rejected = base.trace.rejected || {};
+    const muzzleBlocked = rejected.muzzle_blocked || 0;
+    const expectedBad = chosen.expectedDamage <= 0.1;
+    const blockedBad = muzzleBlocked >= 200;
+    const tgt = String(chosen.targetId ?? base.trace.targetId ?? '');
+    let noRes = 0;
+    for (const m of shotMemory) {
+      if (!m) continue;
+      if (m.targetId == null) continue;
+      if (String(m.targetId) !== tgt) continue;
+      if (Number.isFinite(Number(m.lastT)) && typeof m.lastT === 'number') {
+        if (m.lastT < 0) continue;
+      }
+      if ((m.noRes || 0) > noRes) noRes = m.noRes || 0;
+    }
+    const streakBad = noRes >= 3;
+    approachMode = expectedBad && blockedBad && streakBad;
+    (base.trace as any).approachMode = approachMode ? 1 : 0;
+    (base.trace as any).approachNoRes = noRes;
+    (base.trace as any).approachMuzzleBlocked = muzzleBlocked;
+    (base.trace as any).approachExpectedDamage = chosen.expectedDamage;
+  }
+
   const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
-  const maxMoveDist = Math.max(0, maxSpeed * Math.max(0, moveSeconds));
+  const moveSecondsForMove = approachMode ? (moveSeconds * 0.5) : moveSeconds;
+  const maxMoveDist = Math.max(0, maxSpeed * Math.max(0, moveSecondsForMove));
   const ropeRange = 252 * 0.85;
   const hasRope = Array.isArray(shooter.equipmentIds) && shooter.equipmentIds.includes('rope');
   const ropeBoost = hasRope ? (ropeRange * Math.min(2, Math.max(0, ropeAttachBudget))) : 0;
@@ -956,6 +992,7 @@ export function chooseBotPlan(
   const allyNearDist = 150;
   const retreatBonusPerPx = 0.45;
   const allyBonusPerPx = 0.25;
+  const approachBonusPerPx = 0.8;
   const positionWeight = 1.0;
 
   const planPathToX = buildSurfacePathPlanner(world.terrain, shooter, moveSeconds, ropeAttachBudget);
@@ -974,12 +1011,14 @@ export function chooseBotPlan(
     const a1 = minDistToAlly(s2);
     const retreatBonus = (d0 < nearDist && d1 > d0) ? ((d1 - d0) * retreatBonusPerPx) : 0;
     const allyBonus = (a0 < allyNearDist && a1 > a0) ? ((a1 - a0) * allyBonusPerPx) : 0;
+    const approachBonus = (approachMode && d1 < d0) ? ((d0 - d1) * approachBonusPerPx) : 0;
     const posScore = retreatBonus + allyBonus + opennessScore(s2);
     const shotScore = scored ? scored.score : base.score;
-    const totalScore = shotScore - movePenalty + posScore * positionWeight;
+    const totalScore = shotScore - movePenalty + (posScore + approachBonus) * positionWeight;
     if (!best || totalScore > best.score) {
       const moveTo = path.next || { x: s2.x, y: s2.y };
-      best = { score: totalScore, plan: { moveTo, action: (scored ? scored.action : base.action) } };
+      const action = approachMode ? baseNoFireAction : (scored ? scored.action : base.action);
+      best = { score: totalScore, plan: { moveTo, action, intent: approachMode ? 'approach' : 'attack' } };
     }
   }
 
