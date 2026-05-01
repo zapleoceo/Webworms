@@ -6,6 +6,7 @@ export class Landscape {
   public grid: Uint8Array;
   public pixelData?: Uint8ClampedArray; // Original image colors
   public needsUpdate: boolean = true; // Flag for full renderer caching (init only)
+  public revision: number = 1;
   public newCraters: {x: number, y: number, r: number}[] = []; // Queue for fast erasure
   public syncCraters: {x: number, y: number, r: number}[] = []; // Used to sync craters exactly once per network tick
   public newStamps: { imgKey: string; x: number; y: number; w: number; h: number; angle: number; crop?: { x: number; y: number; w: number; h: number } }[] = []; // Queue for stamping images
@@ -31,6 +32,7 @@ export class Landscape {
     if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
       this.grid[y * this.width + x] = material;
       this.needsUpdate = true;
+      this.revision++;
     }
   }
 
@@ -161,6 +163,7 @@ export class Landscape {
         }
 
         this.needsUpdate = true;
+        this.revision++;
         dbg && console.log('[MAP] generateFromImage ms', Math.round(performance.now() - t0), { w: this.width, h: this.height });
         resolve();
       };
@@ -208,6 +211,7 @@ export class Landscape {
     // physics clears a slightly larger area to guarantee no invisible solid pixels
     this.newCraters.push({x: cx, y: cy, r: radius});
     this.syncCraters.push({x: cx, y: cy, r: radius});
+    this.revision++;
   }
 
   public stampImage(

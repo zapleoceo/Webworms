@@ -8,6 +8,7 @@ import { AudioManager } from '../utils/AudioManager';
 import { RopeTool } from '../equipment/items/RopeTool';
 import { circleOffsets } from '../physics/TrajectorySim';
 import { assetUrl } from '../utils/assetUrl';
+import { TerrainDistanceField } from '../physics/TerrainDistanceField';
 
 export class PhysicsEngine {
   public gravity: number = 195; // pixels per second squared (Increased by 30% from 150)
@@ -25,6 +26,7 @@ export class PhysicsEngine {
   private fixedDt: number = 1 / 60;
   private accumulator: number = 0;
   private maxSubsteps: number = 8;
+  private terrainDf: TerrainDistanceField | null = null;
 
   private spawnGrave(state: GameState, worm: any, wormIndex: number): void {
     const spriteN = (wormIndex % 6) + 1;
@@ -908,6 +910,10 @@ export class PhysicsEngine {
 
     const isGrenade = typeof (proj as any).fuseRemaining === 'number';
     const settlePhase = isGrenade && (proj as any).fuseRemaining <= 1.0;
+    if (isGrenade) {
+      this.updateGrenadeProjectile(proj as any, state, dt, settlePhase);
+      return;
+    }
     if (isGrenade && (proj as any).resting) {
       proj.vx = 0;
       proj.vy = 0;
@@ -1278,6 +1284,295 @@ export class PhysicsEngine {
         }
         this.updateGrenadeSpin(proj as any, settlePhase);
         return;
+      }
+    }
+  }
+
+  private updateGrenadeProjectile(proj: any, state: GameState, dt: number, settlePhase: boolean): void {
+    if (!this.terrainDf) this.terrainDf = new TerrainDistanceField(state.landscape);
+    else if ((this.terrainDf as any).landscape !== state.landscape) this.terrainDf.setLandscape(state.landscape);
+
+    if (proj.resting) {
+      proj.vx = 0;
+      proj.vy = 0;
+      proj.angularVelocity = 0;
+    }
+    if (!proj.resting) {
+      proj.vy += this.gravity * dt;
+      if (state.wind) proj.vx += state.wind * dt * proj.windMultiplier;
+    }
+
+    const mass = 1.0;
+    const r = Math.max(1, Number(proj.radius) || 6);
+    const inertia = 0.5 * mass * r * r;
+    const invM = 1 / mass;
+    const invI = inertia > 1e-6 ? 1 / inertia : 0;
+
+    const restitution = Math.max(0, Math.min(0.95, Number(proj.bounce) || 0.45));
+    const muDyn = Math.max(0, Math.min(2.0, Number(proj.friction) || 0.85));
+    const muStatic = Math.min(2.2, muDyn + 0.2);
+    const rollRes = 0.08;
+
+    let dtRem = Math.max(0, dt);
+    let it = 0;
+
+    const stepRotation = (h: number) => {
+      const rot0 = Number(proj.rotation) || 0;
+      const av = Number(proj.angularVelocity) || 0;
+      proj.rotation = this.normAngle(rot0 + av * h);
+    };
+
+    const clampSpeed = (vx0: number, vy0: number) => {
+      const dvx = proj.vx - vx0;
+      const dvy = proj.vy - vy0;
+      const dv = Math.hypot(dvx, dvy);
+      const speed0 = Math.hypot(vx0, vy0);
+      const dvCap = Math.max(280, speed0 * 2.2);
+      if (dv > dvCap) {
+        const s = dvCap / dv;
+        proj.vx = vx0 + dvx * s;
+        proj.vy = vy0 + dvy * s;
+      }
+      const speed1 = Math.hypot(proj.vx, proj.vy);
+      const speedCap = Math.max(420, speed0 * 1.6 + 180);
+      if (speed1 > speedCap) {
+        const s2 = speedCap / speed1;
+        proj.vx *= s2;
+        proj.vy *= s2;
+      }
+    };
+
+    const findCircleHit01 = (p0x: number, p0y: number, p1x: number, p1y: number, cx: number, cy: number, rad: number): number | null => {
+      const dx = p1x - p0x;
+      const dy = p1y - p0y;
+      const fx = p0x - cx;
+      const fy = p0y - cy;
+      const a = dx * dx + dy * dy;
+      if (a < 1e-9) return null;
+      const b = 2 * (fx * dx + fy * dy);
+      const c = fx * fx + fy * fy - rad * rad;
+      const disc = b * b - 4 * a * c;
+      if (disc < 0) return null;
+      const s = Math.sqrt(disc);
+      const t0 = (-b - s) / (2 * a);
+      if (t0 >= 0 && t0 <= 1) return t0;
+      const t1 = (-b + s) / (2 * a);
+      if (t1 >= 0 && t1 <= 1) return t1;
+      return null;
+    };
+
+    while (dtRem > 1e-6 && it++ < 6) {
+      const vLen = Math.hypot(proj.vx || 0, proj.vy || 0);
+      if (!Number.isFinite(vLen) || vLen < 1e-6) {
+        const sd0 = this.terrainDf.signedDistance(proj.x, proj.y);
+        const sep0 = sd0 - r;
+        if (sep0 < 0) {
+          const n0 = this.terrainDf.normal(proj.x, proj.y);
+          const push = (-sep0) + 0.25;
+          proj.x += n0.nx * push;
+          proj.y += n0.ny * push;
+        }
+        break;
+      }
+
+      const p0x = proj.x;
+      const p0y = proj.y;
+      const p1x = proj.x + proj.vx * dtRem;
+      const p1y = proj.y + proj.vy * dtRem;
+
+      let bestEntityT: number | null = null;
+      let bestEntityType: 'player' | 'prop' | null = null;
+      let bestEntityRef: any = null;
+      let bestEntityNx = 0;
+      let bestEntityNy = -1;
+
+      const sweepMinX = Math.min(p0x, p1x) - r - 12;
+      const sweepMaxX = Math.max(p0x, p1x) + r + 12;
+      const sweepMinY = Math.min(p0y, p1y) - r - 12;
+      const sweepMaxY = Math.max(p0y, p1y) + r + 12;
+
+      for (const player of state.players) {
+        if (player.health <= 0) continue;
+        if (player === proj.owner && proj.framesAlive !== undefined && proj.framesAlive < 5) continue;
+        const pr = Math.max(player.width || 0, player.height || 0) * 0.8 + 4;
+        const rr = pr + r;
+        if (player.x < sweepMinX - rr || player.x > sweepMaxX + rr || player.y < sweepMinY - rr || player.y > sweepMaxY + rr) continue;
+        const tHit = findCircleHit01(p0x, p0y, p1x, p1y, player.x, player.y, rr);
+        if (tHit === null) continue;
+        if (bestEntityT === null || tHit < bestEntityT) {
+          const hx = p0x + (p1x - p0x) * tHit;
+          const hy = p0y + (p1y - p0y) * tHit;
+          const dx = hx - player.x;
+          const dy = hy - player.y;
+          const nn = Math.hypot(dx, dy) || 1;
+          bestEntityNx = dx / nn;
+          bestEntityNy = dy / nn;
+          bestEntityT = tHit;
+          bestEntityType = 'player';
+          bestEntityRef = player;
+        }
+      }
+
+      for (const prop of state.props) {
+        const rr = prop.radius + r;
+        if (prop.x < sweepMinX - rr || prop.x > sweepMaxX + rr || prop.y < sweepMinY - rr || prop.y > sweepMaxY + rr) continue;
+        const tHit = findCircleHit01(p0x, p0y, p1x, p1y, prop.x, prop.y, rr);
+        if (tHit === null) continue;
+        if (bestEntityT === null || tHit < bestEntityT) {
+          const hx = p0x + (p1x - p0x) * tHit;
+          const hy = p0y + (p1y - p0y) * tHit;
+          const dx = hx - prop.x;
+          const dy = hy - prop.y;
+          const nn = Math.hypot(dx, dy) || 1;
+          bestEntityNx = dx / nn;
+          bestEntityNy = dy / nn;
+          bestEntityT = tHit;
+          bestEntityType = 'prop';
+          bestEntityRef = prop;
+        }
+      }
+
+      const sd = this.terrainDf.signedDistance(p0x, p0y);
+      const sep = sd - r;
+      const tTerrain = sep > 0 ? Math.min(dtRem, (0.9 * sep) / vLen) : 0;
+      const tEntity = bestEntityT !== null ? bestEntityT * dtRem : Infinity;
+
+      const moveT = Math.min(dtRem, tTerrain > 0 ? tTerrain : dtRem, tEntity);
+
+      const nxMove = proj.vx * moveT;
+      const nyMove = proj.vy * moveT;
+      proj.x += nxMove;
+      proj.y += nyMove;
+      stepRotation(moveT);
+
+      const traveled = Math.hypot(nxMove, nyMove);
+      if (Number.isFinite(proj.rangeRemaining)) {
+        proj.rangeRemaining -= traveled;
+        if (proj.rangeRemaining <= 0) {
+          this.explode(proj, state, 1.0);
+          return;
+        }
+      }
+
+      dtRem -= moveT;
+
+      if (bestEntityT !== null && moveT === tEntity && bestEntityType && bestEntityRef) {
+        const vx0 = proj.vx;
+        const vy0 = proj.vy;
+        const n = { x: bestEntityNx, y: bestEntityNy };
+        const vDotN = proj.vx * n.x + proj.vy * n.y;
+        if (vDotN > 0) {
+          n.x = -n.x;
+          n.y = -n.y;
+        }
+
+        const rx = -n.x * r;
+        const ry = -n.y * r;
+        const vcx = proj.vx + (-proj.angularVelocity * ry);
+        const vcy = proj.vy + (proj.angularVelocity * rx);
+        const vn = vcx * n.x + vcy * n.y;
+        if (vn < 0) {
+          const jn = (-(1 + restitution) * vn) / invM;
+          proj.vx += n.x * jn * invM;
+          proj.vy += n.y * jn * invM;
+
+          const tx = -n.y;
+          const ty = n.x;
+          const vt = vcx * tx + vcy * ty;
+          const rt = rx * ty - ry * tx;
+          const denomT = invM + rt * rt * invI;
+          const jt0 = denomT > 1e-6 ? (-vt) / denomT : 0;
+          const jtMax = muDyn * jn;
+          const jt = Math.max(-jtMax, Math.min(jtMax, jt0));
+          proj.vx += tx * jt * invM;
+          proj.vy += ty * jt * invM;
+          proj.angularVelocity += rt * jt * invI;
+        }
+        clampSpeed(vx0, vy0);
+        if (bestEntityType === 'player') {
+          proj.vx *= 0.92;
+          proj.vy *= 0.92;
+        }
+        continue;
+      }
+
+      const sd1 = this.terrainDf.signedDistance(proj.x, proj.y);
+      const sep1 = sd1 - r;
+      if (sep1 <= 0.25) {
+        const vx0 = proj.vx;
+        const vy0 = proj.vy;
+        const n = this.terrainDf.normal(proj.x, proj.y);
+
+        const vDotN = proj.vx * n.nx + proj.vy * n.ny;
+        if (vDotN > 0) {
+          n.nx = -n.nx;
+          n.ny = -n.ny;
+        }
+
+        const push = (-sep1) + 0.35;
+        proj.x += n.nx * push;
+        proj.y += n.ny * push;
+
+        const rx = -n.nx * r;
+        const ry = -n.ny * r;
+        const vcx = proj.vx + (-proj.angularVelocity * ry);
+        const vcy = proj.vy + (proj.angularVelocity * rx);
+        const vn = vcx * n.nx + vcy * n.ny;
+        if (vn < 0) {
+          const jn = (-(1 + restitution) * vn) / invM;
+          proj.vx += n.nx * jn * invM;
+          proj.vy += n.ny * jn * invM;
+
+          const tx = -n.ny;
+          const ty = n.nx;
+          const vt = vcx * tx + vcy * ty;
+          const rt = rx * ty - ry * tx;
+          const denomT = invM + rt * rt * invI;
+          const jt0 = denomT > 1e-6 ? (-vt) / denomT : 0;
+          const jtMax = (Math.abs(vt) < 18 ? muStatic : muDyn) * jn;
+          const jt = Math.max(-jtMax, Math.min(jtMax, jt0));
+          proj.vx += tx * jt * invM;
+          proj.vy += ty * jt * invM;
+          proj.angularVelocity += rt * jt * invI;
+
+          proj.angularVelocity *= (1 - rollRes);
+          proj.vx *= (1 - rollRes * 0.25);
+          proj.vy *= (1 - rollRes * 0.25);
+        }
+
+        clampSpeed(vx0, vy0);
+
+        const speed = Math.hypot(proj.vx, proj.vy);
+        const stopSpeed = Number.isFinite(proj.stopSpeed) ? Math.max(0, Number(proj.stopSpeed)) : 0;
+        if (stopSpeed > 0 && speed <= stopSpeed && Math.abs(proj.angularVelocity) <= 2.2 && n.ny <= -0.7) {
+          proj.vx = 0;
+          proj.vy = 0;
+          proj.angularVelocity = 0;
+          proj.resting = true;
+          break;
+        }
+        if (settlePhase && n.ny <= -0.7) {
+          proj.vx *= 0.88;
+          proj.vy *= 0.88;
+          proj.angularVelocity *= 0.84;
+        }
+        continue;
+      }
+
+      if (proj.x <= 30 || proj.x >= state.width - 30 || proj.y >= state.height - 30) {
+        if (proj.x <= 30) {
+          proj.x = 30 + r + 0.5;
+          proj.vx = Math.abs(proj.vx) * restitution;
+        } else if (proj.x >= state.width - 30) {
+          proj.x = state.width - 30 - r - 0.5;
+          proj.vx = -Math.abs(proj.vx) * restitution;
+        } else if (proj.y >= state.height - 30) {
+          proj.y = state.height - 30 - r - 0.5;
+          proj.vy = -Math.abs(proj.vy) * restitution;
+          proj.vx *= 0.85;
+        }
+        stepRotation(0);
+        break;
       }
     }
   }
