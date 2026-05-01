@@ -47,7 +47,7 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   powerErrorPct: { easy: 0.3, medium: 0.15, hard: 0.05 },
   movement: { maxStrategyAttemptsPerTurn: 3, maxStrategyFailuresPerTurn: 3, replanWhenBannedAtLeast: 3, replanCooldownSeconds: 1.2 },
   dig: { enabled: true, maxShotsPerTurn: 1, distances: [80, 120, 160], depthMin: 10, depthMax: 40 },
-  grenade: { fuseSeconds: 3, restitution: 0.35, friction: 0.85, stopSpeed: 28 },
+  grenade: { fuseSeconds: 3, restitution: 0.45, friction: 0.85, stopSpeed: 28 },
   scoring: { killBonus: 4000, damageWeight: 1, missWeight: 1, movePenaltyPerPx: 0.35, safeExtraRadius: 14, grenadeMinDamageAdvantagePct: 0.18 }
 };
 

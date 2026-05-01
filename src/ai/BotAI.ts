@@ -231,7 +231,7 @@ function chooseBotActionScored(
               maxTime,
               mode: weapon.id === 'grenade' ? 'grenade' : 'projectile',
               grenade: weapon.id === 'grenade'
-                ? { fuseSeconds, restitution: 0.45, friction: 0.85, stopSpeed: 0 }
+                ? { fuseSeconds, restitution: botCfg.grenade.restitution, friction: botCfg.grenade.friction, stopSpeed: botCfg.grenade.stopSpeed }
                 : undefined
             },
             { x: target.x, y: target.y },
