@@ -83,7 +83,21 @@ export function integrateAirdrop(
   const hw = logo.collisionWidth / 2;
   const hh = logo.collisionHeight / 2;
 
-  if (!Array.isArray(logo.contactPointsLocal) || logo.contactPointsLocal.length === 0 || logo.lastCollisionW !== logo.collisionWidth || logo.lastCollisionH !== logo.collisionHeight) {
+  const customPts = (logo as any).customContactPointsLocal;
+  const customKey = (logo as any).customContactKey;
+  const wantKey = (logo as any).customContactWantKey;
+  const customOk =
+    Array.isArray(customPts) &&
+    customPts.length >= 6 &&
+    typeof customKey === 'string' &&
+    typeof wantKey === 'string' &&
+    customKey === wantKey;
+
+  if (customOk) {
+    logo.contactPointsLocal = customPts as any;
+    logo.lastCollisionW = logo.collisionWidth;
+    logo.lastCollisionH = logo.collisionHeight;
+  } else if (!Array.isArray(logo.contactPointsLocal) || logo.contactPointsLocal.length === 0 || logo.lastCollisionW !== logo.collisionWidth || logo.lastCollisionH !== logo.collisionHeight) {
     logo.contactPointsLocal = buildAirdropContactPoints(hw, hh, cfg) as any;
     logo.lastCollisionW = logo.collisionWidth;
     logo.lastCollisionH = logo.collisionHeight;

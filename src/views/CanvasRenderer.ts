@@ -10,6 +10,7 @@ export class CanvasRenderer {
   private animCtrl: AnimationController;
   
   private wormImages: { [key: string]: HTMLImageElement } = {};
+  private logoSupportCache: Map<string, Array<{ x: number; y: number }>> = new Map();
 
   private loadImg(src: string): HTMLImageElement {
     const img = new Image();
@@ -160,8 +161,96 @@ export class CanvasRenderer {
           logo.spriteSourceH = img.naturalHeight;
         }
       }
+      if (img.complete && img.naturalWidth !== 0) {
+        const cw = Math.max(1, Math.round((logo as any).collisionWidth || logo.width || 1));
+        const ch = Math.max(1, Math.round((logo as any).collisionHeight || logo.height || 1));
+        const c = crop ? `${crop.x},${crop.y},${crop.w},${crop.h}` : 'full';
+        const wantKey = `${logo.sprite}|${c}|${cw}x${ch}`;
+        const cached = this.logoSupportCache.get(wantKey);
+        if (cached) {
+          (logo as any).customContactPointsLocal = cached;
+          (logo as any).customContactKey = wantKey;
+          (logo as any).customContactWantKey = wantKey;
+        } else {
+          const pts = this.computeLogoSupportPoints(img, crop, cw, ch);
+          if (pts && pts.length >= 6) {
+            this.logoSupportCache.set(wantKey, pts);
+            (logo as any).customContactPointsLocal = pts;
+            (logo as any).customContactKey = wantKey;
+            (logo as any).customContactWantKey = wantKey;
+          }
+        }
+      }
       logo.draw(this.ctx, img, crop);
     }
+  }
+
+  private computeLogoSupportPoints(
+    img: HTMLImageElement,
+    crop: { x: number; y: number; w: number; h: number } | undefined,
+    collisionW: number,
+    collisionH: number
+  ): Array<{ x: number; y: number }> | null {
+    const sw = crop ? crop.w : img.naturalWidth;
+    const sh = crop ? crop.h : img.naturalHeight;
+    if (!sw || !sh) return null;
+
+    const c = document.createElement('canvas');
+    c.width = sw;
+    c.height = sh;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, sw, sh);
+    if (crop) ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, sw, sh);
+    else ctx.drawImage(img, 0, 0);
+    const data = ctx.getImageData(0, 0, sw, sh).data;
+
+    const alphaOk = (x: number, y: number) => data[(y * sw + x) * 4 + 3] > 32;
+    const pts: Array<{ x: number; y: number }> = [];
+
+    const bottomCount = Math.max(10, Math.min(22, Math.round(sw / 14) + 1));
+    for (let i = 0; i < bottomCount; i++) {
+      const x = Math.max(0, Math.min(sw - 1, Math.round((i / (bottomCount - 1)) * (sw - 1))));
+      let yFound = -1;
+      for (let y = sh - 1; y >= 0; y--) {
+        if (alphaOk(x, y)) { yFound = y; break; }
+      }
+      if (yFound < 0) continue;
+      const lx = ((x / Math.max(1, sw - 1)) - 0.5) * collisionW;
+      const ly = ((yFound / Math.max(1, sh - 1)) - 0.5) * collisionH;
+      pts.push({ x: lx, y: ly });
+    }
+
+    const sideRows = [0.35, 0.6, 0.82];
+    for (const rt of sideRows) {
+      const y = Math.max(0, Math.min(sh - 1, Math.round(rt * (sh - 1))));
+      let lxPix = -1;
+      for (let x = 0; x < sw; x++) { if (alphaOk(x, y)) { lxPix = x; break; } }
+      let rxPix = -1;
+      for (let x = sw - 1; x >= 0; x--) { if (alphaOk(x, y)) { rxPix = x; break; } }
+      if (lxPix >= 0) {
+        pts.push({
+          x: ((lxPix / Math.max(1, sw - 1)) - 0.5) * collisionW,
+          y: ((y / Math.max(1, sh - 1)) - 0.5) * collisionH
+        });
+      }
+      if (rxPix >= 0) {
+        pts.push({
+          x: ((rxPix / Math.max(1, sw - 1)) - 0.5) * collisionW,
+          y: ((y / Math.max(1, sh - 1)) - 0.5) * collisionH
+        });
+      }
+    }
+
+    const unique: Array<{ x: number; y: number }> = [];
+    const seen = new Set<string>();
+    for (const p of pts) {
+      const k = `${Math.round(p.x)}:${Math.round(p.y)}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      unique.push(p);
+    }
+    return unique.length >= 6 ? unique.slice(0, 24) : null;
   }
 
   private static opaqueBoundsCache: Record<string, { x: number; y: number; w: number; h: number }> = {};
