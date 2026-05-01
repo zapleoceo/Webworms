@@ -387,9 +387,6 @@ export class GamePresenter {
       // Find active player before physics step
       const currentPlayer = this.state.getCurrentPlayer();
       if (!currentPlayer) return;
-
-      const hadBurst = this.blasterBurstRemaining > 0 && this.blasterBurstOwnerIndex === this.state.currentPlayerIndex;
-      const wasMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0 || hadBurst;
       
       // Update Physics
       this.physics.update(this.state, dt);
@@ -422,7 +419,6 @@ export class GamePresenter {
       }
       
       const hasBurst = this.blasterBurstRemaining > 0 && this.blasterBurstOwnerIndex === this.state.currentPlayerIndex;
-      const isMoving = currentPlayer.vx !== 0 || currentPlayer.vy !== 0 || this.state.projectiles.length > 0 || hasBurst;
       const hasProjectiles = this.state.projectiles.length > 0 || hasBurst;
       const isStable = !hasProjectiles;
 
@@ -455,7 +451,7 @@ export class GamePresenter {
       this.processActiveInputs(dt);
 
       if (this.botTurnController) {
-        this.botTurnController.update(this, isMoving || wasMoving);
+        this.botTurnController.update(this, hasProjectiles);
       }
       
       // Check game over

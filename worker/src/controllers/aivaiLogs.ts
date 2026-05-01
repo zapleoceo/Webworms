@@ -40,4 +40,3 @@ export async function uploadAIVaiLog(request: Request, env: any, corsHeaders: Re
     return new Response(JSON.stringify({ success: false, error: e?.message || 'Server error' }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 }
-

@@ -4,6 +4,7 @@ import type { AIDifficulty, BotConfig } from '../ai/BotConfig';
 import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
 import { chooseBotAction, chooseBotPlan, chooseDigAction, terrainFromLandscape, type BotWormSnapshot } from '../ai/BotAI';
 import { AI_V } from '../ai/AIVersion';
+import ThinkWorker from '../ai/worker/BotThinkWorker?worker';
 
 type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
 type RopeMode = 'climb' | 'swing' | 'descend';
@@ -69,6 +70,7 @@ export class BotTurnController {
   private planningDeadlineAt: number = 0;
   private lastDecisionDebug: any | null = null;
   private lastTurnStateAt: number = -999;
+  private workerInitError: string | null = null;
 
   constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
     if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
@@ -124,11 +126,16 @@ export class BotTurnController {
   private ensureWorker() {
     if (this.thinkWorker) return;
     try {
-      const W: any = (globalThis as any).Worker;
-      if (!W) return;
-      this.thinkWorker = new W(new URL('../ai/worker/BotThinkWorker.ts', (import.meta as any).url), { type: 'module' });
+      this.workerInitError = null;
+      this.thinkWorker = new ThinkWorker();
       const worker = this.thinkWorker;
       if (!worker) return;
+      worker.onerror = (evt: any) => {
+        try {
+          const msg = typeof evt?.message === 'string' ? evt.message : 'worker_error';
+          this.workerInitError = msg;
+        } catch {}
+      };
       worker.onmessage = (evt: MessageEvent<any>) => {
         const msg = evt.data;
         if (!msg || msg.kind !== 'planResult') return;
@@ -138,6 +145,7 @@ export class BotTurnController {
       };
     } catch {
       this.thinkWorker = null;
+      this.workerInitError = 'worker_init_failed';
     }
   }
 
@@ -325,6 +333,8 @@ export class BotTurnController {
         plannedThisTurn: this.plannedThisTurn ? 1 : 0,
         planningInProgress: this.planningInProgress ? 1 : 0,
         firedThisTurn: this.firedThisTurn ? 1 : 0,
+        workerReady: this.thinkWorker ? 1 : 0,
+        workerInitError: this.workerInitError,
         aiV: AI_V
       });
     }
