@@ -87,7 +87,7 @@ export const WEAPONS: Record<string, Weapon> = {
     projectilesPerShot: 1,
     color: '#7FFFD4',
     cooldown: 0.3,
-    chargeSpeed: 0,
+    chargeSpeed: 0.67,
     speedModifier: 1.6,
     maxRange: 1700
   },
