@@ -25,6 +25,28 @@ export class PhysicsEngine {
   private accumulator: number = 0;
   private maxSubsteps: number = 8;
 
+  private spawnGrave(state: GameState, worm: any, wormIndex: number): void {
+    const spriteN = (wormIndex % 6) + 1;
+    const sprite = `/sprites/Misc/grave${spriteN}.png`;
+    const x = Number(worm.x) || 0;
+    const y = (Number(worm.y) || 0) - Math.max(0, Number(worm.height) || 0) * 0.25;
+    const vx = (Number(worm.vx) || 0) * 0.2;
+    const vy = (Number(worm.vy) || 0) * 0.2;
+    const logo = new BrandLogo(sprite, x, y, vx, vy, 0, 0);
+    logo.width = 60;
+    logo.height = 60;
+    logo.collisionWidth = 48;
+    logo.collisionHeight = 48;
+    logo.hardness = 999;
+    logo.maxHealth = 9999;
+    logo.health = 9999;
+    (logo as any).airdropPhysics = state.airdropPhysics;
+    (logo as any).requireGroundToSleep = true;
+    if (!state.brandLogos) state.brandLogos = [];
+    state.brandLogos.push(logo);
+    (worm as any).graveSpawned = true;
+  }
+
   public update(state: GameState, dt: number): void {
     const clamped = Math.max(0, Math.min(0.25, dt));
     this.accumulator += clamped;
@@ -91,6 +113,14 @@ export class PhysicsEngine {
     }
 
     state.props = state.props.filter(p => p.health > 0);
+
+    for (let i = 0; i < state.players.length; i++) {
+      const worm: any = state.players[i];
+      if (!worm) continue;
+      if (worm.health > 0) continue;
+      if ((worm as any).graveSpawned) continue;
+      this.spawnGrave(state, worm, i);
+    }
 
     if (state.particles) {
       for (const p of state.particles) {
@@ -781,16 +811,19 @@ export class PhysicsEngine {
     return r;
   }
 
-  private updateGrenadeSpin(proj: any): void {
-    const stopSpeed = Number.isFinite(proj.stopSpeed) ? Math.max(0, Number(proj.stopSpeed)) : 0;
-    const speed = Math.hypot(proj.vx || 0, proj.vy || 0);
-    if (stopSpeed > 0 && speed <= stopSpeed) {
-      proj.angularVelocity = 0;
-      return;
+  private updateGrenadeSpin(proj: any, settlePhase: boolean): void {
+    if (settlePhase) {
+      const stopSpeed = Number.isFinite(proj.stopSpeed) ? Math.max(0, Number(proj.stopSpeed)) : 0;
+      const speed = Math.hypot(proj.vx || 0, proj.vy || 0);
+      if (stopSpeed > 0 && speed <= stopSpeed) {
+        proj.angularVelocity = 0;
+        return;
+      }
     }
     const k = 0.04;
     const omegaMin = 2;
     const omegaMax = 18;
+    const speed = Math.hypot(proj.vx || 0, proj.vy || 0);
     const mag = Math.max(omegaMin, Math.min(omegaMax, speed * k));
     if (proj.vx > 1) proj.angularVelocity = mag;
     else if (proj.vx < -1) proj.angularVelocity = -mag;
@@ -813,6 +846,7 @@ export class PhysicsEngine {
     }
 
     const isGrenade = typeof (proj as any).fuseRemaining === 'number';
+    const settlePhase = isGrenade && (proj as any).fuseRemaining <= 1.0;
     if (isGrenade && (proj as any).resting) {
       proj.vx = 0;
       proj.vy = 0;
@@ -1020,7 +1054,7 @@ export class PhysicsEngine {
         }
 
         const bounce = (proj as any).bounce ?? 0.45;
-        const friction = (proj as any).friction ?? 0.85;
+        const friction = settlePhase ? ((proj as any).friction ?? 0.85) : 1;
         const vBefore = { vx: proj.vx, vy: proj.vy };
         const posBefore = { x: proj.x, y: proj.y };
         this.bounceOnNormal(proj as any, nx, ny, bounce, friction, proj.radius + 0.5);
@@ -1089,16 +1123,18 @@ export class PhysicsEngine {
         }
         const stopSpeed = Number.isFinite((proj as any).stopSpeed) ? Math.max(0, Number((proj as any).stopSpeed)) : 0;
         const speed = Math.hypot(proj.vx, proj.vy);
-        if (stopSpeed > 0 && speed <= stopSpeed) {
+        const floorNy = -0.85;
+        const canRest = settlePhase && ny <= floorNy;
+        if (canRest && stopSpeed > 0 && speed <= stopSpeed) {
           proj.vx = 0;
           proj.vy = 0;
           (proj as any).resting = true;
           (proj as any).angularVelocity = 0;
-        } else {
+        } else if (settlePhase && ny <= floorNy) {
           if (Math.abs(proj.vx) < 0.75) proj.vx = 0;
           if (Math.abs(proj.vy) < 0.75) proj.vy = 0;
-          this.updateGrenadeSpin(proj as any);
         }
+        this.updateGrenadeSpin(proj as any, settlePhase);
         return;
       }
 
@@ -1132,20 +1168,29 @@ export class PhysicsEngine {
       if (proj.x <= 30) {
         proj.x = 30 + proj.radius + 0.5;
         proj.vx = Math.abs(proj.vx) * ((proj as any).bounce ?? 0.45);
-        this.updateGrenadeSpin(proj as any);
+        this.updateGrenadeSpin(proj as any, settlePhase);
         return;
       }
       if (proj.x >= state.width - 30) {
         proj.x = state.width - 30 - proj.radius - 0.5;
         proj.vx = -Math.abs(proj.vx) * ((proj as any).bounce ?? 0.45);
-        this.updateGrenadeSpin(proj as any);
+        this.updateGrenadeSpin(proj as any, settlePhase);
         return;
       }
       if (proj.y >= state.height - 30) {
         proj.y = state.height - 30 - proj.radius - 0.5;
         proj.vy = -Math.abs(proj.vy) * ((proj as any).bounce ?? 0.45);
-        proj.vx *= (proj as any).friction ?? 0.85;
-        this.updateGrenadeSpin(proj as any);
+        const fr = settlePhase ? ((proj as any).friction ?? 0.85) : 1;
+        proj.vx *= fr;
+        const stopSpeed = Number.isFinite((proj as any).stopSpeed) ? Math.max(0, Number((proj as any).stopSpeed)) : 0;
+        const speed = Math.hypot(proj.vx, proj.vy);
+        if (settlePhase && stopSpeed > 0 && speed <= stopSpeed) {
+          proj.vx = 0;
+          proj.vy = 0;
+          (proj as any).resting = true;
+          (proj as any).angularVelocity = 0;
+        }
+        this.updateGrenadeSpin(proj as any, settlePhase);
         return;
       }
     }

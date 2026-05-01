@@ -173,11 +173,13 @@ function simulateGrenade(
   let hitTerrain = false;
   let resting = false;
   const stepsOuter = Math.max(1, Math.floor(g.fuseSeconds / params.dt));
-  const fric = Math.max(0, Math.min(2, g.friction));
   const rest = Math.max(0, Math.min(0.85, g.restitution));
   const pr = Math.max(1, Math.floor(params.radius * 0.8));
+  const floorNy = -0.85;
 
   for (let i = 0; i < stepsOuter; i++) {
+    const timeLeft = Math.max(0, g.fuseSeconds - i * params.dt);
+    const settlePhase = timeLeft <= 1.0;
     if (!resting) {
       vy += params.gravity * params.dt;
       if (params.wind) vx += params.wind * params.dt * params.windMultiplier;
@@ -235,13 +237,15 @@ function simulateGrenade(
       const vty = vy - vny;
       const nextVnX = -vnx * rest;
       const nextVnY = -vny * rest;
+      const fric = settlePhase ? Math.max(0, Math.min(2, g.friction)) : 0;
       const tanDamp = Math.max(0, 1 - fric * 0.18);
       const nextVtX = vtx * tanDamp;
       const nextVtY = vty * tanDamp;
       vx = nextVnX + nextVtX;
       vy = nextVnY + nextVtY;
       const speed = Math.hypot(vx, vy);
-      if (speed <= g.stopSpeed) {
+      const canRest = settlePhase && nrm.y <= floorNy;
+      if (canRest && speed <= g.stopSpeed) {
         vx = 0;
         vy = 0;
         resting = true;

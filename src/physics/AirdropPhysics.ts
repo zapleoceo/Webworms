@@ -246,7 +246,12 @@ export function integrateAirdrop(
     const speed = Math.hypot(logo.vx, logo.vy);
     const aw = Math.abs(logo.angularVelocity);
     if (hasContact && speed < cfg.sleepLinear && aw < cfg.sleepAngular) {
-      logo.sleepAccum += stepDt;
+      const needGround = Boolean((logo as any).requireGroundToSleep);
+      if (!needGround || logo.touchedGround) {
+        logo.sleepAccum += stepDt;
+      } else {
+        logo.sleepAccum = 0;
+      }
     } else {
       logo.sleepAccum = 0;
     }

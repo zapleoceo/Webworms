@@ -584,6 +584,10 @@ export class CanvasRenderer {
       let flipX = player.facingRight; // Default flipX logic for worms
       
       if (player.health <= 0) {
+        if ((player as any).graveSpawned) {
+          this.ctx.restore();
+          continue;
+        }
         animKey = 'grave';
         frameIndex = playerIndex % this.animCtrl.getAnimLength('grave');
         offsetY = 0;
