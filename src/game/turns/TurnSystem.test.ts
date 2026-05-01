@@ -8,6 +8,12 @@ describe('TurnSystem', () => {
     expect(res.nextTurn).toBe(false);
   });
 
+  it('preserves Infinity timer in training', () => {
+    const res = stepTurn({ mode: 'training', hasFiredThisTurn: false, isStable: true, turnTimeLeft: Infinity, dtTimer: 1 });
+    expect(res.turnTimeLeft).toBe(Infinity);
+    expect(res.nextTurn).toBe(false);
+  });
+
   it('ends turn in training after firing when stable', () => {
     const res = stepTurn({ mode: 'training', hasFiredThisTurn: true, isStable: true, turnTimeLeft: 30, dtTimer: 1 });
     expect(res.nextTurn).toBe(true);
@@ -20,4 +26,3 @@ describe('TurnSystem', () => {
     expect(r1.nextTurn).toBe(true);
   });
 });
-

@@ -16,7 +16,7 @@ export type TurnStepOutput = {
 export function stepTurn(input: TurnStepInput): TurnStepOutput {
   const mode = input.mode;
   const dtTimer = Math.max(0, input.dtTimer);
-  let ttl = Number.isFinite(input.turnTimeLeft) ? input.turnTimeLeft : 0;
+  let ttl = typeof input.turnTimeLeft === 'number' ? Math.max(0, input.turnTimeLeft) : 0;
 
   if (ttl > 0 && mode !== 'training') {
     ttl -= dtTimer;
@@ -36,4 +36,3 @@ export function stepTurn(input: TurnStepInput): TurnStepOutput {
 
   return { nextTurn: false, turnTimeLeft: ttl };
 }
-

@@ -617,27 +617,6 @@ if (joystickMove) {
   }
 }
 
-const touchActions = [
-  { id: 'btn-jump', action: 'jump' },
-  { id: 'btn-fire', action: 'fire' },
-  { id: 'btn-equip', action: 'switch' },
-  { id: 'btn-switch', action: 'switchWormCycle' }
-];
-
-touchActions.forEach(({ id, action }) => {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    if (window.presenter) window.presenter.handleInput(action, true);
-  }, { passive: false });
-  
-  el.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    if (window.presenter) window.presenter.handleInput(action, false);
-  }, { passive: false });
-});
-
 // (Aiming via screen touch removed to prevent conflicts with camera panning)
 
 
