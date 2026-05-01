@@ -15,6 +15,7 @@ import { getLogos, createLogo, updateLogo, deleteLogo } from './controllers/logo
 import { startMatch, reportMatchEnd } from './controllers/matches';
 import { handleContactEmail } from './controllers/contact';
 import { uploadAIVaiLog } from './controllers/aivaiLogs';
+import { getAIVaiLog, listAIVaiLogs } from './controllers/adminAivaiLogs';
 
 export interface Env {
   DB: D1Database;
@@ -399,6 +400,12 @@ export default {
       }
       else if (url.pathname === '/api/aivai/logs' && request.method === 'POST') {
         response = await uploadAIVaiLog(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/admin/aivai/logs' && request.method === 'GET') {
+        response = await listAIVaiLogs(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/admin/aivai/log' && request.method === 'GET') {
+        response = await getAIVaiLog(request, env, corsHeaders);
       }
       else if (url.pathname === '/api/admin/users/time' && request.method === 'POST') {
         response = await addAdminUserTime(request, env, corsHeaders);

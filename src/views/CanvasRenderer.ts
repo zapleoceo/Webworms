@@ -1051,7 +1051,9 @@ export class CanvasRenderer {
   private drawParticles(state: GameState): void {
     if (!state.particles) return;
     for (const p of state.particles) {
-      this.ctx.globalAlpha = p.life / p.maxLife;
+      if (!Number.isFinite(p.life) || !Number.isFinite(p.maxLife) || p.maxLife <= 0) continue;
+      const a = Math.max(0, Math.min(1, p.life / p.maxLife));
+      this.ctx.globalAlpha = a;
       this.ctx.fillStyle = p.color;
       this.ctx.beginPath();
       this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
