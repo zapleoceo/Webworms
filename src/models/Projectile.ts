@@ -15,6 +15,8 @@ export class Projectile {
   public color: string;
   public weaponId: string;
   public rangeRemaining: number;
+  public age: number = 0;
+  public crater: boolean = true;
 
   constructor(x: number, y: number, vx: number, vy: number, weapon: Weapon) {
     this.x = x;
@@ -32,6 +34,7 @@ export class Projectile {
   }
 
   public updatePosition(dt: number): void {
+    this.age += dt;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
   }

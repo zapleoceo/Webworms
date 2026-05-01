@@ -39,23 +39,6 @@ export class CanvasRenderer {
       'backflip': { src: '/sprites/Worms/wkamjmp.png', frameWidth: 60, frameHeight: 60, frameCount: 10 }, // approximation
       'idle': { src: '/sprites/Worms/wbrth1.png', frameWidth: 60, frameHeight: 60, frameCount: 15 }, // breathing
       'grave': { src: '/sprites/Misc/grave1.png', frameWidth: 60, frameHeight: 60, frameCount: 20 }, // Grave
-      // Weapons
-      'bazooka': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'minigun': { src: '/sprites/Worms/wmini.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'shotgun': { src: '/sprites/Worms/wshotg.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'rocket': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'throw': { src: '/sprites/Worms/wthrow.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'rope': { src: '/sprites/Worms/wbatrope.png', frameWidth: 60, frameHeight: 60, frameCount: 64 },
-      'ropetip': { src: '/sprites/Weapons/ropetip.png', frameWidth: 60, frameHeight: 60, frameCount: 64 },
-      'ropecuff': { src: '/sprites/Weapons/ropecuff.png', frameWidth: 60, frameHeight: 60, frameCount: 128 },
-      // Projectiles
-      'proj_bazooka': { src: '/sprites/Weapons/missile.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'proj_minigun': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'proj_triple': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'proj_shotgun': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'proj_rocket': { src: '/sprites/Weapons/hmissil1.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'proj_grenade': { src: '/sprites/Weapons/grenade.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
-      'proj_blaster': { src: '/sprites/Weapons/bullet.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
     });
 
     // Load brand assets for airdrops
@@ -64,9 +47,62 @@ export class CanvasRenderer {
     this.wormImages['brand_android'] = this.loadImg('/brand_android.svg?v=3');
   }
 
-  public setProjectileSprite(weaponId: string, src: string): void {
-    if (!weaponId || !src) return;
-    this.animCtrl.setSpriteConfig(`proj_${weaponId}`, { src, frameWidth: 60, frameHeight: 60, frameCount: 32 });
+  private customFrameCache: { [key: string]: HTMLImageElement } = {};
+
+  private getCustomFrame(src: string): HTMLImageElement {
+    if (this.customFrameCache[src]) return this.customFrameCache[src];
+    const img = new Image();
+    img.src = src;
+    img.onerror = () => console.warn(`Failed to load image: ${src}`);
+    this.customFrameCache[src] = img;
+    return img;
+  }
+
+  private weaponRowById(id: string): number | null {
+    switch (id) {
+      case 'bazooka': return 1;
+      case 'shotgun': return 2;
+      case 'minigun': return 3;
+      case 'homing_missile': return 4;
+      case 'heavy_gun': return 5;
+      case 'handgun': return 6;
+      case 'grenade': return 7;
+      case 'plasma_gun': return 8;
+      case 'flamethrower': return 9;
+      case 'ninja_rope': return 10;
+      default: return null;
+    }
+  }
+
+  private framePath(row: number, col: number): string {
+    return `/sprites/custom_weapons/frames/row${row}_col${col}.png`;
+  }
+
+  private projectileSpriteForWeaponId(weaponId: string): string | null {
+    if (weaponId === 'bazooka') return this.framePath(1, 2);
+    if (weaponId === 'homing_missile') return this.framePath(4, 3);
+    if (weaponId === 'grenade') return this.framePath(7, 3);
+    return null;
+  }
+
+  private trailSpritesForWeaponId(weaponId: string): string[] {
+    if (weaponId === 'bazooka') return [this.framePath(1, 3), this.framePath(1, 4), this.framePath(1, 5)];
+    if (weaponId === 'homing_missile') return [this.framePath(4, 4), this.framePath(4, 5)];
+    if (weaponId === 'grenade') return [this.framePath(7, 5)];
+    return [];
+  }
+
+  private explosionSpriteForWeaponId(weaponId: string, maxRadius: number): string | null {
+    if (weaponId === 'bazooka') return this.framePath(1, 6);
+    if (weaponId === 'homing_missile') return this.framePath(4, 6);
+    if (weaponId === 'grenade') return maxRadius >= 46 ? this.framePath(7, 7) : this.framePath(7, 6);
+    if (weaponId === 'shotgun') return this.framePath(2, 5);
+    if (weaponId === 'minigun') return this.framePath(3, 6);
+    if (weaponId === 'heavy_gun') return this.framePath(5, 6);
+    if (weaponId === 'handgun') return this.framePath(6, 4);
+    if (weaponId === 'plasma_gun') return this.framePath(8, 7);
+    if (weaponId === 'flamethrower') return maxRadius >= 18 ? this.framePath(9, 5) : this.framePath(9, 4);
+    return null;
   }
 
   public render(state: GameState): void {
@@ -118,7 +154,7 @@ export class CanvasRenderer {
       offsetY = 0;
     } else {
       const equipmentId = player.getCurrentEquipmentId?.() || 'bazooka';
-      if (equipmentId === 'rope') {
+      if (equipmentId === 'ninja_rope') {
         animKey = 'idle';
         frameIndex = 0;
         offsetY = 24;
@@ -637,7 +673,6 @@ export class CanvasRenderer {
       const isMoving = Math.abs(player.vx) > 5 && player.health > 0 && !player.isJumping;
       const isActive = player === state.getCurrentPlayer() && player.health > 0;
       const equipmentId = player.getCurrentEquipmentId ? player.getCurrentEquipmentId() : 'bazooka';
-      const equip = getEquipmentDefinition(equipmentId);
 
       // Determine animation state
       let animKey = 'idle';
@@ -669,37 +704,6 @@ export class CanvasRenderer {
         } else {
           frameIndex = 0;
         }
-      } else if (isActive && equip?.aimAnimKey) {
-        if (equipmentId === 'rope') {
-          if (!player.ropeActive) {
-            animKey = 'idle';
-            const numFrames = this.animCtrl.getAnimLength(animKey);
-            if (numFrames > 0) {
-              const totalSteps = (numFrames * 2) - 2;
-              const step = Math.floor(Date.now() / 120) % totalSteps;
-              frameIndex = step < numFrames ? step : totalSteps - step;
-            } else {
-              frameIndex = 0;
-            }
-          } else {
-            animKey = 'rope';
-            flipX = false;
-            const frames = this.animCtrl.getAnimLength(animKey);
-            const dx = player.ropeAnchorX - player.x;
-            const dy = player.ropeAnchorY - (player.y - player.height / 2);
-            const angle = Math.atan2(dy, dx);
-            let normalizedAngle = angle + Math.PI / 2;
-            if (normalizedAngle < 0) normalizedAngle += Math.PI * 2;
-            frameIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * frames) % frames;
-          }
-        } else {
-          animKey = equip.aimAnimKey;
-          const frames = this.animCtrl.getAnimLength(animKey);
-          const normalizedAngle = player.aimAngle + Math.PI / 2;
-          const maxFrame = Math.max(0, frames - 1);
-          frameIndex = Math.floor((1 - (normalizedAngle / Math.PI)) * maxFrame);
-          frameIndex = Math.max(0, Math.min(maxFrame, frameIndex));
-        }
       } else {
         // Idle breathing
         animKey = 'idle';
@@ -724,44 +728,12 @@ export class CanvasRenderer {
         offsetY
       );
 
-      if (player.ropeActive) {
-        const sx = 0;
-        const sy = -player.height / 2;
-        this.ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.moveTo(sx, sy);
+      if (player.ropeActive || ((player as any).ropeCastTime && (player as any).ropeCastTime > 0)) {
+        this.drawRopeSprites(player);
+      }
 
-        const nodes = (player as any).ropeNodes as Array<{ x: number; y: number }> | undefined;
-        if (Array.isArray(nodes)) {
-          for (const n of nodes) {
-            this.ctx.lineTo(n.x - player.x, n.y - player.y);
-          }
-        }
-        const ex = player.ropeAnchorX - player.x;
-        const ey = player.ropeAnchorY - player.y;
-        this.ctx.lineTo(ex, ey);
-        this.ctx.stroke();
-
-        this.animCtrl.drawFrame(this.ctx, 'ropecuff', 0, sx, sy, 0.35, false, 30);
-        this.animCtrl.drawFrame(this.ctx, 'ropetip', 0, ex, ey, 0.35, false, 30);
-      } else if ((player as any).ropeCastTime && (player as any).ropeCastTime > 0) {
-        const sx = 0;
-        const sy = -player.height / 2;
-        const dur = (player as any).ropeCastDuration || 0.18;
-        const t = Math.max(0, Math.min(1, 1 - ((player as any).ropeCastTime / dur)));
-        const tx = (player as any).ropeCastX;
-        const ty = (player as any).ropeCastY;
-        const ex = (tx - player.x) * t;
-        const ey = (ty - player.y) * t;
-        this.ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.moveTo(sx, sy);
-        this.ctx.lineTo(ex, ey);
-        this.ctx.stroke();
-        this.animCtrl.drawFrame(this.ctx, 'ropecuff', 0, sx, sy, 0.35, false, 30);
-        this.animCtrl.drawFrame(this.ctx, 'ropetip', 0, ex, ey, 0.35, false, 30);
+      if (isActive && player.health > 0) {
+        this.drawHeldEquipment(player, equipmentId);
       }
 
       // Draw name and health
@@ -856,45 +828,137 @@ export class CanvasRenderer {
     }
   }
 
+  private drawHeldEquipment(player: any, equipmentId: string): void {
+    const row = this.weaponRowById(equipmentId);
+    if (!row) return;
+    const src = this.framePath(row, 1);
+    const img = this.getCustomFrame(src);
+    const maxDim = Math.max(1, Math.max(img.width || 0, img.height || 0));
+    const base = equipmentId === 'ninja_rope' ? 46 : 44;
+    const k = base / maxDim;
+
+    this.ctx.save();
+    this.ctx.translate(0, -player.height / 2 + 8);
+    this.ctx.scale(player.facingRight ? 1 : -1, 1);
+    this.ctx.rotate(player.aimAngle || 0);
+    this.ctx.drawImage(img, -img.width * k / 2, -img.height * k / 2, img.width * k, img.height * k);
+    this.ctx.restore();
+  }
+
+  private drawRopeSprites(player: any): void {
+    const segImg = this.getCustomFrame(this.framePath(10, 4));
+    const cuffImg = this.getCustomFrame(this.framePath(10, 5));
+    const hookImg = this.getCustomFrame(this.framePath(10, 2));
+    const fxImg = this.getCustomFrame(this.framePath(10, 6));
+
+    const pts: Array<{ x: number; y: number }> = [];
+    pts.push({ x: 0, y: -player.height / 2 });
+    const nodes = (player as any).ropeNodes as Array<{ x: number; y: number }> | undefined;
+    if (Array.isArray(nodes)) {
+      for (const n of nodes) pts.push({ x: n.x - player.x, y: n.y - player.y });
+    }
+
+    if (player.ropeActive) {
+      pts.push({ x: player.ropeAnchorX - player.x, y: player.ropeAnchorY - player.y });
+    } else {
+      const dur = (player as any).ropeCastDuration || 0.18;
+      const t = Math.max(0, Math.min(1, 1 - (((player as any).ropeCastTime || 0) / dur)));
+      const tx = (player as any).ropeCastX;
+      const ty = (player as any).ropeCastY;
+      pts.push({ x: (tx - player.x) * t, y: (ty - player.y) * t });
+    }
+
+    const maxDim = Math.max(1, Math.max(segImg.width || 0, segImg.height || 0));
+    const segBase = 18;
+    const segK = segBase / maxDim;
+    const step = 10;
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1) continue;
+      const ang = Math.atan2(dy, dx);
+      const ux = dx / len;
+      const uy = dy / len;
+      for (let d = 0; d < len; d += step) {
+        if (i > 0 && d === 0) continue;
+        this.ctx.save();
+        this.ctx.translate(a.x + ux * d, a.y + uy * d);
+        this.ctx.rotate(ang);
+        this.ctx.drawImage(segImg, -segImg.width * segK / 2, -segImg.height * segK / 2, segImg.width * segK, segImg.height * segK);
+        this.ctx.restore();
+      }
+    }
+
+    const end = pts[pts.length - 1];
+    const pre = pts.length >= 2 ? pts[pts.length - 2] : pts[0];
+    const angEnd = Math.atan2(end.y - pre.y, end.x - pre.x);
+    const startNext = pts.length >= 2 ? pts[1] : pts[0];
+    const angStart = Math.atan2(startNext.y - pts[0].y, startNext.x - pts[0].x);
+
+    const kCuff = 16 / Math.max(1, Math.max(cuffImg.width || 0, cuffImg.height || 0));
+    this.ctx.save();
+    this.ctx.translate(pts[0].x, pts[0].y);
+    this.ctx.rotate(angStart);
+    this.ctx.drawImage(cuffImg, -cuffImg.width * kCuff / 2, -cuffImg.height * kCuff / 2, cuffImg.width * kCuff, cuffImg.height * kCuff);
+    this.ctx.restore();
+
+    const kHook = 18 / Math.max(1, Math.max(hookImg.width || 0, hookImg.height || 0));
+    this.ctx.save();
+    this.ctx.translate(end.x, end.y);
+    this.ctx.rotate(angEnd);
+    this.ctx.drawImage(hookImg, -hookImg.width * kHook / 2, -hookImg.height * kHook / 2, hookImg.width * kHook, hookImg.height * kHook);
+    this.ctx.restore();
+
+    if (player.ropeActive) {
+      const kFx = 26 / Math.max(1, Math.max(fxImg.width || 0, fxImg.height || 0));
+      this.ctx.save();
+      this.ctx.translate(end.x, end.y);
+      this.ctx.rotate(angEnd);
+      this.ctx.globalAlpha = 0.65;
+      this.ctx.drawImage(fxImg, -fxImg.width * kFx / 2, -fxImg.height * kFx / 2, fxImg.width * kFx, fxImg.height * kFx);
+      this.ctx.restore();
+      this.ctx.globalAlpha = 1.0;
+    }
+  }
+
   private drawProjectiles(state: GameState): void {
     for (const proj of state.projectiles) {
       this.ctx.save();
       this.ctx.translate(proj.x, proj.y);
 
-      const animKey = `proj_${proj.weaponId}`;
-      const hasSprite = this.animCtrl.getAnimLength(animKey) > 0;
+      let angle = Math.atan2(proj.vy, proj.vx);
+      if (proj.weaponId === 'grenade') {
+        const rot = (proj as any).rotation;
+        if (typeof rot === 'number' && Number.isFinite(rot)) angle = rot;
+      }
 
-      if (hasSprite) {
-        // Map velocity angle to 32 frames
-        // angle is -PI to PI
-        let angle = Math.atan2(proj.vy, proj.vx);
-        if (proj.weaponId === 'grenade') {
-          const rot = (proj as any).rotation;
-          if (typeof rot === 'number' && Number.isFinite(rot)) angle = rot;
-        }
-        
-        // Frame 0 is pointing UP (-PI/2).
-        // Let's normalize angle so -PI/2 maps to 0.
-        // angle + PI/2 maps UP to 0, RIGHT to PI/2, DOWN to PI, LEFT to 1.5PI
-        let normalizedAngle = angle + Math.PI / 2;
-        if (normalizedAngle < 0) normalizedAngle += Math.PI * 2;
-        
-        let frameIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * 32) % 32;
+      const trail = this.trailSpritesForWeaponId(proj.weaponId);
+      if (trail.length > 0) {
+        const idx = Math.floor(((proj as any).age || 0) * 18) % trail.length;
+        const img = this.getCustomFrame(trail[idx]);
+        const s = Math.max(6, proj.radius * 2.2);
+        const off = Math.max(10, proj.radius * 3);
+        this.ctx.save();
+        this.ctx.rotate(angle + Math.PI);
+        this.ctx.globalAlpha = 0.85;
+        this.ctx.drawImage(img, -s * 0.5 - off, -s * 0.5, s, s);
+        this.ctx.restore();
+        this.ctx.globalAlpha = 1.0;
+      }
 
-        // Offset Y is 30 because projectiles are 60x60 and we want to center them at (0,0)
-        // rather than drawing them resting on the ground.
-        this.animCtrl.drawFrame(
-          this.ctx,
-          animKey,
-          frameIndex,
-          0,
-          0,
-          1.0,
-          false,
-          30
-        );
+      const sprite = this.projectileSpriteForWeaponId(proj.weaponId);
+      if (sprite) {
+        const img = this.getCustomFrame(sprite);
+        const s = Math.max(10, proj.radius * 4.2);
+        this.ctx.save();
+        this.ctx.rotate(angle);
+        this.ctx.drawImage(img, -s / 2, -s / 2, s, s);
+        this.ctx.restore();
       } else {
-        // Fallback to circle
         this.ctx.fillStyle = proj.color || 'yellow';
         this.ctx.beginPath();
         this.ctx.arc(0, 0, proj.radius, 0, Math.PI * 2);
@@ -942,27 +1006,31 @@ export class CanvasRenderer {
       const alpha = exp.life / exp.maxLife;
       
       this.ctx.globalAlpha = alpha;
-      
-      // Outer red/orange
-      this.ctx.fillStyle = '#FF4500';
-      this.ctx.beginPath();
-      this.ctx.arc(0, 0, exp.radius, 0, Math.PI * 2);
-      this.ctx.fill();
-      
-      // Inner yellow
-      if (exp.radius > 5) {
-        this.ctx.fillStyle = '#FFD700';
+
+      const wid = (exp as any).weaponId || null;
+      const sprite = wid ? this.explosionSpriteForWeaponId(String(wid), exp.maxRadius) : null;
+      if (sprite) {
+        const img = this.getCustomFrame(sprite);
+        const s = Math.max(18, exp.maxRadius * 1.75);
+        const pulse = 0.85 + 0.25 * Math.sin(progress * Math.PI);
+        this.ctx.drawImage(img, -s * pulse / 2, -s * pulse / 2, s * pulse, s * pulse);
+      } else {
+        this.ctx.fillStyle = '#FF4500';
         this.ctx.beginPath();
-        this.ctx.arc(0, 0, exp.radius * 0.7, 0, Math.PI * 2);
+        this.ctx.arc(0, 0, exp.radius, 0, Math.PI * 2);
         this.ctx.fill();
-      }
-      
-      // White core
-      if (exp.radius > 10 && progress < 0.5) {
-        this.ctx.fillStyle = '#FFFFFF';
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, exp.radius * 0.4, 0, Math.PI * 2);
-        this.ctx.fill();
+        if (exp.radius > 5) {
+          this.ctx.fillStyle = '#FFD700';
+          this.ctx.beginPath();
+          this.ctx.arc(0, 0, exp.radius * 0.7, 0, Math.PI * 2);
+          this.ctx.fill();
+        }
+        if (exp.radius > 10 && progress < 0.5) {
+          this.ctx.fillStyle = '#FFFFFF';
+          this.ctx.beginPath();
+          this.ctx.arc(0, 0, exp.radius * 0.4, 0, Math.PI * 2);
+          this.ctx.fill();
+        }
       }
 
       this.ctx.restore();

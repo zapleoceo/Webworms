@@ -1282,52 +1282,46 @@ export class PhysicsEngine {
     }
   }
 
-  private explode(proj: Projectile, state: GameState, radiusModifier: number = 1.0): void {
-    const owner = (proj as any).owner; // Track projectile owner for damage attribution
-    proj.active = false;
-    
-    // Calculate final explosion radius based on the material hit
-    const finalRadius = proj.explosionRadius * radiusModifier;
-    
-    // Carve landscape
-    state.landscape.createCrater(Math.floor(proj.x), Math.floor(proj.y), finalRadius);
+  public explodeAt(
+    state: GameState,
+    x: number,
+    y: number,
+    cfg: { weaponId: string; damage: number; explosionRadius: number; knockback: number; crater: boolean; owner: any | null },
+    radiusModifier: number = 1.0
+  ): void {
+    const finalRadius = cfg.explosionRadius * radiusModifier;
 
-    // Add visual explosion effect
-    state.explosions.push(new Explosion(proj.x, proj.y, finalRadius));
-    AudioManager.playExplosion();
-
-    // Trigger sound
-    if (this.onExplode) {
-      this.onExplode(proj.x, proj.y);
+    if (cfg.crater) {
+      state.landscape.createCrater(Math.floor(x), Math.floor(y), finalRadius);
     }
 
-    // Damage nearby players and push props
+    state.explosions.push(new Explosion(x, y, finalRadius, cfg.weaponId));
+    AudioManager.playExplosion(cfg.weaponId);
+
+    if (this.onExplode) {
+      this.onExplode(x, y);
+    }
+
     for (const player of state.players) {
       if (player.health <= 0) continue;
       const playerRadius = player.width / 2;
-      const dist = MathUtils.distance(proj.x, proj.y, player.x, player.y);
+      const dist = MathUtils.distance(x, y, player.x, player.y);
       if (dist <= finalRadius + playerRadius) {
-        // Simple damage falloff
         const damageRatio = 1 - (dist / (finalRadius + playerRadius));
-        let actualDamage = proj.damage * damageRatio;
-        if (proj.weaponId === 'blaster' && dist <= playerRadius + proj.radius + 0.75) {
-          actualDamage = Math.max(actualDamage, proj.damage);
-        }
+        let actualDamage = cfg.damage * damageRatio;
         player.takeDamage(actualDamage);
         this.addFloatingText(state, player.x, player.y - 20, `-${Math.round(actualDamage)}`, '#FF0000');
         if (this.onHurt) this.onHurt();
         AudioManager.playDamage();
         
-        // Track damage dealt
-        if (owner && owner !== player) {
-          owner.damageDealt += actualDamage;
+        if (cfg.owner && cfg.owner !== player) {
+          cfg.owner.damageDealt += actualDamage;
         }
 
-        // Add knockback
-        const dx = player.x - proj.x;
-        const dy = player.y - proj.y;
+        const dx = player.x - x;
+        const dy = player.y - y;
         const norm = Math.sqrt(dx*dx + dy*dy) || 1;
-        const baseKnockback = Math.max(0, Math.min(600, proj.knockback || 0));
+        const baseKnockback = Math.max(0, Math.min(600, cfg.knockback || 0));
         const k = baseKnockback * damageRatio;
         player.vx += (dx / norm) * k;
         player.vy += (dy / norm) * k;
@@ -1336,13 +1330,12 @@ export class PhysicsEngine {
     }
 
     for (const prop of state.props) {
-      const dist = MathUtils.distance(proj.x, proj.y, prop.x, prop.y);
-      if (dist < finalRadius * 1.5) { // Prop damage radius is slightly larger
+      const dist = MathUtils.distance(x, y, prop.x, prop.y);
+      if (dist < finalRadius * 1.5) {
         const damage = Math.max(10, 100 * (1 - dist / (finalRadius * 1.5)));
         prop.health -= damage;
-        // Knockback prop
-        const angle = Math.atan2(prop.y - proj.y, prop.x - proj.x);
-        const knockback = (proj as any).knockback || proj.damage || 50;
+        const angle = Math.atan2(prop.y - y, prop.x - x);
+        const knockback = cfg.knockback || cfg.damage || 50;
         prop.vx += Math.cos(angle) * knockback * 2;
         prop.vy += Math.sin(angle) * knockback * 2;
         prop.rotation += (Random.next() - 0.5) * 5;
@@ -1355,16 +1348,28 @@ export class PhysicsEngine {
         if (!logo.isSolid || logo.health <= 0) continue;
 
         const effectiveRadius = Math.max(logo.width, logo.height) / 2;
-        const dist = MathUtils.distance(proj.x, proj.y, logo.x, logo.y);
+        const dist = MathUtils.distance(x, y, logo.x, logo.y);
         if (dist <= finalRadius + effectiveRadius) {
           const damageRatio = 1 - (dist / (finalRadius + effectiveRadius));
-          const damage = Math.max(5, proj.damage * damageRatio);
+          const damage = Math.max(5, cfg.damage * damageRatio);
           logo.takeDamage(damage);
-          logo.takeHit(proj.x, proj.y, finalRadius);
+          logo.takeHit(x, y, finalRadius);
         }
       }
 
       state.brandLogos = state.brandLogos.filter(l => l.health > 0);
     }
+  }
+
+  private explode(proj: Projectile, state: GameState, radiusModifier: number = 1.0): void {
+    const owner = (proj as any).owner;
+    proj.active = false;
+    this.explodeAt(
+      state,
+      proj.x,
+      proj.y,
+      { weaponId: proj.weaponId, damage: proj.damage, explosionRadius: proj.explosionRadius, knockback: proj.knockback, crater: (proj as any).crater !== false, owner },
+      radiusModifier
+    );
   }
 }

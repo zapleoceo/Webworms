@@ -17,23 +17,23 @@ export class AdminPanel {
   private upscaleAllAbort: boolean = false;
 
   private getDefaultWeaponIconSrc(id: string): string {
-    if (id === 'bazooka') return '/sprites/Weapon Icons/bazooka.1.png';
-    if (id === 'minigun') return '/sprites/Weapon Icons/minigun.1.png';
-    if (id === 'triple') return '/sprites/Weapon Icons/shotgun.1.png';
-    if (id === 'rocket') return '/sprites/Weapon Icons/hmissile.1.png';
-    if (id === 'blaster') return '/sprites/Weapon Icons/laser.1.png';
-    if (id === 'grenade') return '/sprites/Weapon Icons/grenade.1.png';
-    if (id === 'rope') return '/sprites/Weapon Icons/rope.1.png';
+    if (id === 'bazooka') return '/sprites/custom_weapons/frames/row1_col0.png';
+    if (id === 'shotgun') return '/sprites/custom_weapons/frames/row2_col0.png';
+    if (id === 'minigun') return '/sprites/custom_weapons/frames/row3_col0.png';
+    if (id === 'homing_missile') return '/sprites/custom_weapons/frames/row4_col0.png';
+    if (id === 'heavy_gun') return '/sprites/custom_weapons/frames/row5_col0.png';
+    if (id === 'handgun') return '/sprites/custom_weapons/frames/row6_col0.png';
+    if (id === 'grenade') return '/sprites/custom_weapons/frames/row7_col0.png';
+    if (id === 'plasma_gun') return '/sprites/custom_weapons/frames/row8_col0.png';
+    if (id === 'flamethrower') return '/sprites/custom_weapons/frames/row9_col0.png';
+    if (id === 'ninja_rope') return '/sprites/custom_weapons/frames/row10_col0.png';
     return '';
   }
 
   private getDefaultProjectileSrc(id: string): string {
-    if (id === 'bazooka') return '/sprites/Weapons/missile.png';
-    if (id === 'minigun') return '/sprites/Weapons/bullet.png';
-    if (id === 'triple') return '/sprites/Weapons/bullet.png';
-    if (id === 'rocket') return '/sprites/Weapons/hmissil1.png';
-    if (id === 'blaster') return '/sprites/Weapons/bullet.png';
-    if (id === 'grenade') return '/sprites/Weapons/grenade.png';
+    if (id === 'bazooka') return '/sprites/custom_weapons/frames/row4_col3.png';
+    if (id === 'homing_missile') return '/sprites/custom_weapons/frames/row4_col3.png';
+    if (id === 'grenade') return '/sprites/custom_weapons/frames/row7_col3.png';
     return '';
   }
 
@@ -76,7 +76,6 @@ export class AdminPanel {
               <button id="nav-users" class="admin-nav-btn">Users Management</button>
               <button id="nav-logos" class="admin-nav-btn">Airdrop Logos</button>
               <button id="nav-spritesets" class="admin-nav-btn">Sprite Sets</button>
-              <button id="nav-weapons" class="admin-nav-btn">Weapons</button>
               <button id="admin-logout-btn" class="admin-nav-btn danger">Logout</button>
             </nav>
           </aside>
@@ -428,110 +427,6 @@ export class AdminPanel {
               </div>
             </section>
 
-            <section id="section-weapons" class="admin-section">
-              <div class="section-header">
-                <h2>Weapons</h2>
-                <button id="load-weapons" class="secondary-btn small-btn">Refresh</button>
-              </div>
-              <div class="weapon-editor-layout">
-                <div class="weapon-list-panel">
-                  <div class="weapon-list-toolbar">
-                    <input id="weapon-search" type="text" class="retro-input" placeholder="Search..." />
-                    <button id="weapon-new-btn" class="secondary-btn small-btn">New</button>
-                  </div>
-                  <div id="weapon-list" class="weapon-list"></div>
-                </div>
-
-                <div class="weapon-editor-panel">
-                  <div class="weapon-editor-header">
-                    <div id="weapon-score-badge" class="weapon-score-badge">Score: --</div>
-                    <div class="weapon-editor-actions">
-                      <button id="weapon-save-btn" class="primary-btn small-btn">Save</button>
-                      <button id="weapon-duplicate-btn" class="secondary-btn small-btn">Duplicate</button>
-                      <button id="weapon-delete-btn" class="danger-btn small-btn">Delete</button>
-                    </div>
-                  </div>
-
-                  <div class="weapon-editor-body">
-                    <div class="weapon-preview-row">
-                      <div class="weapon-preview">
-                        <div class="weapon-preview-label">Icon</div>
-                        <img id="weapon-icon-preview" class="weapon-preview-img" />
-                        <input type="file" id="weapon-icon-file" accept="image/png" />
-                      </div>
-                      <div class="weapon-preview">
-                        <div class="weapon-preview-label">Projectile</div>
-                        <img id="weapon-projectile-preview" class="weapon-preview-img" />
-                        <input type="file" id="weapon-projectile-file" accept="image/png" />
-                      </div>
-                    </div>
-
-                    <div class="weapon-form-grid">
-                      <label class="weapon-field weapon-field-wide">
-                        <span class="weapon-field-label">ID</span>
-                        <input type="text" id="weapon-id" class="retro-input" disabled />
-                      </label>
-                      <label class="weapon-field weapon-field-wide">
-                        <span class="weapon-field-label">Название</span>
-                        <input type="text" id="weapon-name" class="retro-input" />
-                      </label>
-                      <label class="weapon-field weapon-field-wide">
-                        <span class="weapon-field-label">Цвет</span>
-                        <input type="color" id="weapon-color" class="retro-input weapon-color-input" />
-                      </label>
-
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Урон</span>
-                        <input type="number" id="weapon-damage" class="retro-input weapon-num" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Радиус</span>
-                        <input type="number" id="weapon-radius" class="retro-input weapon-num" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Отдача</span>
-                        <input type="number" id="weapon-knockback" class="retro-input weapon-num" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Ветер</span>
-                        <input type="number" id="weapon-wind" class="retro-input weapon-num" step="0.1" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Разброс</span>
-                        <input type="number" id="weapon-spread" class="retro-input weapon-num" step="0.1" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Снаряды</span>
-                        <input type="number" id="weapon-projectiles" class="retro-input weapon-num" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Откат</span>
-                        <input type="number" id="weapon-cooldown" class="retro-input weapon-num" step="0.05" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Заряд</span>
-                        <input type="number" id="weapon-chargespeed" class="retro-input weapon-num" step="0.05" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Скорость</span>
-                        <input type="number" id="weapon-speedmod" class="retro-input weapon-num" step="0.05" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Дальность</span>
-                        <input type="number" id="weapon-maxrange" class="retro-input weapon-num" />
-                      </label>
-                      <label class="weapon-field">
-                        <span class="weapon-field-label">Таймер</span>
-                        <input type="number" id="weapon-fuse" class="retro-input weapon-num" step="0.1" />
-                      </label>
-                    </div>
-
-                    <div class="weapon-derived" id="weapon-derived"></div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
           </main>
         </div>
       </div>
@@ -622,15 +517,10 @@ export class AdminPanel {
       this.switchTab('spritesets', e.target as HTMLElement);
       this.loadSpriteSetsData();
     });
-    document.getElementById('nav-weapons')?.addEventListener('click', (e) => {
-      this.switchTab('weapons', e.target as HTMLElement);
-      this.loadWeaponsData();
-    });
 
     document.getElementById('load-logos')?.addEventListener('click', () => this.loadLogosData());
     document.getElementById('load-maps')?.addEventListener('click', () => this.loadMapsData());
     document.getElementById('load-spritesets')?.addEventListener('click', () => this.loadSpriteSetsData());
-    document.getElementById('load-weapons')?.addEventListener('click', () => this.loadWeaponsData());
     document.getElementById('upscale-all-maps-btn')?.addEventListener('click', () => this.upscaleAllMapsToHeight(1000));
     document.getElementById('upscale-all-maps-cancel-btn')?.addEventListener('click', () => { this.upscaleAllAbort = true; });
     
@@ -704,17 +594,11 @@ export class AdminPanel {
 
     // SpriteSets & Weapons Creation
     document.getElementById('create-spriteset-btn')?.addEventListener('click', () => this.handleCreateSpriteSet());
-    document.getElementById('weapon-save-btn')?.addEventListener('click', () => this.saveSelectedWeapon());
-    document.getElementById('weapon-duplicate-btn')?.addEventListener('click', () => this.duplicateSelectedWeapon());
-    document.getElementById('weapon-delete-btn')?.addEventListener('click', () => this.deleteSelectedWeapon());
-    document.getElementById('weapon-new-btn')?.addEventListener('click', () => this.createNewWeapon());
-    document.getElementById('weapon-search')?.addEventListener('input', () => this.renderWeaponList());
-    document.getElementById('weapon-icon-file')?.addEventListener('change', (e) => this.handleWeaponSpriteFile(e, 'icon'));
-    document.getElementById('weapon-projectile-file')?.addEventListener('change', (e) => this.handleWeaponSpriteFile(e, 'projectile'));
-    document.querySelectorAll('#section-weapons .weapon-form-grid input').forEach(el => {
-      el.addEventListener('input', () => this.updateWeaponDerived());
-      el.addEventListener('change', () => this.updateWeaponDerived());
-    });
+    void this.saveSelectedWeapon;
+    void this.duplicateSelectedWeapon;
+    void this.deleteSelectedWeapon;
+    void this.createNewWeapon;
+    void this.handleWeaponSpriteFile;
   }
 
   private switchTab(tabId: string, btnElement: HTMLElement) {

@@ -25,12 +25,6 @@ export class GamePresenter {
   private shotsFiredThisTurnByWeaponId: Record<string, number> = {};
   private static readonly MINIGUN_SHOTS_PER_TURN = 25;
   private nextProjectileNetId = 1;
-  private blasterBurstOwnerIndex: number | null = null;
-  private blasterBurstRemaining: number = 0;
-  private blasterBurstTimer: number = 0;
-  private blasterBurstInterval: number = 0.06;
-  private blasterBurstSpeed: number = 0;
-  private blasterBurstWeaponOverride: any = null;
   
   // Track analog joystick inputs (-1.0 to 1.0)
   private analogX: number = 0;
@@ -387,6 +381,22 @@ export class GamePresenter {
       // Find active player before physics step
       const currentPlayer = this.state.getCurrentPlayer();
       if (!currentPlayer) return;
+
+      for (const proj of this.state.projectiles as any[]) {
+        if (!proj || !proj.active) continue;
+        if (proj.weaponId !== 'homing_missile') continue;
+        if (proj.owner !== currentPlayer) continue;
+        let dir = 0;
+        if (this.activeInputs.has('left')) dir -= 1;
+        if (this.activeInputs.has('right')) dir += 1;
+        if (dir === 0) continue;
+        const turnRate = Number(proj.homingTurnRate) || 3.0;
+        const speed = Math.hypot(proj.vx || 0, proj.vy || 0);
+        if (speed <= 1e-3) continue;
+        const a = Math.atan2(proj.vy, proj.vx) + dir * turnRate * dt;
+        proj.vx = Math.cos(a) * speed;
+        proj.vy = Math.sin(a) * speed;
+      }
       
       // Update Physics
       this.physics.update(this.state, dt);
@@ -418,8 +428,7 @@ export class GamePresenter {
         }
       }
       
-      const hasBurst = this.blasterBurstRemaining > 0 && this.blasterBurstOwnerIndex === this.state.currentPlayerIndex;
-      const hasProjectiles = this.state.projectiles.length > 0 || hasBurst;
+      const hasProjectiles = this.state.projectiles.length > 0;
       const isStable = !hasProjectiles;
 
       if (this.turnTimeLeft > 0 && this.state.mode !== 'training') {
@@ -651,19 +660,6 @@ export class GamePresenter {
       }
     }
 
-    if (this.blasterBurstRemaining > 0 && this.blasterBurstOwnerIndex === this.state.currentPlayerIndex) {
-      if (player.health <= 0 || this.state.mode !== 'training' && this.turnTimeLeft <= 0) {
-        this.blasterBurstRemaining = 0;
-      } else {
-        this.blasterBurstTimer -= dt;
-        while (this.blasterBurstRemaining > 0 && this.blasterBurstTimer <= 0) {
-          this.blasterBurstTimer += this.blasterBurstInterval;
-          this.spawnSingleProjectile(player, this.blasterBurstWeaponOverride, this.blasterBurstSpeed);
-          this.blasterBurstRemaining -= 1;
-        }
-      }
-    }
-    
     // Apply movement continuously as a force to overcome friction/slopes
     let isMovingLeft = this.activeInputs.has('left') || this.analogX < -0.1;
     let isMovingRight = this.activeInputs.has('right') || this.analogX > 0.1;
@@ -820,7 +816,7 @@ export class GamePresenter {
         }
         break;
       case 'fire':
-        if (player.getCurrentEquipmentId() === 'rope') {
+        if (player.getCurrentEquipmentId() === 'ninja_rope') {
           if (isActive) {
             if (player.ropeActive) RopeTool.detach(player);
             else RopeTool.tryAttach(player, this.state);
@@ -939,21 +935,13 @@ export class GamePresenter {
     this.hasFiredThisTurn = true;
     this.state.hasFiredThisTurn = true;
     
-    AudioManager.playShoot();
+    AudioManager.playShoot(weapon.id);
 
     // Apply cooldown (Dynamic: based on shot power, min 20% of base cooldown)
     const powerRatio = Math.max(0.2, power / 100);
     const actualCooldown = weapon.cooldown * powerRatio;
-    if (weapon.id === 'blaster') {
-      const burstShots = 5;
-      const burstDuration = (burstShots - 1) * this.blasterBurstInterval;
-      const totalCooldown = actualCooldown + burstDuration;
-      player.weaponCooldowns[weapon.id] = totalCooldown;
-      player.maxWeaponCooldowns[weapon.id] = totalCooldown;
-    } else {
-      player.weaponCooldowns[weapon.id] = actualCooldown;
-      player.maxWeaponCooldowns[weapon.id] = actualCooldown;
-    }
+    player.weaponCooldowns[weapon.id] = actualCooldown;
+    player.maxWeaponCooldowns[weapon.id] = actualCooldown;
 
     // Calculate vector based on angle and power
     // Determine global Aim Angle
@@ -974,18 +962,47 @@ export class GamePresenter {
       const baseRad = globalAimAngle;
     const speed = power * 4.2 * (weapon.speedModifier || 1);
 
-    if (weapon.id === 'blaster') {
-      this.blasterBurstOwnerIndex = this.state.currentPlayerIndex;
-      this.blasterBurstRemaining = 5;
-      this.blasterBurstTimer = 0;
-      this.blasterBurstSpeed = speed;
-      const radiusScale = 1 / Math.sqrt(5);
-      this.blasterBurstWeaponOverride = {
-        ...weapon,
-        damage: weapon.damage / 5,
-        explosionRadius: weapon.explosionRadius * radiusScale,
-        knockback: weapon.knockback * radiusScale
-      };
+    const hitscanRange = typeof (weapon as any).hitscanRange === 'number' ? Number((weapon as any).hitscanRange) : 0;
+    const isHitscan = weapon.kind === 'hitscan' && hitscanRange > 0;
+    const isStream = weapon.kind === 'stream';
+
+    if (isHitscan) {
+      const crater = weapon.id === 'shotgun';
+      const shots = Math.max(1, Math.floor(weapon.projectilesPerShot || 1));
+      for (let i = 0; i < shots; i++) {
+        const spreadRad = (weapon.spread || 0) * (Math.PI / 180);
+        const rad = baseRad + (spreadRad > 0 ? (Random.next() - 0.5) * spreadRad : 0);
+        const hit = this.raycastHitscan(player, rad, hitscanRange);
+        if (!hit) continue;
+        this.physics.explodeAt(
+          this.state,
+          hit.x,
+          hit.y,
+          { weaponId: weapon.id, damage: weapon.damage, explosionRadius: weapon.explosionRadius, knockback: weapon.knockback, crater, owner: player },
+          1.0
+        );
+      }
+      return;
+    }
+
+    if (isStream) {
+      const ticks = Math.max(1, Math.floor((weapon as any).flameTicks || 6));
+      const coneShots = Math.max(1, Math.floor(ticks));
+      const crater = false;
+      for (let i = 0; i < coneShots; i++) {
+        const spreadRad = (weapon.spread || 0) * (Math.PI / 180);
+        const rad = baseRad + (spreadRad > 0 ? (Random.next() - 0.5) * spreadRad : 0);
+        const hit = this.raycastHitscan(player, rad, weapon.maxRange || 520);
+        if (!hit) continue;
+        const radiusScale = 1 / Math.sqrt(coneShots);
+        this.physics.explodeAt(
+          this.state,
+          hit.x,
+          hit.y,
+          { weaponId: weapon.id, damage: weapon.damage * radiusScale, explosionRadius: weapon.explosionRadius * radiusScale, knockback: weapon.knockback * radiusScale, crater, owner: player },
+          1.0
+        );
+      }
       return;
     }
 
@@ -1011,6 +1028,48 @@ export class GamePresenter {
     if (weapon.id === 'minigun') {
       this.shotsFiredThisTurnByWeaponId.minigun = (this.shotsFiredThisTurnByWeaponId.minigun || 0) + pCount;
     }
+  }
+
+  private raycastHitscan(player: Worm, globalAimAngle: number, maxDist: number): { x: number; y: number } | null {
+    const gunLength = 25;
+    const originX = player.x;
+    const originY = (player.y - player.height / 2);
+    const dirX = Math.cos(globalAimAngle);
+    const dirY = Math.sin(globalAimAngle);
+    const startX = originX + dirX * gunLength;
+    const startY = originY + dirY * gunLength;
+
+    const step = 4;
+    let bestPlayer: Worm | null = null;
+    let bestDist = Infinity;
+    let bestPoint: { x: number; y: number } | null = null;
+
+    for (let d = 0; d <= maxDist; d += step) {
+      const x = startX + dirX * d;
+      const y = startY + dirY * d;
+      if (x < 0 || x >= this.state.width || y < 0 || y >= this.state.height) break;
+      if (this.state.landscape.getMaterial(Math.floor(x), Math.floor(y)) > 0) {
+        return { x, y };
+      }
+      for (const p of this.state.players) {
+        if (p === player) continue;
+        if (p.health <= 0) continue;
+        const r = p.width / 2;
+        const dx = x - p.x;
+        const dy = y - p.y;
+        const dd = Math.hypot(dx, dy);
+        if (dd <= r + 2) {
+          if (d < bestDist) {
+            bestDist = d;
+            bestPlayer = p;
+            bestPoint = { x, y };
+          }
+        }
+      }
+      if (bestPlayer && d > bestDist + 8) break;
+    }
+
+    return bestPoint;
   }
 
   private spawnSingleProjectile(player: Worm, weapon: any, speed: number, baseRadOverride?: number): void {
@@ -1057,6 +1116,9 @@ export class GamePresenter {
     const proj = weapon.id === 'grenade'
       ? GrenadeWeapon.createProjectile(startX, startY, vx, vy, weapon as any)
       : new Projectile(startX, startY, vx, vy, weapon as any);
+    if (weapon.id === 'homing_missile') {
+      (proj as any).homingTurnRate = typeof weapon.homingTurnRate === 'number' ? weapon.homingTurnRate : 3.0;
+    }
     (proj as any).netId = this.nextProjectileNetId++;
     (proj as any).owner = player;
     this.state.projectiles.push(proj);
@@ -1140,8 +1202,6 @@ export class GamePresenter {
 
     this.hasFiredThisTurn = false;
     this.state.hasFiredThisTurn = false;
-    this.blasterBurstOwnerIndex = null;
-    this.blasterBurstRemaining = 0;
 
     // Keep track of which team went last
     const currentPlayer = this.state.getCurrentPlayer();

@@ -14,13 +14,16 @@ export interface EquipmentDefinition {
 }
 
 const EQUIPMENT: Record<string, EquipmentDefinition> = {
-  bazooka: { id: 'bazooka', kind: 'weapon', name: 'Bazooka', icon: '/sprites/Weapon Icons/bazooka.1.png', aimAnimKey: 'bazooka', projectileAnimKey: 'proj_bazooka', weapon: WEAPONS.bazooka },
-  minigun: { id: 'minigun', kind: 'weapon', name: 'Minigun', icon: '/sprites/Weapon Icons/minigun.1.png', aimAnimKey: 'minigun', projectileAnimKey: 'proj_minigun', weapon: WEAPONS.minigun },
-  triple: { id: 'triple', kind: 'weapon', name: 'Triple-barrel', icon: '/sprites/Weapon Icons/shotgun.1.png', aimAnimKey: 'shotgun', projectileAnimKey: 'proj_triple', weapon: WEAPONS.triple },
-  rocket: { id: 'rocket', kind: 'weapon', name: 'Rocket', icon: '/sprites/Weapon Icons/hmissile.1.png', aimAnimKey: 'rocket', projectileAnimKey: 'proj_rocket', weapon: WEAPONS.rocket },
-  blaster: { id: 'blaster', kind: 'weapon', name: 'Blaster', icon: '/sprites/Weapon Icons/laser.1.png', aimAnimKey: 'bazooka', projectileAnimKey: 'proj_blaster', weapon: WEAPONS.blaster },
-  grenade: { id: 'grenade', kind: 'weapon', name: 'Grenade', icon: '/sprites/Weapon Icons/grenade.1.png', aimAnimKey: 'throw', projectileAnimKey: 'proj_grenade', weapon: WEAPONS.grenade },
-  rope: { id: 'rope', kind: 'tool', name: 'Rope', icon: '/sprites/Weapon Icons/rope.1.png', aimAnimKey: 'rope' }
+  bazooka: { id: 'bazooka', kind: 'weapon', name: WEAPONS.bazooka.name, icon: '/sprites/custom_weapons/frames/row1_col0.png', weapon: WEAPONS.bazooka },
+  shotgun: { id: 'shotgun', kind: 'weapon', name: WEAPONS.shotgun.name, icon: '/sprites/custom_weapons/frames/row2_col0.png', weapon: WEAPONS.shotgun },
+  minigun: { id: 'minigun', kind: 'weapon', name: WEAPONS.minigun.name, icon: '/sprites/custom_weapons/frames/row3_col0.png', weapon: WEAPONS.minigun },
+  homing_missile: { id: 'homing_missile', kind: 'weapon', name: WEAPONS.homing_missile.name, icon: '/sprites/custom_weapons/frames/row4_col0.png', weapon: WEAPONS.homing_missile },
+  heavy_gun: { id: 'heavy_gun', kind: 'weapon', name: WEAPONS.heavy_gun.name, icon: '/sprites/custom_weapons/frames/row5_col0.png', weapon: WEAPONS.heavy_gun },
+  handgun: { id: 'handgun', kind: 'weapon', name: WEAPONS.handgun.name, icon: '/sprites/custom_weapons/frames/row6_col0.png', weapon: WEAPONS.handgun },
+  grenade: { id: 'grenade', kind: 'weapon', name: WEAPONS.grenade.name, icon: '/sprites/custom_weapons/frames/row7_col0.png', weapon: WEAPONS.grenade },
+  plasma_gun: { id: 'plasma_gun', kind: 'weapon', name: WEAPONS.plasma_gun.name, icon: '/sprites/custom_weapons/frames/row8_col0.png', weapon: WEAPONS.plasma_gun },
+  flamethrower: { id: 'flamethrower', kind: 'weapon', name: WEAPONS.flamethrower.name, icon: '/sprites/custom_weapons/frames/row9_col0.png', weapon: WEAPONS.flamethrower },
+  ninja_rope: { id: 'ninja_rope', kind: 'tool', name: 'Ninja Rope', icon: '/sprites/custom_weapons/frames/row10_col0.png' }
 };
 
 export function getEquipmentDefinition(id: string): EquipmentDefinition | undefined {
@@ -53,5 +56,5 @@ export function getWeaponByEquipmentId(id: string): Weapon | undefined {
 }
 
 export function getDefaultLoadout(): string[] {
-  return ['bazooka', 'grenade', 'rope'];
+  return ['bazooka', 'grenade', 'ninja_rope'];
 }

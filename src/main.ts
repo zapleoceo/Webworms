@@ -4,7 +4,7 @@ import { GamePresenter } from './presenters/GamePresenter';
 import { CanvasRenderer } from './views/CanvasRenderer';
 import { InputHandler } from './views/InputHandler';
 import { APIClient } from './network/APIClient';
-import { applyEquipmentOverrides, getEquipmentDefinition } from './equipment/EquipmentRegistry';
+import { getEquipmentDefinition } from './equipment/EquipmentRegistry';
 import { MultiplayerSync } from './network/MultiplayerSync';
 import { AudioManager } from './utils/AudioManager';
 import { PaymentController } from './controllers/PaymentController';
@@ -18,7 +18,6 @@ import { normalizeBotConfig } from './ai/BotConfig';
 import type { AIDifficulty } from './ai/AIDifficulty';
 import { debugSurfacePathMatrix, terrainFromLandscape } from './ai/BotAI';
 import { AI_V } from './ai/AIVersion';
-import { applyWeaponOverrides } from './models/Weapon';
 
 declare global {
   interface Window {
@@ -504,7 +503,7 @@ window.botDebugMatrix = () => {
     height: 10,
     health: 100,
     speedMultiplier: 1,
-    equipmentIds: ['rope', 'grenade', 'bazooka'],
+    equipmentIds: ['ninja_rope', 'grenade', 'bazooka'],
     weaponCooldowns: {}
   };
   const res = debugSurfacePathMatrix(terrain, xs, shooterTemplate, 20, 4);
@@ -717,13 +716,6 @@ let currentRoomPlayerId: string | null = null;
   bindPresenterEvents();
 
   let gameInitPromise: Promise<void> | null = null;
-
-  const weaponList = await APIClient.getWeapons();
-  const weaponOverrides = applyWeaponOverrides(weaponList);
-  applyEquipmentOverrides({ icons: weaponOverrides.icons, names: weaponOverrides.names });
-  for (const [id, src] of Object.entries(weaponOverrides.projectiles)) {
-    window.renderer.setProjectileSprite(id, src);
-  }
 
   if (mode === 'friend' || mode === 'random') {
     gameInitPromise = (async () => {

@@ -163,9 +163,9 @@ function pickWeaponByRange(weapons: Array<{ index: number; weapon: Weapon; id: s
   const byId = new Map(weapons.map(w => [w.id, w]));
   const pick = (ids: string[]) => ids.map(id => byId.get(id)).filter(Boolean) as any[];
 
-  if (dist > 520) return pick(['rocket', 'bazooka', 'grenade', 'blaster', 'triple', 'minigun']).concat(weapons);
-  if (dist > 280) return pick(['bazooka', 'rocket', 'grenade', 'blaster', 'triple', 'minigun']).concat(weapons);
-  return pick(['grenade', 'triple', 'blaster', 'bazooka', 'minigun', 'rocket']).concat(weapons);
+  if (dist > 520) return pick(['homing_missile', 'bazooka', 'plasma_gun', 'heavy_gun', 'handgun', 'minigun']).concat(weapons);
+  if (dist > 280) return pick(['bazooka', 'homing_missile', 'grenade', 'plasma_gun', 'heavy_gun', 'minigun', 'handgun']).concat(weapons);
+  return pick(['shotgun', 'flamethrower', 'grenade', 'heavy_gun', 'minigun', 'handgun', 'bazooka']).concat(weapons);
 }
 
 type ScoredAction = { action: BotAction; score: number; impact: { x: number; y: number }; trace?: BotDecisionTrace };
@@ -246,9 +246,7 @@ function chooseBotActionScored(
     for (let wIdx = 0; wIdx < ordered.length; wIdx++) {
       const w = ordered[wIdx];
       const weapon = w.weapon;
-        const simWeapon = weapon.id === 'blaster'
-          ? { ...weapon, damage: weapon.damage / 5, explosionRadius: weapon.explosionRadius / Math.sqrt(5), knockback: weapon.knockback / Math.sqrt(5) }
-          : weapon;
+      const simWeapon = weapon;
 
       const angles = weapon.id === 'grenade' ? grenadeAngleList : angleList;
       const powers = weapon.id === 'grenade' ? grenadePowerList : powerList;
@@ -508,7 +506,7 @@ function buildSurfacePathPlanner(
 ): (targetX: number) => PathPlan {
   const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
   const maxMoveDist = Math.max(0, maxSpeed * Math.max(0, moveSeconds));
-  const hasRope = Array.isArray(shooter.equipmentIds) && shooter.equipmentIds.includes('rope') && ropeAttachBudget > 0;
+  const hasRope = Array.isArray(shooter.equipmentIds) && shooter.equipmentIds.includes('ninja_rope') && ropeAttachBudget > 0;
   const ropeRange = 252 * 0.85;
   const ropeBoost = hasRope ? (ropeRange * Math.min(2, Math.max(0, ropeAttachBudget))) : 0;
 
@@ -901,7 +899,7 @@ export function chooseBotPlan(
   const moveSecondsForMove = approachMode ? (moveSeconds * 0.5) : moveSeconds;
   const maxMoveDist = Math.max(0, maxSpeed * Math.max(0, moveSecondsForMove));
   const ropeRange = 252 * 0.85;
-  const hasRope = Array.isArray(shooter.equipmentIds) && shooter.equipmentIds.includes('rope');
+  const hasRope = Array.isArray(shooter.equipmentIds) && shooter.equipmentIds.includes('ninja_rope');
   const ropeBoost = hasRope ? (ropeRange * Math.min(2, Math.max(0, ropeAttachBudget))) : 0;
 
   const xs = [

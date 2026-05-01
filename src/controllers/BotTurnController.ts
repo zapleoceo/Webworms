@@ -820,7 +820,7 @@ export class BotTurnController {
     const cliff = this.scanCliffAhead(presenter, player, dir);
     const gap = cliff.isGapOrCliff;
     const ceilingLow = this.detectCeilingLow(presenter, player, dir);
-    const hasRope = Array.isArray(player.equipmentIds) && player.equipmentIds.includes('rope') && ropeRemaining > 0;
+    const hasRope = Array.isArray(player.equipmentIds) && player.equipmentIds.includes('ninja_rope') && ropeRemaining > 0;
 
     const candidates: MoveStrategy[] = [];
     if (hasRope && needUp) candidates.push('rope_climb');
@@ -985,7 +985,7 @@ export class BotTurnController {
     strategy: MoveStrategy
   ): boolean {
     const equipmentIds: string[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
-    const ropeIndex = equipmentIds.findIndex((id: string) => id === 'rope');
+    const ropeIndex = equipmentIds.findIndex((id: string) => id === 'ninja_rope');
     const ropeRemaining = Math.max(0, ropeBudget - this.ropeAttachUsed);
     if (ropeIndex < 0) {
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'no_rope', anglesTried: 0, bestScore: null, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs });

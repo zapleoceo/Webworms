@@ -5,13 +5,15 @@ export class Explosion {
   public maxRadius: number;
   public life: number;
   public maxLife: number;
+  public weaponId: string | null;
 
-  constructor(x: number, y: number, maxRadius: number) {
+  constructor(x: number, y: number, maxRadius: number, weaponId: string | null = null) {
     this.x = x;
     this.y = y;
     this.maxRadius = maxRadius;
     this.maxLife = 0.5; // Half a second explosion
     this.life = this.maxLife;
+    this.weaponId = weaponId;
   }
 
   public update(dt: number): void {
