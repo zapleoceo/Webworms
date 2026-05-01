@@ -963,6 +963,26 @@ export class GamePresenter {
       const baseRad = globalAimAngle;
     const speed = power * 4.2 * (weapon.speedModifier || 1);
 
+    const gunLength = 25;
+    const muzzleX = player.x + Math.cos(baseRad) * gunLength;
+    const muzzleY = (player.y - player.height / 2) + Math.sin(baseRad) * gunLength;
+    if (!this.state.particles) this.state.particles = [];
+    for (let i = 0; i < 6; i++) {
+      const s = 120 + Random.next() * 180;
+      const spread = 0.18;
+      const rad = baseRad + (Random.next() - 0.5) * spread;
+      this.state.particles.push({
+        x: muzzleX,
+        y: muzzleY,
+        vx: Math.cos(rad) * s,
+        vy: Math.sin(rad) * s,
+        life: 0.08 + Random.next() * 0.06,
+        maxLife: 0.14,
+        color: weapon.color || '#ffffff',
+        size: 1.5 + Random.next() * 2.5
+      });
+    }
+
     const hitscanRange = typeof (weapon as any).hitscanRange === 'number' ? Number((weapon as any).hitscanRange) : 0;
     const isHitscan = weapon.kind === 'hitscan' && hitscanRange > 0;
     const isStream = weapon.kind === 'stream';

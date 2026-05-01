@@ -1192,6 +1192,7 @@ function updateWormSelectionUI(state: any) {
   const currentPlayer = state.getCurrentPlayer();
   const currentTeam = currentPlayer ? currentPlayer.team : 'team1';
   const hud = getHudSides(currentMode, state);
+  const equipBtn = document.getElementById('btn-equip') as HTMLButtonElement | null;
 
   // Show only if it's local team's turn (or player 1 in local multiplayer)
   const isMyTurn = window.presenter.localTeam === 'training' || window.presenter.localTeam === currentTeam;
@@ -1201,6 +1202,7 @@ function updateWormSelectionUI(state: any) {
       panel.style.display = 'none';
       lastWormUIStateStr = 'none';
     }
+    if (equipBtn) equipBtn.innerText = 'ITEM';
     return;
   }
 
@@ -1229,6 +1231,22 @@ function updateWormSelectionUI(state: any) {
   panel.classList.toggle('team-left', currentTeam === hud.leftTeam);
   panel.classList.toggle('team-right', currentTeam === hud.rightTeam);
   panel.innerHTML = ''; // Clear existing buttons
+
+  if (equipBtn && currentPlayer) {
+    const equipmentIds = currentPlayer.equipmentIds || [];
+    const eqLen = Array.isArray(equipmentIds) ? equipmentIds.length : 0;
+    const equipmentId = currentPlayer.getCurrentEquipmentId?.() || 'bazooka';
+    const def = getEquipmentDefinition(equipmentId);
+    const idx = Number.isFinite(currentPlayer.currentEquipmentIndex) ? Math.max(0, Math.min(eqLen - 1, currentPlayer.currentEquipmentIndex)) : 0;
+    let label = def?.name ? def.name : 'ITEM';
+    if (equipmentId === 'grenade') {
+      const gren = state.teamAmmo?.[currentPlayer.team]?.grenade;
+      if (typeof gren === 'number' && Number.isFinite(gren)) label = `${label} x${Math.max(0, Math.floor(gren))}`;
+    }
+    if (eqLen > 0) label = `ITEM: ${label} (${idx + 1}/${eqLen})`;
+    else label = `ITEM: ${label}`;
+    equipBtn.innerText = label;
+  }
   
   teamWorms.forEach((item: any, i: number) => {
     const btn = document.createElement('button');
