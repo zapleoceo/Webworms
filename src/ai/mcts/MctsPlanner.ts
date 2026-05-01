@@ -215,5 +215,10 @@ export function planWithMcts(ctx: MctsContext): MctsPlan | null {
   const movedShooter = shooterAt(ctx.shooter, best.actionFromParent.x, best.actionFromParent.y);
   const shot = chooseBotActionDebug(ctx.rng, ctx.world, movedShooter, ctx.enemies, ctx.allies, ctx.botCfg, ctx.difficulty, ctx.shotMemory);
   const action = shot?.action || null;
-  return { moveTo, action: action || undefined, debug: { iterations: budget.iterations, used2ply, bestScore } } as any;
+  if (action) return { moveTo, action, debug: { iterations: budget.iterations, used2ply, bestScore } } as any;
+  return {
+    moveTo,
+    action: { weaponIndex: -1, facingRight: true, aimAngle: 0, power: 0 } as any,
+    debug: { iterations: budget.iterations, used2ply, bestScore }
+  } as any;
 }

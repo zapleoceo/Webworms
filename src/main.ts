@@ -35,7 +35,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260501_2110';
+  const buildVersion = '20260501_2120';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -285,6 +285,20 @@ function flushAIVaiLog(reason: string, winner: any = null) {
     downloadJson(`${aivaiLog.matchId}.json`, aivaiLog);
   });
 }
+
+window.addEventListener('error', (ev: any) => {
+  const msg = String(ev?.message || ev?.error?.message || 'error');
+  flushAIVaiLog(`window_error:${msg}`.slice(0, 240));
+});
+
+window.addEventListener('unhandledrejection', (ev: any) => {
+  const msg = String(ev?.reason?.message || ev?.reason || 'unhandledrejection');
+  flushAIVaiLog(`unhandledrejection:${msg}`.slice(0, 240));
+});
+
+window.addEventListener('beforeunload', () => {
+  flushAIVaiLog('beforeunload');
+});
 
 // Load custom maps into dropdown
 APIClient.getMaps().then(maps => {
