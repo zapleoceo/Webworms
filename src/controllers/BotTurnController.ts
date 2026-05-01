@@ -70,6 +70,10 @@ export class BotTurnController {
   private lastTurnStateAt: number = -999;
   private workerInitError: string | null = null;
 
+  private shotMemory: Map<string, { stateKey: string; shotKey: string; noRes: number; ff: number; lastT: number }> = new Map();
+  private pendingShotEval: { stateKey: string; shotKey: string; team: 'team1' | 'team2'; health0: number[] } | null = null;
+  private didMultiReplanThisTurn: boolean = false;
+
   constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
     if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
   }
@@ -147,7 +151,7 @@ export class BotTurnController {
     }
   }
 
-  private startWorkerPlan(presenter: any, worms: BotWormSnapshot[], shooterId: string, botCfg: BotConfig, executeSeconds: number, ropeRemaining: number, rngSeed: number): void {
+  private startWorkerPlan(presenter: any, worms: BotWormSnapshot[], shooterId: string, botCfg: BotConfig, executeSeconds: number, ropeRemaining: number, rngSeed: number, difficulty: AIDifficulty): void {
     try {
       this.ensureWorker();
       if (!this.thinkWorker) return;
@@ -160,10 +164,15 @@ export class BotTurnController {
       this.workerStartedAt = performance.now();
       this.workerResult = null;
       this.workerArrivedAt = 0;
+      const shotMemory = Array.from(this.shotMemory.values())
+        .sort((a, b) => b.lastT - a.lastT)
+        .slice(0, 160)
+        .map(x => ({ stateKey: x.stateKey, shotKey: x.shotKey, noRes: x.noRes, ff: x.ff }));
       this.thinkWorker.postMessage({
         kind: 'plan',
         jobId,
         rngSeed,
+        difficulty,
         gravity: presenter.physics.gravity,
         wind: presenter.state.wind || 0,
         terrain: { width: terrain.width, height: terrain.height, grid: buf },
@@ -171,7 +180,8 @@ export class BotTurnController {
         shooterId,
         botCfg,
         executeSeconds,
-        ropeRemaining
+        ropeRemaining,
+        shotMemory
       }, [buf]);
     } catch {}
   }
@@ -236,6 +246,8 @@ export class BotTurnController {
       this.matchAttempts = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
       this.matchSuccess = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
       this.matchFailStreak = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+      this.shotMemory.clear();
+      this.pendingShotEval = null;
     }
 
     const isBotTurn = presenter.state.mode === 'aivai' ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
@@ -269,6 +281,7 @@ export class BotTurnController {
       this.lastDx = 0;
       this.ropeStallCount = 0;
       this.didReplanThisTurn = false;
+      this.didMultiReplanThisTurn = false;
       this.planningInProgress = false;
       this.lastDecisionDebug = null;
       this.lastTurnStateAt = -999;
@@ -293,6 +306,30 @@ export class BotTurnController {
     if (!isBotTurn) return;
 
     const hasProjectiles = (presenter.state.projectiles?.length || 0) > 0;
+    if (this.pendingShotEval && !hasProjectiles && !isWorldBusy) {
+      const health1 = Array.isArray(presenter.state.players) ? presenter.state.players.map((w: any) => Number(w?.health) || 0) : [];
+      let enemyDelta = 0;
+      let allyDelta = 0;
+      for (let i = 0; i < health1.length; i++) {
+        const h0 = this.pendingShotEval.health0[i] ?? health1[i] ?? 0;
+        const d = Math.max(0, h0 - (health1[i] ?? 0));
+        const w = presenter.state.players?.[i];
+        if (!w) continue;
+        if (w.team !== this.pendingShotEval.team) enemyDelta += d;
+        else allyDelta += d;
+      }
+      const key = `${this.pendingShotEval.stateKey}|${this.pendingShotEval.shotKey}`;
+      const prev = this.shotMemory.get(key) || { stateKey: this.pendingShotEval.stateKey, shotKey: this.pendingShotEval.shotKey, noRes: 0, ff: 0, lastT: 0 };
+      if (enemyDelta <= 0.01) prev.noRes += 1;
+      if (allyDelta > 0.01) prev.ff += 1;
+      prev.lastT = presenter.matchDuration || 0;
+      this.shotMemory.set(key, prev);
+      if (this.shotMemory.size > 360) {
+        const entries = Array.from(this.shotMemory.entries()).sort((a, b) => a[1].lastT - b[1].lastT);
+        for (let k = 0; k < Math.max(0, entries.length - 320); k++) this.shotMemory.delete(entries[k][0]);
+      }
+      this.pendingShotEval = null;
+    }
     if (hasProjectiles) return;
     if (this.firedThisTurn) return;
 
@@ -317,7 +354,7 @@ export class BotTurnController {
       const view = this.buildBotView(presenter);
       if (!view) return;
       const rngSeed = this.rngSeedForTurn(presenter);
-      this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, executeSeconds, ropeRemaining, rngSeed);
+      this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, executeSeconds, ropeRemaining, rngSeed, difficulty);
       this.planningInProgress = true;
     }
 
@@ -358,7 +395,7 @@ export class BotTurnController {
 
     if (elapsed < planSeconds) return;
 
-    if (!this.plannedThisTurn && !isWorldBusy) {
+    if (this.planningInProgress && !isWorldBusy) {
       const wr = (this.workerResult && this.workerJobId && this.workerResult.jobId === this.workerJobId) ? this.workerResult : null;
       const wrOk = !!(wr && wr.ok === 1 && wr.plan);
       if (wrOk) {
@@ -373,7 +410,7 @@ export class BotTurnController {
         this.plannedThisTurn = true;
         this.planningInProgress = false;
         this.debug('plan', { moveTo: wr.plan.moveTo ? { x: Math.round(wr.plan.moveTo.x), y: Math.round(wr.plan.moveTo.y) } : null, weaponIndex: wr.plan.action.weaponIndex, targetId: wr.plan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
-      } else {
+      } else if (!this.plannedThisTurn) {
         if (timeLeft > reserveSeconds + 0.35) return;
         this.lastWorkerArrivedAfterMain = wr ? 1 : null;
         this.lastWorkerMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
@@ -388,6 +425,8 @@ export class BotTurnController {
         }
         this.plannedThisTurn = true;
         this.planningInProgress = false;
+      } else {
+        this.lastDecisionDebug = wr?.debug || null;
       }
     }
 
@@ -395,6 +434,24 @@ export class BotTurnController {
 
     const moveTo = this.plan.moveTo;
     const moveElapsed = Math.max(0, now - this.moveStartedAt);
+
+    if (presenter?.state?.mode === 'aivai' && this.plannedThisTurn && !this.planningInProgress && !this.didMultiReplanThisTurn && timeLeft > reserveSeconds + 0.9) {
+      const near =
+        !!moveTo &&
+        Math.abs((moveTo?.x || 0) - player.x) < 42 &&
+        Math.abs((moveTo?.y || 0) - player.y) < 58;
+      const wantsReplan = near || this.stuckTime > 0.9;
+      if (wantsReplan && moveElapsed > executeSeconds * 0.35 && moveElapsed < executeSeconds * 0.92) {
+        const view = this.buildBotView(presenter);
+        if (view) {
+          const rngSeed = this.rngSeedForTurn(presenter) ^ 0x5bd1e995;
+          const remaining = Math.max(0.6, executeSeconds - moveElapsed);
+          this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, remaining, ropeRemaining, rngSeed, difficulty);
+          this.planningInProgress = true;
+          this.didMultiReplanThisTurn = true;
+        }
+      }
+    }
 
     if (moveTo && moveElapsed < executeSeconds) {
       if (this.executeMovement(presenter, player, moveTo, now, dt, ropeBudget, ropeRemaining)) return;
@@ -507,6 +564,20 @@ export class BotTurnController {
     if (presenter?.state?.mode === 'aivai') {
       const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
       const weaponId = typeof equipmentIds[action.weaponIndex] === 'string' ? equipmentIds[action.weaponIndex] : null;
+      const health0 = Array.isArray(presenter.state.players) ? presenter.state.players.map((w: any) => Number(w?.health) || 0) : [];
+      const sx = Math.floor((Number(player.x) || 0) / 32);
+      const sy = Math.floor((Number(player.y) || 0) / 32);
+      const enemies: any[] = Array.isArray(presenter.state.players) ? presenter.state.players.filter((w: any) => w && w.team !== player.team && w.health > 0) : [];
+      enemies.sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y));
+      const e = enemies[0] || null;
+      const ex = e ? Math.floor((Number(e.x) || 0) / 64) : -1;
+      const ey = e ? Math.floor((Number(e.y) || 0) / 64) : -1;
+      const stateKey = `${sx}:${sy}:${ex}:${ey}`;
+      const angleDeg = action.aimAngle * (180 / Math.PI);
+      const angleBin = Math.round(angleDeg / 2);
+      const powerBin = Math.round(action.power / 5);
+      const shotKey = `${weaponId || 'none'}:${action.facingRight ? 1 : 0}:${angleBin}:${powerBin}`;
+      if (weaponId) this.pendingShotEval = { stateKey, shotKey, team: player.team, health0 };
       this.emitAIVai(presenter, {
         type: 'weapon_fired',
         t: presenter.matchDuration || 0,

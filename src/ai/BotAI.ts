@@ -3,6 +3,7 @@ import type { Weapon } from '../models/Weapon';
 import type { BotConfig } from './BotConfig';
 import { DEFAULT_BOT_CONFIG } from './BotConfig';
 import { gunMuzzlePosition, simulateTrajectory, type TerrainQuery } from './PhysicsHelper';
+import type { AIDifficulty } from './AIDifficulty';
 
 export type Rng = () => number;
 
@@ -17,6 +18,7 @@ export interface BotWormSnapshot {
   team: 'team1' | 'team2';
   x: number;
   y: number;
+  width: number;
   height: number;
   health: number;
   speedMultiplier?: number;
@@ -61,7 +63,28 @@ export type BotDecisionTrace = {
   rejected: Record<string, number>;
 };
 
+type ShotMemoryEntry = { stateKey: string; shotKey: string; noRes: number; ff: number };
+
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+function shotStateKey(shooter: BotWormSnapshot, enemies: BotWormSnapshot[]): string {
+  const sx = Math.floor(shooter.x / 32);
+  const sy = Math.floor(shooter.y / 32);
+  const closest = enemies
+    .filter(e => e.health > 0)
+    .map(e => ({ e, d: Math.hypot(e.x - shooter.x, e.y - shooter.y) }))
+    .sort((a, b) => a.d - b.d)[0]?.e;
+  const ex = closest ? Math.floor(closest.x / 64) : -1;
+  const ey = closest ? Math.floor(closest.y / 64) : -1;
+  return `${sx}:${sy}:${ex}:${ey}`;
+}
+
+function shotKeyFromLocal(weaponId: string, facingRight: boolean, aimAngle: number, power: number): string {
+  const angleDeg = aimAngle * (180 / Math.PI);
+  const angleBin = Math.round(angleDeg / 2);
+  const powerBin = Math.round(power / 5);
+  return `${weaponId}:${facingRight ? 1 : 0}:${angleBin}:${powerBin}`;
+}
 
 const angleNorm = (a: number): number => {
   const TAU = Math.PI * 2;
@@ -176,7 +199,9 @@ function chooseBotActionScored(
   enemies: BotWormSnapshot[],
   allies: BotWormSnapshot[],
   botCfg: BotConfig,
-  traceEnabled: boolean = false
+  traceEnabled: boolean = false,
+  difficulty: AIDifficulty = 'medium',
+  shotMemory: ShotMemoryEntry[] = []
 ): ScoredAction | null {
   const aliveEnemies = enemies.filter(e => e.health > 0);
   if (aliveEnemies.length === 0) return null;
@@ -190,6 +215,18 @@ function chooseBotActionScored(
   const grenadePowerList = sampleGrenadePowers();
 
   const targetRadius = 10;
+
+  const stateKey = shotStateKey(shooter, aliveEnemies);
+  const mem = new Map<string, ShotMemoryEntry>();
+  for (const m of shotMemory) {
+    if (!m || typeof m.stateKey !== 'string' || typeof m.shotKey !== 'string') continue;
+    mem.set(`${m.stateKey}|${m.shotKey}`, m);
+  }
+
+  const aimPct = (botCfg.aimErrorPct && (botCfg.aimErrorPct as any)[difficulty]) ?? 0.12;
+  const powPct = (botCfg.powerErrorPct && (botCfg.powerErrorPct as any)[difficulty]) ?? 0.08;
+  const rangePenaltyPerPx = (botCfg as any).scoring?.rangePenaltyPerPx ?? 0.02;
+  const friendlyDamageWeight = (botCfg as any).scoring?.friendlyDamageWeight ?? 4.0;
 
   let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot; trace?: BotDecisionTrace } | null = null;
 
@@ -266,10 +303,17 @@ function chooseBotActionScored(
           }
 
           const falloff = clamp(1 - miss / Math.max(1, simWeapon.explosionRadius), 0, 1);
-          const expectedDamage = simWeapon.damage * falloff;
+          const travel = Math.hypot(target.x - muzzle.x, target.y - muzzle.y);
+          const aimSigma = Math.max(0.01, aimPct * 1.15);
+          const spreadSigma = (weapon.spread || 0) * (Math.PI / 180) * 0.35;
+          const powSigma = Math.max(0, powPct) * 0.12;
+          const sigma = Math.max(8, travel * (Math.tan(aimSigma) + Math.tan(spreadSigma)) + travel * powSigma);
+          const pHit = Math.max(0.02, Math.min(1, Math.exp(-(miss * miss) / (2 * sigma * sigma))));
+          const expectedDamage = simWeapon.damage * falloff * pHit;
           const isKill = expectedDamage >= target.health && target.health > 0;
           let score = expectedDamage * botCfg.scoring.damageWeight - miss * botCfg.scoring.missWeight;
           if (isKill) score += botCfg.scoring.killBonus;
+          score -= travel * rangePenaltyPerPx;
           score += (rng() - 0.5) * 1e-6;
 
           const safeRadius = simWeapon.explosionRadius + botCfg.scoring.safeExtraRadius;
@@ -279,6 +323,7 @@ function chooseBotActionScored(
             bump('self_unsafe');
             continue;
           }
+          let expectedFriendlyDamage = 0;
           let unsafe = false;
           const allySafe = safeRadius + 26;
           for (const ally of allies) {
@@ -288,11 +333,17 @@ function chooseBotActionScored(
               unsafe = true;
               break;
             }
+            if (d <= safeRadius + (ally.width / 2)) {
+              const ar = ally.width / 2;
+              const af = clamp(1 - d / Math.max(1, safeRadius + ar), 0, 1);
+              expectedFriendlyDamage += simWeapon.damage * af * pHit;
+            }
           }
           if (unsafe) {
             bump('ally_unsafe');
             continue;
           }
+          score -= expectedFriendlyDamage * friendlyDamageWeight;
 
           let risk: number | undefined = undefined;
           if (weapon.id === 'grenade') {
@@ -317,6 +368,13 @@ function chooseBotActionScored(
             const miss2 = Math.hypot(res2.end.x - target.x, res2.end.y - target.y);
             risk = Math.abs(miss2 - miss);
             score -= risk * 0.6;
+          }
+
+          const local = localAimFromGlobal(global);
+          const mk = mem.get(`${stateKey}|${shotKeyFromLocal(weapon.id, local.facingRight, local.aimAngle, power)}`);
+          if (mk) {
+            score -= (mk.noRes || 0) * 120;
+            score -= (mk.ff || 0) * 900;
           }
 
           const cand = { score, global, power, weaponIndex: w.index, impact: res.end, weaponId: weapon.id, expectedDamage, target };
@@ -395,6 +453,7 @@ export function buildSnapshotFromState(
     team: p.team,
     x: p.x,
     y: p.y,
+    width: p.width || 10,
     height: p.height || 10,
     health: p.health || 0,
     speedMultiplier: p.speedMultiplier || 1,
@@ -709,9 +768,11 @@ export function chooseBotAction(
   shooter: BotWormSnapshot,
   enemies: BotWormSnapshot[],
   allies: BotWormSnapshot[] = [shooter],
-  botCfg: BotConfig = DEFAULT_BOT_CONFIG
+  botCfg: BotConfig = DEFAULT_BOT_CONFIG,
+  difficulty: AIDifficulty = 'medium',
+  shotMemory: ShotMemoryEntry[] = []
 ): BotAction | null {
-  return chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg)?.action || null;
+  return chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, false, difficulty, shotMemory)?.action || null;
 }
 
 export function chooseBotActionDebug(
@@ -720,9 +781,11 @@ export function chooseBotActionDebug(
   shooter: BotWormSnapshot,
   enemies: BotWormSnapshot[],
   allies: BotWormSnapshot[] = [shooter],
-  botCfg: BotConfig = DEFAULT_BOT_CONFIG
+  botCfg: BotConfig = DEFAULT_BOT_CONFIG,
+  difficulty: AIDifficulty = 'medium',
+  shotMemory: ShotMemoryEntry[] = []
 ): { action: BotAction; score: number; impact: { x: number; y: number }; trace?: BotDecisionTrace } | null {
-  const res = chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true);
+  const res = chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true, difficulty, shotMemory);
   if (!res) return null;
   return { action: res.action, score: res.score, impact: res.impact, trace: res.trace };
 }
@@ -735,7 +798,9 @@ export function chooseBotPlan(
   allies: BotWormSnapshot[],
   botCfg: BotConfig,
   moveSeconds: number,
-  ropeAttachBudget: number
+  ropeAttachBudget: number,
+  difficulty: AIDifficulty = 'medium',
+  shotMemory: ShotMemoryEntry[] = []
 ): BotPlan | null {
   const deepBottom = shooter.y > world.terrain.height - 90;
   const pitGeom = (() => {
@@ -759,7 +824,9 @@ export function chooseBotPlan(
     return { wallL, wallR, roof };
   })();
 
-  const base = pitGeom ? chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true) : chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg);
+  const base = pitGeom
+    ? chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true, difficulty, shotMemory)
+    : chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, false, difficulty, shotMemory);
   if (!base) return null;
 
   if (deepBottom) {

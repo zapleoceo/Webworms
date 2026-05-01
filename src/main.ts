@@ -500,6 +500,7 @@ window.botDebugMatrix = () => {
     team: 'team2' as const,
     x: 0,
     y: 0,
+    width: 10,
     height: 10,
     health: 100,
     speedMultiplier: 1,

@@ -7,6 +7,7 @@ import { Random } from '../utils/Random';
 import { AudioManager } from '../utils/AudioManager';
 import { RopeTool } from '../equipment/items/RopeTool';
 import { circleOffsets } from '../physics/TrajectorySim';
+import { assetUrl } from '../utils/assetUrl';
 
 export class PhysicsEngine {
   public gravity: number = 195; // pixels per second squared (Increased by 30% from 150)
@@ -27,7 +28,7 @@ export class PhysicsEngine {
 
   private spawnGrave(state: GameState, worm: any, wormIndex: number): void {
     const spriteN = (wormIndex % 6) + 1;
-    const sprite = `/sprites/Misc/grave${spriteN}.png`;
+    const sprite = assetUrl(`sprites/Misc/grave${spriteN}.png`);
     const x = Number(worm.x) || 0;
     const y = (Number(worm.y) || 0) - Math.max(0, Number(worm.height) || 0) * 0.25;
     const vx = (Number(worm.vx) || 0) * 0.2;
