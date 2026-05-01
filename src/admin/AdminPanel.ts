@@ -16,6 +16,27 @@ export class AdminPanel {
   private pendingWeaponProjectileSrc: string | null = null;
   private upscaleAllAbort: boolean = false;
 
+  private getDefaultWeaponIconSrc(id: string): string {
+    if (id === 'bazooka') return '/sprites/Weapon Icons/bazooka.1.png';
+    if (id === 'minigun') return '/sprites/Weapon Icons/minigun.1.png';
+    if (id === 'triple') return '/sprites/Weapon Icons/shotgun.1.png';
+    if (id === 'rocket') return '/sprites/Weapon Icons/hmissile.1.png';
+    if (id === 'blaster') return '/sprites/Weapon Icons/laser.1.png';
+    if (id === 'grenade') return '/sprites/Weapon Icons/grenade.1.png';
+    if (id === 'rope') return '/sprites/Weapon Icons/rope.1.png';
+    return '';
+  }
+
+  private getDefaultProjectileSrc(id: string): string {
+    if (id === 'bazooka') return '/sprites/Weapons/missile.png';
+    if (id === 'minigun') return '/sprites/Weapons/bullet.png';
+    if (id === 'triple') return '/sprites/Weapons/bullet.png';
+    if (id === 'rocket') return '/sprites/Weapons/hmissil1.png';
+    if (id === 'blaster') return '/sprites/Weapons/bullet.png';
+    if (id === 'grenade') return '/sprites/Weapons/grenade.png';
+    return '';
+  }
+
   constructor() {
     document.documentElement.classList.add('admin-mode');
     document.body.classList.add('admin-mode');
@@ -1812,7 +1833,8 @@ export class AdminPanel {
         const score = this.computeWeaponScore100(w);
         const selected = this.selectedWeaponId === w.id;
         const cls = selected ? 'weapon-list-item selected' : 'weapon-list-item';
-        const icon = w.icon_src ? `<img src="${w.icon_src}" class="weapon-list-icon" />` : `<div class="weapon-list-icon placeholder"></div>`;
+        const iconSrc = w.icon_src || this.getDefaultWeaponIconSrc(w.id);
+        const icon = iconSrc ? `<img src="${iconSrc}" class="weapon-list-icon" />` : `<div class="weapon-list-icon placeholder"></div>`;
         return `
           <button class="${cls}" data-id="${w.id}">
             ${icon}
@@ -1884,8 +1906,8 @@ export class AdminPanel {
 
     const icon = document.getElementById('weapon-icon-preview') as HTMLImageElement | null;
     const proj = document.getElementById('weapon-projectile-preview') as HTMLImageElement | null;
-    if (icon) icon.src = w.icon_src || '';
-    if (proj) proj.src = w.projectile_src || '';
+    if (icon) icon.src = w.icon_src || this.getDefaultWeaponIconSrc(w.id) || '';
+    if (proj) proj.src = w.projectile_src || this.getDefaultProjectileSrc(w.id) || '';
 
     this.updateWeaponDerived();
   }
