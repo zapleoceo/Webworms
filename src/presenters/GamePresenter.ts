@@ -15,6 +15,8 @@ import { BrandLogo } from '../models/BrandLogo';
 import { DEFAULT_AIRDROP_PHYSICS, normalizeAirdropPhysicsConfig } from '../physics/AirdropConfig';
 import { BotTurnController } from '../controllers/BotTurnController';
 import { terrainHitCircle } from '../physics/TrajectorySim';
+import { stepTurn } from '../game/turns/TurnSystem';
+import { BURST_SHOTS_PER_TURN, burstUsed, canFireBurstWeapon, incrementBurst, isBurstWeapon, trySpendGrenade } from '../game/combat/WeaponSystem';
 
 export class GamePresenter {
   public state: GameState;
@@ -23,7 +25,6 @@ export class GamePresenter {
   public isRunning: boolean = false;
   private activeInputs: Set<string> = new Set(); // Track held keys/buttons
   private shotsFiredThisTurnByWeaponId: Record<string, number> = {};
-  private static readonly MINIGUN_SHOTS_PER_TURN = 25;
   private nextProjectileNetId = 1;
   
   // Track analog joystick inputs (-1.0 to 1.0)
@@ -436,22 +437,17 @@ export class GamePresenter {
       
       const hasProjectiles = this.state.projectiles.length > 0;
       const isStable = !hasProjectiles;
-
-      if (this.turnTimeLeft > 0 && this.state.mode !== 'training') {
-        this.turnTimeLeft -= dtTimer;
-        if (this.turnTimeLeft <= 0) {
-          this.turnTimeLeft = 0;
-        }
-      }
+      const turnStep = stepTurn({
+        mode: this.state.mode as any,
+        hasFiredThisTurn: this.hasFiredThisTurn,
+        isStable,
+        turnTimeLeft: this.turnTimeLeft,
+        dtTimer
+      });
+      this.turnTimeLeft = turnStep.turnTimeLeft;
       this.state.turnTimeLeft = this.turnTimeLeft;
       this.state.hasFiredThisTurn = this.hasFiredThisTurn;
-
-      if (this.hasFiredThisTurn && isStable) {
-        this.nextTurn();
-        return;
-      }
-
-      if (this.turnTimeLeft <= 0 && this.state.mode !== 'training' && isStable) {
+      if (turnStep.nextTurn) {
         this.nextTurn();
         return;
       }
@@ -644,13 +640,11 @@ export class GamePresenter {
 
     if (this.activeInputs.has('fire')) {
       const weapon = player.getCurrentWeapon();
-      const isBurstWeapon = weapon?.id === 'minigun' || weapon?.id === 'heavy_gun';
-      const burstUsed = weapon ? ((this.shotsFiredThisTurnByWeaponId as any)[weapon.id] || 0) : 0;
-      const blockBurstWeapon = isBurstWeapon && (this.turnTimeLeft <= 0 || burstUsed >= GamePresenter.MINIGUN_SHOTS_PER_TURN);
+      const blockBurstWeapon = weapon ? (isBurstWeapon(weapon.id) && !canFireBurstWeapon(this.shotsFiredThisTurnByWeaponId, weapon.id, this.turnTimeLeft)) : false;
       if (blockBurstWeapon) {
         player.aimPower = 0;
       } else if (weapon && player.weaponCooldowns[weapon.id] <= 0) {
-        if (isBurstWeapon && weapon.chargeSpeed <= 0) {
+        if (weapon && isBurstWeapon(weapon.id) && weapon.chargeSpeed <= 0) {
           player.aimPower = 100;
           this.fireWeapon(player);
         } else {
@@ -934,19 +928,10 @@ export class GamePresenter {
     }
 
     if (weapon.id === 'grenade') {
-      const team = (player as any).team === 'team2' ? 'team2' : 'team1';
-      const cur = this.state.teamAmmo?.[team]?.grenade;
-      if (typeof cur === 'number' && Number.isFinite(cur)) {
-        if (cur <= 0) return;
-        this.state.teamAmmo[team].grenade = cur - 1;
-      }
+      if (!trySpendGrenade(this.state, (player as any).team)) return;
     }
 
-    if (weapon.id === 'minigun' || weapon.id === 'heavy_gun') {
-      const used = (this.shotsFiredThisTurnByWeaponId as any)[weapon.id] || 0;
-      if (used >= GamePresenter.MINIGUN_SHOTS_PER_TURN) return;
-      if (this.turnTimeLeft <= 0) return;
-    }
+    if (isBurstWeapon(weapon.id) && !canFireBurstWeapon(this.shotsFiredThisTurnByWeaponId, weapon.id, this.turnTimeLeft)) return;
     
     this.hasFiredThisTurn = true;
     this.state.hasFiredThisTurn = true;
@@ -998,9 +983,7 @@ export class GamePresenter {
             1.0
           );
         }
-        if (weapon.id === 'heavy_gun') {
-          (this.shotsFiredThisTurnByWeaponId as any)[weapon.id] = ((this.shotsFiredThisTurnByWeaponId as any)[weapon.id] || 0) + 1;
-        }
+        incrementBurst(this.shotsFiredThisTurnByWeaponId, weapon.id, 1);
       }
       return;
     }
@@ -1028,8 +1011,8 @@ export class GamePresenter {
 
     let pCount = Math.max(1, weapon.projectilesPerShot || 1);
     if (weapon.id === 'minigun') {
-      const used = this.shotsFiredThisTurnByWeaponId.minigun || 0;
-      const remaining = Math.max(0, GamePresenter.MINIGUN_SHOTS_PER_TURN - used);
+      const used = burstUsed(this.shotsFiredThisTurnByWeaponId, weapon.id);
+      const remaining = Math.max(0, BURST_SHOTS_PER_TURN - used);
       if (remaining <= 0) return;
       pCount = Math.min(pCount, remaining);
     }
@@ -1045,9 +1028,7 @@ export class GamePresenter {
       this.spawnSingleProjectile(player, projWeapon, speed, baseRad);
     }
 
-    if (weapon.id === 'minigun') {
-      this.shotsFiredThisTurnByWeaponId.minigun = (this.shotsFiredThisTurnByWeaponId.minigun || 0) + pCount;
-    }
+    incrementBurst(this.shotsFiredThisTurnByWeaponId, weapon.id, pCount);
   }
 
   private raycastHitscan(player: Worm, globalAimAngle: number, maxDist: number): { x: number; y: number } | null {
