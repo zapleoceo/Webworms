@@ -177,6 +177,40 @@ body.admin-mode {
   margin-top: 20px;
 }
 
+.aivai-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.aivai-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.aivai-link {
+  flex: 1;
+  min-width: 260px;
+}
+
+@media (max-width: 520px) {
+  .aivai-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .aivai-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .aivai-link {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
 .stat-card {
   background-color: #3d3d4e;
   padding: 20px;

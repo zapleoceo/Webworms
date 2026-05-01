@@ -960,29 +960,39 @@ button:hover {
   border: 1px solid rgba(255,255,255,0.3);
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
-.wind-icon {
-  width: 18px;
-  height: 18px;
-  image-rendering: pixelated;
-}
-
-.wind-bar {
-  width: 80px;
+.wind-slider {
+  --wind-shift: 0px;
+  width: 92px;
   height: 8px;
   background: rgba(0,0,0,0.35);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 999px;
   overflow: hidden;
+  position: relative;
 }
 
-.wind-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: rgba(255,255,255,0.85);
+.wind-center {
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  width: 2px;
+  height: 10px;
+  transform: translateX(-50%);
+  background: rgba(255,255,255,0.55);
+}
+
+.wind-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translate(calc(-50% + var(--wind-shift)), -50%);
   border-radius: 999px;
+  background: rgba(255,255,255,0.9);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.4);
 }
 
 .center-notification {

@@ -145,7 +145,7 @@ export class AdminPanel {
               </h2>
               <div class="upload-form bot-settings-card" style="margin-bottom: 14px;">
                 <h3>AI vs AI</h3>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                <div class="aivai-grid" style="margin-top: 10px;">
                   <label class="bot-setting">
                     <span class="bot-setting-label">AI 1 (team1)</span>
                     <select id="bot-aivai-a1" class="retro-input bot-setting-input">
@@ -171,10 +171,10 @@ export class AdminPanel {
                     </select>
                   </label>
                 </div>
-                <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+                <div class="aivai-actions" style="margin-top:10px;">
                   <button id="bot-aivai-start" class="primary-btn small-btn">Start</button>
                   <button id="bot-aivai-copy" class="secondary-btn small-btn">Copy link</button>
-                  <input id="bot-aivai-link" class="retro-input" readonly style="flex: 1; min-width: 260px;" />
+                  <input id="bot-aivai-link" class="retro-input aivai-link" readonly />
                 </div>
               </div>
               <div class="upload-form bot-settings-card">

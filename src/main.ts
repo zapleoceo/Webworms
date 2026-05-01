@@ -1281,8 +1281,7 @@ function updateWormSelectionUI(state: any) {
 function bindPresenterEvents() {
   const turnTimer = document.getElementById('turn-timer')!;
   const windIndicator = document.getElementById('wind-indicator') as HTMLElement | null;
-  const windIcon = document.getElementById('wind-icon') as HTMLImageElement | null;
-  const windBarFill = document.getElementById('wind-bar-fill') as HTMLElement | null;
+  const windKnob = document.getElementById('wind-knob') as HTMLElement | null;
   const turnNotification = document.getElementById('turn-notification')!;
   const localTurnLabel = document.getElementById('turn-label-local');
   const enemyTurnLabel = document.getElementById('turn-label-enemy');
@@ -1343,9 +1342,11 @@ function bindPresenterEvents() {
         windIndicator.style.display = 'none';
       } else {
         windIndicator.style.display = 'block';
-        const abs = Math.min(100, Math.abs(w));
-        if (windIcon) windIcon.src = w >= 0 ? '/sprites/Misc/windr.png' : '/sprites/Misc/windl.png';
-        if (windBarFill) windBarFill.style.width = `${abs}%`;
+        if (windKnob) {
+          const clamped = Math.max(-100, Math.min(100, w));
+          const px = (clamped / 100) * 40;
+          windKnob.parentElement?.style.setProperty('--wind-shift', `${px}px`);
+        }
       }
     }
 
