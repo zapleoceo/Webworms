@@ -331,6 +331,20 @@ export class BotTurnController {
         const entries = Array.from(this.shotMemory.entries()).sort((a, b) => a[1].lastT - b[1].lastT);
         for (let k = 0; k < Math.max(0, entries.length - 320); k++) this.shotMemory.delete(entries[k][0]);
       }
+      this.emitAIVai(presenter, {
+        type: 'shot_eval',
+        t: presenter.matchDuration || 0,
+        team: this.pendingShotEval.team,
+        wormId: String(presenter.state.currentPlayerIndex ?? ''),
+        targetId: this.pendingShotEval.targetId,
+        stateKey: this.pendingShotEval.stateKey,
+        shotKey: this.pendingShotEval.shotKey,
+        enemyDelta,
+        allyDelta,
+        noRes: enemyDelta <= 0.01 ? 1 : 0,
+        ff: allyDelta > 0.01 ? 1 : 0,
+        aiV: AI_V
+      });
       this.pendingShotEval = null;
     }
     if (hasProjectiles) return;
