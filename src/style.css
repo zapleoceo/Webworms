@@ -44,13 +44,13 @@ html, body {
 
 .controls-ui {
   position: absolute;
-  top: calc(15px + env(safe-area-inset-top) + 78px);
+  top: calc(15px + env(safe-area-inset-top) + 93px);
   right: 15px;
   z-index: 110;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 10px;
+  gap: 6px;
 }
 
 .controls-toggle {
@@ -68,7 +68,7 @@ html, body {
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 6px 14px rgba(0,0,0,0.35);
-  margin-top: 15px;
+  margin-top: 0;
 }
 
 .controls-help {
@@ -155,7 +155,7 @@ html, body {
 
 @media (max-width: 768px) {
   .controls-ui {
-    top: calc(12px + env(safe-area-inset-top) + 72px);
+    top: calc(12px + env(safe-area-inset-top) + 87px);
     right: calc(12px + env(safe-area-inset-right));
   }
   .controls-help {
@@ -583,11 +583,18 @@ button:hover {
   z-index: 100;
   text-shadow: 1px 1px 0 #000;
   box-shadow: inset 0 -3px 0 rgba(0,0,0,0.3);
-  margin-top: 8px;
+  margin-top: 0;
 }
 .leave-game-btn:active {
   transform: translateY(4px);
   box-shadow: inset 0 -1px 0 rgba(0,0,0,0.3);
+}
+
+.controls-top-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  pointer-events: auto;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.25);
 }
 
 .modal-overlay {
@@ -792,30 +799,34 @@ button:hover {
   align-items: flex-start;
 }
 
-.left-team-info {
+.team-info {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+}
+
+.team-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .left-team {
-  --turn-accent: var(--color-primary);
+  --turn-accent: #32CD32;
+  --team-color: #32CD32;
 }
 
 .right-team {
-  --turn-accent: var(--color-danger);
+  --turn-accent: #FF3333;
+  --team-color: #FF3333;
 }
 
 .team-status.left-team .team-name {
-  color: #32CD32;
+  color: var(--team-color);
 }
 
 .team-status.right-team .team-name {
-  color: #FF3333;
-}
-
-.team-status.left-team {
-  --turn-accent: #32CD32;
+  color: var(--team-color);
 }
 
 .team-name {

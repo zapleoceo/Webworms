@@ -162,6 +162,11 @@ function ensureControlsBoundOnce() {
     const open = controlsUI.classList.contains('is-open');
     setControlsOpen(!open, true);
   });
+  document.getElementById('controls-toggle-top')?.addEventListener('click', () => {
+    if (!controlsUI) return;
+    const open = controlsUI.classList.contains('is-open');
+    setControlsOpen(!open, true);
+  });
 }
 
 function syncControlsForViewport(inGame: boolean) {

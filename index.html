@@ -196,12 +196,14 @@
             <!-- Top Bar -->
             <div class="hud-top">
               <div class="team-status left-team">
-                <div class="left-team-info">
+                <div class="team-info">
                   <div class="team-name" id="team-name-left">YOU</div>
                   <div class="team-turn" id="turn-label-local">WAITING</div>
                   <div class="hp-bar-container"><div class="hp-bar fill-green" id="hp-local"></div></div>
                 </div>
-                <button id="btn-leave-game" class="danger-btn leave-game-btn">LEAVE</button>
+                <div class="team-actions">
+                  <button id="btn-leave-game" class="danger-btn leave-game-btn">LEAVE</button>
+                </div>
               </div>
               
               <div class="match-info">
@@ -215,9 +217,14 @@
               </div>
               
               <div class="team-status right-team">
-                <div class="team-name" id="team-name-right"><span id="team-name-right-text">ENEMY</span> <span id="enemy-difficulty" class="enemy-difficulty"></span></div>
-                <div class="team-turn" id="turn-label-enemy">WAITING</div>
-                <div class="hp-bar-container"><div class="hp-bar fill-red" id="hp-enemy"></div></div>
+                <div class="team-info">
+                  <div class="team-name" id="team-name-right"><span id="team-name-right-text">ENEMY</span> <span id="enemy-difficulty" class="enemy-difficulty"></span></div>
+                  <div class="team-turn" id="turn-label-enemy">WAITING</div>
+                  <div class="hp-bar-container"><div class="hp-bar fill-red" id="hp-enemy"></div></div>
+                </div>
+                <div class="team-actions">
+                  <button id="controls-toggle-top" class="secondary-btn small-btn controls-top-btn" type="button">CONTROLS</button>
+                </div>
               </div>
             </div>
 

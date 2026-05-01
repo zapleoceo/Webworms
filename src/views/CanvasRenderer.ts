@@ -718,7 +718,7 @@ export class CanvasRenderer {
 
       // Draw active player indicator
       if (isActive) {
-        this.ctx.fillStyle = 'yellow';
+        this.ctx.fillStyle = player.teamColor || '#fff';
         this.ctx.beginPath();
         this.ctx.moveTo(-5, -player.height - 40);
         this.ctx.lineTo(5, -player.height - 40);
