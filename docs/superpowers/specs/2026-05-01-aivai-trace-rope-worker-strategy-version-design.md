@@ -25,6 +25,16 @@
 
 ## Design
 
+### 0) UI colors (left=green, right=red)
+Единая конвенция UI:
+- Левая команда всегда “зелёная”, правая всегда “красная” (независимо от `team1/team2` и `localTeam`).
+- Применить цвета:
+  - в HUD вверху (имя игрока/команды слева/справа),
+  - в карточках юнитов (worm selection panel) — имя/HP/подсветка слева зелёным, справа красным.
+- Привязка команд:
+  - использовать вычисление HUD сторон (leftTeam/rightTeam) и на основании этого красить элементы.
+  - в `aivai` left=HARD1, right=HARD2, но цвет остаётся left=green/right=red.
+
 ### 1) Strategy versioning
 Единая константа:
 - `export const AI_V = "2026-05-01.1";`
@@ -99,11 +109,31 @@
   - принимает snapshot (terrain compressed, worms, config, executeSeconds, ropeRemaining, seed),
   - возвращает plan/action и metrics (consideredCount, bestScore, ms).
 - В `BotTurnController`:
-  - если mode===aivai или user toggled “AI worker” — отправлять планирование в worker,
-  - fallback: если worker не ответил до `planSeconds-ε`, использовать текущий main-thread путь.
+  - если mode===aivai или user toggled “AI worker” — запускать планирование в worker.
+  - **самый ранний момент отправки**: сразу после того, как:
+    - определили `shooter`, `enemies`, `allies`,
+    - построили `snap` (terrain snapshot),
+    - вычислили `executeSeconds` и `ropeRemaining`.
+  - **dual-path**: параллельно запускаем:
+    - worker планирование (async),
+    - main-thread планирование (как сейчас).
+  - **момент выбора**:
+    - если main-thread уже получил план и подходит момент применять (установка `this.plan` / переход к movement), проверяем:
+      - пришёл ли ответ worker,
+      - валиден ли он для текущего состояния (тот же `turnKey`, тот же shooter жив, совпадает currentPlayerIndex),
+      - если да — предпочитаем worker (если он лучше по `bestScore`) или используем как “override”.
+    - если worker ещё не ответил — используем main-thread и логируем, что worker опоздал.
+  - **тайминги**:
+    - worker deadline по умолчанию: `planSeconds - 0.15` (можно тюнить),
+    - main-thread остаётся гарантированным fallback.
 - Логирование:
   - в `bot_decision.debug.trace.chosen` добавить `thinkSrc: "worker"|"main"`
   - в новых событиях (секция 2) также `thinkSrc`.
+  - добавить метрики:
+    - `workerMs` (время выполнения в worker, включая сериализацию/десериализацию),
+    - `workerArrivedAfterMain: 0|1`,
+    - `workerUsed: 0|1`,
+    - `workerBetter: 0|1` (если сравниваем score).
 
 **Approach B: requestIdleCallback**
 - Более простой, но не гарантирует smoothness; оставить как fallback.
@@ -150,4 +180,3 @@
   - есть ли moveStrategy смены при стенах/обрывах,
   - уменьшились ли “no_damage shots” и friendly fire.
 5) Запустить анализатор и посмотреть weapon таблицу (grenade доминирование vs blaster).
-
