@@ -7,6 +7,7 @@ export class Landscape {
   public pixelData?: Uint8ClampedArray; // Original image colors
   public needsUpdate: boolean = true; // Flag for full renderer caching (init only)
   public revision: number = 1;
+  public dfEvents: { kind: 'reset' | 'crater'; x?: number; y?: number; r?: number }[] = [];
   public newCraters: {x: number, y: number, r: number}[] = []; // Queue for fast erasure
   public syncCraters: {x: number, y: number, r: number}[] = []; // Used to sync craters exactly once per network tick
   public newStamps: { imgKey: string; x: number; y: number; w: number; h: number; angle: number; crop?: { x: number; y: number; w: number; h: number } }[] = []; // Queue for stamping images
@@ -16,6 +17,15 @@ export class Landscape {
     this.width = width;
     this.height = height;
     this.grid = new Uint8Array(width * height);
+    this.dfEvents.push({ kind: 'reset' });
+  }
+
+  public dfMarkReset(): void {
+    this.dfEvents.push({ kind: 'reset' });
+  }
+
+  public dfMarkCrater(x: number, y: number, r: number): void {
+    this.dfEvents.push({ kind: 'crater', x, y, r });
   }
 
   public getIndex(x: number, y: number): number {
@@ -164,6 +174,7 @@ export class Landscape {
 
         this.needsUpdate = true;
         this.revision++;
+        this.dfMarkReset();
         dbg && console.log('[MAP] generateFromImage ms', Math.round(performance.now() - t0), { w: this.width, h: this.height });
         resolve();
       };
@@ -212,6 +223,7 @@ export class Landscape {
     this.newCraters.push({x: cx, y: cy, r: radius});
     this.syncCraters.push({x: cx, y: cy, r: radius});
     this.revision++;
+    this.dfMarkCrater(cx, cy, effectiveRadius);
   }
 
   public stampImage(

@@ -3,7 +3,6 @@ import type { Landscape } from '../models/Landscape';
 type TileKey = string;
 
 type Tile = {
-  rev: number;
   x0: number;
   y0: number;
   w: number;
@@ -81,6 +80,7 @@ export class TerrainDistanceField {
   private tileSize: number;
   private cap: number;
   private tiles: Map<TileKey, Tile> = new Map();
+  private lastEventIndex: number = 0;
 
   constructor(landscape: Landscape, tileSize: number = 64, cap: number = 96) {
     this.landscape = landscape;
@@ -91,6 +91,7 @@ export class TerrainDistanceField {
   public setLandscape(landscape: Landscape): void {
     this.landscape = landscape;
     this.tiles.clear();
+    this.lastEventIndex = 0;
   }
 
   private key(tx: number, ty: number): TileKey {
@@ -206,7 +207,6 @@ export class TerrainDistanceField {
     }
 
     return {
-      rev: (this.landscape as any).revision || 0,
       x0,
       y0,
       w: tileW,
@@ -216,7 +216,42 @@ export class TerrainDistanceField {
     };
   }
 
+  private applyLandscapeDfEvents(): void {
+    const events = (this.landscape as any).dfEvents as Array<{ kind: 'reset' | 'crater'; x?: number; y?: number; r?: number }> | undefined;
+    if (!events || events.length <= this.lastEventIndex) return;
+
+    for (let i = this.lastEventIndex; i < events.length; i++) {
+      const ev = events[i];
+      if (!ev) continue;
+      if (ev.kind === 'reset') {
+        this.tiles.clear();
+        continue;
+      }
+      if (ev.kind === 'crater' && typeof ev.x === 'number' && typeof ev.y === 'number' && typeof ev.r === 'number') {
+        const pad = this.cap + 2;
+        const minX = Math.floor(ev.x - ev.r - pad);
+        const maxX = Math.ceil(ev.x + ev.r + pad);
+        const minY = Math.floor(ev.y - ev.r - pad);
+        const maxY = Math.ceil(ev.y + ev.r + pad);
+
+        const tx0 = (minX / this.tileSize) | 0;
+        const tx1 = (maxX / this.tileSize) | 0;
+        const ty0 = (minY / this.tileSize) | 0;
+        const ty1 = (maxY / this.tileSize) | 0;
+
+        for (let ty = ty0; ty <= ty1; ty++) {
+          for (let tx = tx0; tx <= tx1; tx++) {
+            this.tiles.delete(this.key(tx, ty));
+          }
+        }
+      }
+    }
+
+    this.lastEventIndex = events.length;
+  }
+
   private getTileFor(ix: number, iy: number): Tile | null {
+    this.applyLandscapeDfEvents();
     const w = this.landscape.width;
     const h = this.landscape.height;
     if (ix < 0 || iy < 0 || ix >= w || iy >= h) return null;
@@ -224,11 +259,9 @@ export class TerrainDistanceField {
     const tx = (ix / this.tileSize) | 0;
     const ty = (iy / this.tileSize) | 0;
     const k = this.key(tx, ty);
-    const curRev = (this.landscape as any).revision || 0;
     const cached = this.tiles.get(k);
-    if (cached && cached.rev === curRev) return cached;
+    if (cached) return cached;
     const tile = this.computeTile(tx, ty);
-    tile.rev = curRev;
     this.tiles.set(k, tile);
     return tile;
   }
@@ -274,4 +307,3 @@ export class TerrainDistanceField {
     return { nx, ny };
   }
 }
-
