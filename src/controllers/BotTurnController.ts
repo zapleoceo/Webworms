@@ -3,6 +3,7 @@ import { getAIDifficulty } from '../ai/AIStorage';
 import type { AIDifficulty, BotConfig } from '../ai/BotConfig';
 import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
 import { buildSnapshotFromState, chooseBotAction, chooseBotActionDebug, chooseBotPlan, chooseDigAction, terrainFromLandscape } from '../ai/BotAI';
+import { AI_V } from '../ai/AIVersion';
 
 type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
 type RopeMode = 'climb' | 'swing' | 'descend';
@@ -53,6 +54,18 @@ export class BotTurnController {
     replanCooldownSeconds: 1.2
   };
 
+  private thinkWorker: Worker | null = null;
+  private workerJobId: string | null = null;
+  private workerStartedAt: number = 0;
+  private workerResult: any | null = null;
+  private workerArrivedAt: number = 0;
+  private lastThinkSrc: 'main' | 'worker' = 'main';
+  private lastWorkerMs: number | null = null;
+  private lastWorkerComputeMs: number | null = null;
+  private lastWorkerArrivedAfterMain: 0 | 1 | null = null;
+  private lastWorkerUsed: 0 | 1 | null = null;
+  private didReplanThisTurn: boolean = false;
+
   constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
     if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
   }
@@ -92,11 +105,75 @@ export class BotTurnController {
         pos: { x: shooter.x, y: shooter.y },
         health: shooter.health,
         difficulty,
+        aiV: AI_V,
+        thinkSrc: this.lastThinkSrc,
+        workerMs: this.lastWorkerMs,
+        workerComputeMs: this.lastWorkerComputeMs,
+        workerArrivedAfterMain: this.lastWorkerArrivedAfterMain,
+        workerUsed: this.lastWorkerUsed,
         plan: this.plan?.moveTo ? { x: this.plan.moveTo.x, y: this.plan.moveTo.y } : null,
         action,
         noisy,
         debug: dbg
       });
+    } catch {}
+  }
+
+  private emitAIVai(presenter: any, payload: any) {
+    try {
+      if (presenter?.state?.mode !== 'aivai') return;
+      const cb = presenter?.onAIVaiTrace;
+      if (typeof cb !== 'function') return;
+      cb(payload);
+    } catch {}
+  }
+
+  private ensureWorker() {
+    if (this.thinkWorker) return;
+    try {
+      const W: any = (globalThis as any).Worker;
+      if (!W) return;
+      this.thinkWorker = new W(new URL('../ai/worker/BotThinkWorker.ts', (import.meta as any).url), { type: 'module' });
+      const worker = this.thinkWorker;
+      if (!worker) return;
+      worker.onmessage = (evt: MessageEvent<any>) => {
+        const msg = evt.data;
+        if (!msg || msg.kind !== 'planResult') return;
+        if (!this.workerJobId || msg.jobId !== this.workerJobId) return;
+        this.workerResult = msg;
+        this.workerArrivedAt = performance.now();
+      };
+    } catch {
+      this.thinkWorker = null;
+    }
+  }
+
+  private startWorkerPlan(presenter: any, snap: any, shooter: any, botCfg: BotConfig, executeSeconds: number, ropeRemaining: number, rngSeed: number): void {
+    try {
+      this.ensureWorker();
+      if (!this.thinkWorker) return;
+      const terrain = presenter.state.landscape;
+      const grid = terrain?.grid;
+      if (!(grid instanceof Uint8Array)) return;
+      const buf = grid.slice().buffer;
+      const jobId = `${this.matchKey}:${presenter.state.currentPlayerIndex}:${(presenter.matchDuration || 0).toFixed(2)}`;
+      this.workerJobId = jobId;
+      this.workerStartedAt = performance.now();
+      this.workerResult = null;
+      this.workerArrivedAt = 0;
+      this.thinkWorker.postMessage({
+        kind: 'plan',
+        jobId,
+        rngSeed,
+        gravity: presenter.physics.gravity,
+        wind: presenter.state.wind || 0,
+        terrain: { width: terrain.width, height: terrain.height, grid: buf },
+        worms: snap.worms,
+        shooterId: shooter.id,
+        botCfg,
+        executeSeconds,
+        ropeRemaining
+      }, [buf]);
     } catch {}
   }
 
@@ -166,6 +243,16 @@ export class BotTurnController {
       this.dirFlipCount = 0;
       this.lastDx = 0;
       this.ropeStallCount = 0;
+      this.didReplanThisTurn = false;
+      this.lastThinkSrc = 'main';
+      this.lastWorkerMs = null;
+      this.lastWorkerComputeMs = null;
+      this.lastWorkerArrivedAfterMain = null;
+      this.lastWorkerUsed = null;
+      this.workerJobId = null;
+      this.workerResult = null;
+      this.workerArrivedAt = 0;
+      this.workerStartedAt = 0;
       this.debug('turn_start', { idx: curIdx, name: player.name, x: Math.round(player.x), y: Math.round(player.y) });
       presenter.handleInput?.('left', false, true);
       presenter.handleInput?.('right', false, true);
@@ -215,18 +302,38 @@ export class BotTurnController {
 
     if (!this.plannedThisTurn && !isWorldBusy) {
       this.plannedThisTurn = true;
-      const rng = this.rngForTurn(presenter);
+      const rngSeed = this.rngSeedForTurn(presenter);
+      const rng = mulberry32(rngSeed);
       const terrain = terrainFromLandscape(presenter.state.landscape);
       const snap = buildSnapshotFromState(presenter.state, presenter.physics.gravity, terrain);
       const shooter = snap.worms.find(w => w.id === String(presenter.state.currentPlayerIndex));
       if (shooter) {
         const enemies = snap.worms.filter(w => w.team !== shooter.team && w.health > 0);
         const allies = snap.worms.filter(w => w.team === shooter.team && w.health > 0);
+        this.startWorkerPlan(presenter, snap, shooter, botCfg, executeSeconds, ropeRemaining, rngSeed);
         const plan = chooseBotPlan(rng, snap.world, shooter, enemies, allies, botCfg, executeSeconds, ropeRemaining);
-        if (plan) {
-          this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power, targetId: plan.action.targetId } };
+        const mainEnd1 = performance.now();
+
+        const wr = (this.workerResult && this.workerJobId && this.workerResult.jobId === this.workerJobId) ? this.workerResult : null;
+        const wrOk = !!(wr && wr.ok === 1 && wr.plan);
+        const arrivedAfterMain = wr ? (this.workerArrivedAt > mainEnd1 ? 1 : 0) : null;
+        const roundtripMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
+        const computeMs = wr ? Number(wr.ms) : null;
+
+        let useWorker = false;
+        if (wrOk && arrivedAfterMain === 0) useWorker = true;
+        if (!plan && wrOk) useWorker = true;
+
+        this.lastWorkerArrivedAfterMain = arrivedAfterMain;
+        this.lastWorkerMs = roundtripMs;
+        this.lastWorkerComputeMs = computeMs;
+        this.lastWorkerUsed = useWorker ? 1 : 0;
+        this.lastThinkSrc = useWorker ? 'worker' : 'main';
+        const usedPlan = useWorker ? (wr.plan as any) : plan;
+        if (usedPlan) {
+          this.plan = { moveTo: usedPlan.moveTo, action: { weaponIndex: usedPlan.action.weaponIndex, facingRight: usedPlan.action.facingRight, aimAngle: usedPlan.action.aimAngle, power: usedPlan.action.power, targetId: usedPlan.action.targetId } };
           this.moveStartedAt = now;
-          this.debug('plan', { moveTo: plan.moveTo ? { x: Math.round(plan.moveTo.x), y: Math.round(plan.moveTo.y) } : null, weaponIndex: plan.action.weaponIndex, targetId: plan.action.targetId, ropeRemaining });
+          this.debug('plan', { moveTo: usedPlan.moveTo ? { x: Math.round(usedPlan.moveTo.x), y: Math.round(usedPlan.moveTo.y) } : null, weaponIndex: usedPlan.action.weaponIndex, targetId: usedPlan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
         } else if (botCfg.dig.enabled && this.digShotsThisTurn < botCfg.dig.maxShotsPerTurn) {
           const dig = chooseDigAction(rng, snap.world, shooter, enemies, allies, botCfg);
           if (dig) {
@@ -247,7 +354,7 @@ export class BotTurnController {
             const rx = Math.max(30, Math.min(snap.world.terrain.width - 30, shooter.x + dir * 140));
             this.plan = { moveTo: { x: rx, y: shooter.y }, action: { weaponIndex: fallback.weaponIndex, facingRight: fallback.facingRight, aimAngle: fallback.aimAngle, power: fallback.power, targetId: closest.id } };
             this.moveStartedAt = now;
-            this.debug('plan', { moveTo: { x: Math.round(rx), y: Math.round(shooter.y) }, weaponIndex: fallback.weaponIndex, targetId: closest.id, ropeRemaining });
+            this.debug('plan', { moveTo: { x: Math.round(rx), y: Math.round(shooter.y) }, weaponIndex: fallback.weaponIndex, targetId: closest.id, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
           }
         }
       }
@@ -270,6 +377,19 @@ export class BotTurnController {
     this.trackStuck(player, dt);
 
     if (!isWorldBusy) {
+      this.emitAIVai(presenter, {
+        type: 'bot_movement_summary',
+        t: now,
+        team: player.team,
+        wormId: String(curIdx),
+        moveElapsed: Math.max(0, now - this.moveStartedAt),
+        stuckTime: this.stuckTime,
+        didReplan: this.didReplanThisTurn ? 1 : 0,
+        aiV: AI_V,
+        thinkSrc: this.lastThinkSrc,
+        workerMs: this.lastWorkerMs,
+        workerComputeMs: this.lastWorkerComputeMs
+      });
       const planTarget = this.plan.action.targetId;
       let canUsePlanned = true;
       if (planTarget) {
@@ -287,8 +407,11 @@ export class BotTurnController {
   }
 
   private rngForTurn(presenter: any): () => number {
-    const rngSeed = ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`ai:${presenter.matchDuration.toFixed(2)}:${presenter.state.currentPlayerIndex}`)) >>> 0;
-    return mulberry32(rngSeed);
+    return mulberry32(this.rngSeedForTurn(presenter));
+  }
+
+  private rngSeedForTurn(presenter: any): number {
+    return ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`ai:${presenter.matchDuration.toFixed(2)}:${presenter.state.currentPlayerIndex}`)) >>> 0;
   }
 
   private computeActionFromCurrent(presenter: any, botCfg: BotConfig): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number } | null {
@@ -389,6 +512,7 @@ export class BotTurnController {
       this.strategy = null;
       this.plannedThisTurn = false;
       this.plan = null;
+      this.didReplanThisTurn = true;
       this.debug('replan', { reason: 'dir_flip', banned: Array.from(this.bannedTurn) });
       return true;
     }
@@ -404,6 +528,7 @@ export class BotTurnController {
         this.lastReplanAt = now;
         this.plannedThisTurn = false;
         this.plan = null;
+        this.didReplanThisTurn = true;
         this.debug('replan', { reason: 'box_stuck', banned: Array.from(this.bannedTurn) });
       }
       return true;
@@ -416,6 +541,7 @@ export class BotTurnController {
         this.lastReplanAt = now;
         this.plannedThisTurn = false;
         this.plan = null;
+        this.didReplanThisTurn = true;
         this.debug('replan', { reason: 'walk_stuck', banned: Array.from(this.bannedTurn) });
       }
       return true;
@@ -508,6 +634,7 @@ export class BotTurnController {
       this.lastReplanAt = now;
       this.plannedThisTurn = false;
       this.plan = null;
+      this.didReplanThisTurn = true;
       this.debug('replan', { reason: 'banned_threshold', banned: Array.from(this.bannedTurn) });
     }
   }
@@ -560,7 +687,24 @@ export class BotTurnController {
     }
 
     if (!best) return 'walk';
-    return best.s;
+    const chosen = best.s;
+    if (chosen !== this.strategy) {
+      this.emitAIVai(presenter, {
+        type: 'bot_move_strategy',
+        t: presenter.matchDuration || 0,
+        team: player.team,
+        wormId: player.id,
+        strategy: chosen,
+        why: { needUp: needUp ? 1 : 0, needDown: needDown ? 1 : 0, gap: gap ? 1 : 0, obstacle: obstacle ? 1 : 0, ceilingLow: ceilingLow ? 1 : 0, ropeRemaining },
+        moveTo: { x: moveTo.x, y: moveTo.y },
+        bannedTurn: Array.from(this.bannedTurn),
+        aiV: AI_V,
+        thinkSrc: this.lastThinkSrc,
+        workerMs: this.lastWorkerMs,
+        workerComputeMs: this.lastWorkerComputeMs
+      });
+    }
+    return chosen;
   }
 
   private detectObstacle(presenter: any, player: any, dir: 'left' | 'right'): boolean {
@@ -675,13 +819,26 @@ export class BotTurnController {
   ): boolean {
     const equipmentIds: string[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
     const ropeIndex = equipmentIds.findIndex((id: string) => id === 'rope');
-    if (ropeIndex < 0) return false;
-    if (this.ropeAttachUsed >= ropeBudget) return false;
+    const ropeRemaining = Math.max(0, ropeBudget - this.ropeAttachUsed);
+    if (ropeIndex < 0) {
+      this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: player.id, strategy, result: 'no_rope', anglesTried: 0, bestScore: null, anchor: null, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs });
+      return false;
+    }
+    if (this.ropeAttachUsed >= ropeBudget) {
+      this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: player.id, strategy, result: 'budget', anglesTried: 0, bestScore: null, anchor: null, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs });
+      return false;
+    }
     if (player.ropeActive) return true;
-    if (now - this.lastRopeAttemptAt < 0.55) return false;
+    if (now - this.lastRopeAttemptAt < 0.55) {
+      this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: player.id, strategy, result: 'cooldown', anglesTried: 0, bestScore: null, anchor: null, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs });
+      return false;
+    }
 
     const dx = moveTo.x - player.x;
-    if (Math.abs(dx) < 110) return false;
+    if (Math.abs(dx) < 110) {
+      this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: player.id, strategy, result: 'dx_small', anglesTried: 0, bestScore: null, anchor: null, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs });
+      return false;
+    }
 
     presenter.handleInput?.('switch', true, true, ropeIndex);
 
@@ -728,12 +885,14 @@ export class BotTurnController {
 
     if (!best) {
       this.lastRopeAttemptAt = now;
+      this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: player.id, strategy, result: 'no_anchor', anglesTried: globalAngles.length, bestScore: null, anchor: null, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining });
       return false;
     }
 
     player.aimAngle = best.aimAngle;
     presenter.handleInput?.('fire', true, true);
     this.lastRopeAttemptAt = now;
+    this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: player.id, strategy, result: 'fired', anglesTried: globalAngles.length, bestScore: best.score, anchor: null, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining });
     if (player.ropeActive) {
       this.ropeAttachUsed += 1;
       this.ropeStartedAt = now;
@@ -741,6 +900,7 @@ export class BotTurnController {
       this.strategyCost0 = this.estimateCost(presenter, player, moveTo, now);
       this.strategyEvalAt = now + 0.65;
       this.ropeStallCount = 0;
+      this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: player.id, strategy, result: 'attached', anglesTried: globalAngles.length, bestScore: best.score, anchor: null, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining: Math.max(0, ropeRemaining - 1) });
       return true;
     }
 

@@ -1,4 +1,5 @@
 import { APIClient } from '../network/APIClient';
+import { AI_V } from '../ai/AIVersion';
 import 'cropperjs/dist/cropper.css';
 import Cropper from 'cropperjs';
 import '../styles/admin.css';
@@ -139,7 +140,7 @@ export class AdminPanel {
 
             <section id="section-bot" class="admin-section">
               <h2 style="display:flex; align-items:center; justify-content:space-between;">
-                <span>Bot</span>
+                <span style="display:flex; align-items:baseline; gap:10px;"><span>Bot</span><span style="opacity:0.7; font-size:0.85em;">AI_V=${AI_V}</span></span>
                 <button id="bot-help" class="secondary-btn small-btn" style="width: 34px; height: 34px; padding: 0;">I</button>
               </h2>
               <div class="upload-form bot-settings-card" style="margin-bottom: 14px;">

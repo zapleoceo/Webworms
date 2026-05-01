@@ -17,6 +17,7 @@ import { getAIDifficulty, setAIDifficulty } from './ai/AIStorage';
 import { normalizeBotConfig } from './ai/BotConfig';
 import type { AIDifficulty } from './ai/AIDifficulty';
 import { debugSurfacePathMatrix, terrainFromLandscape } from './ai/BotAI';
+import { AI_V } from './ai/AIVersion';
 import { applyWeaponOverrides } from './models/Weapon';
 
 declare global {
@@ -808,6 +809,7 @@ let currentRoomPlayerId: string | null = null;
         matchId: `aivai_${createdAt}_${a1d}_${a2d}`,
         createdAt,
         url: window.location.href,
+        aiV: AI_V,
         a1: a1d,
         a2: a2d,
         mapType,
@@ -1189,6 +1191,7 @@ function updateWormSelectionUI(state: any) {
 
   const currentPlayer = state.getCurrentPlayer();
   const currentTeam = currentPlayer ? currentPlayer.team : 'team1';
+  const hud = getHudSides(currentMode, state);
 
   // Show only if it's local team's turn (or player 1 in local multiplayer)
   const isMyTurn = window.presenter.localTeam === 'training' || window.presenter.localTeam === currentTeam;
@@ -1215,6 +1218,8 @@ function updateWormSelectionUI(state: any) {
   lastWormUIStateStr = currentStateStr;
 
   panel.style.display = 'flex';
+  panel.classList.toggle('team-left', currentTeam === hud.leftTeam);
+  panel.classList.toggle('team-right', currentTeam === hud.rightTeam);
   panel.innerHTML = ''; // Clear existing buttons
   
   teamWorms.forEach((item: any, i: number) => {
@@ -1276,6 +1281,8 @@ function updateWormSelectionUI(state: any) {
 function bindPresenterEvents() {
   const turnTimer = document.getElementById('turn-timer')!;
   const windIndicator = document.getElementById('wind-indicator') as HTMLElement | null;
+  const windIcon = document.getElementById('wind-icon') as HTMLImageElement | null;
+  const windBarFill = document.getElementById('wind-bar-fill') as HTMLElement | null;
   const turnNotification = document.getElementById('turn-notification')!;
   const localTurnLabel = document.getElementById('turn-label-local');
   const enemyTurnLabel = document.getElementById('turn-label-enemy');
@@ -1336,7 +1343,9 @@ function bindPresenterEvents() {
         windIndicator.style.display = 'none';
       } else {
         windIndicator.style.display = 'block';
-        windIndicator.textContent = `WIND: ${Math.round(w)}`;
+        const abs = Math.min(100, Math.abs(w));
+        if (windIcon) windIcon.src = w >= 0 ? '/sprites/Misc/windr.png' : '/sprites/Misc/windl.png';
+        if (windBarFill) windBarFill.style.width = `${abs}%`;
       }
     }
 

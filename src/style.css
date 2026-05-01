@@ -806,6 +806,18 @@ button:hover {
   --turn-accent: var(--color-danger);
 }
 
+.team-status.left-team .team-name {
+  color: #32CD32;
+}
+
+.team-status.right-team .team-name {
+  color: #FF3333;
+}
+
+.team-status.left-team {
+  --turn-accent: #32CD32;
+}
+
 .team-name {
   font-family: var(--font-comic);
   font-size: 1.2rem;
@@ -946,6 +958,31 @@ button:hover {
   font-weight: bold;
   font-size: 0.9rem;
   border: 1px solid rgba(255,255,255,0.3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wind-icon {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+}
+
+.wind-bar {
+  width: 80px;
+  height: 8px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.wind-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: rgba(255,255,255,0.85);
+  border-radius: 999px;
 }
 
 .center-notification {
@@ -1149,6 +1186,36 @@ button:hover {
   border: 2px solid var(--color-text);
   z-index: 20;
   pointer-events: auto; /* Ensure clickable */
+}
+
+.worm-selection-panel.team-left {
+  border-color: rgba(50,205,50,0.9);
+}
+
+.worm-selection-panel.team-right {
+  border-color: rgba(255,51,51,0.9);
+}
+
+.worm-selection-panel.team-left .worm-btn.active {
+  border-color: rgba(50,205,50,0.95);
+  box-shadow: 0 5px 15px rgba(50,205,50,0.35);
+  background: rgba(50,205,50,0.18);
+}
+
+.worm-selection-panel.team-right .worm-btn.active {
+  border-color: rgba(255,51,51,0.95);
+  box-shadow: 0 5px 15px rgba(255,51,51,0.35);
+  background: rgba(255,51,51,0.18);
+}
+
+.worm-selection-panel.team-left .worm-btn .hp,
+.worm-selection-panel.team-left .worm-btn .equip-name {
+  color: #32CD32;
+}
+
+.worm-selection-panel.team-right .worm-btn .hp,
+.worm-selection-panel.team-right .worm-btn .equip-name {
+  color: #FF3333;
 }
 
 .worm-btn {
