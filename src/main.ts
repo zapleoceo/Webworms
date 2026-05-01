@@ -1287,6 +1287,7 @@ function updateWormSelectionUI(state: any) {
 
 function bindPresenterEvents() {
   const turnTimer = document.getElementById('turn-timer')!;
+  const turnTimerValue = document.getElementById('turn-timer-value') as HTMLElement | null;
   const matchTimer = document.getElementById('match-timer') as HTMLElement | null;
   const windIndicator = document.getElementById('wind-indicator') as HTMLElement | null;
   const windKnob = document.getElementById('wind-knob') as HTMLElement | null;
@@ -1324,7 +1325,7 @@ function bindPresenterEvents() {
     if (teamNameRightTextEl) teamNameRightTextEl.textContent = hud.rightName;
 
     // Update Turn Timer & Wind
-    if (turnTimer) {
+    if (turnTimer && turnTimerValue) {
       let timeStr = '';
       if (state.turnTimeLeft === Infinity) {
         timeStr = '∞';
@@ -1334,7 +1335,7 @@ function bindPresenterEvents() {
         turnTimer.style.fontSize = '18px';
       }
       
-      turnTimer.innerText = timeStr;
+      turnTimerValue.innerText = timeStr;
       
       // Visual ticking at 5 seconds
       if (state.turnTimeLeft <= 5 && state.turnTimeLeft !== Infinity && state.turnTimeLeft > 0 && state.projectiles.length === 0) {

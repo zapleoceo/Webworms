@@ -788,20 +788,26 @@ button:hover {
   padding: 10px 15px;
   border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.2);
-  min-width: 120px;
+  width: 220px;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 .left-team {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .team-info {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  width: 100%;
 }
 
 .team-actions {
@@ -809,6 +815,8 @@ button:hover {
   display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: center;
+  width: 100%;
 }
 
 .left-team {
@@ -840,7 +848,7 @@ button:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: flex-start;
+  align-self: center;
   font-family: var(--font-comic);
   font-size: 0.9rem;
   letter-spacing: 1px;
@@ -854,10 +862,6 @@ button:hover {
   transform: translateY(4px);
   opacity: 0.75;
   transition: opacity 0.25s ease, transform 0.25s ease, border-color 0.25s ease, filter 0.25s ease;
-}
-
-.team-status.right-team .team-turn {
-  align-self: flex-end;
 }
 
 .team-status.turn-active .team-turn {
@@ -892,7 +896,7 @@ button:hover {
 }
 
 .hp-bar-container {
-  width: 100%;
+  width: 180px;
   height: 12px;
   background: #222;
   border-radius: 6px;
@@ -956,12 +960,24 @@ button:hover {
   animation: tickPulse 1s infinite;
 }
 
-.match-timer-bubble {
-  background: rgba(255, 255, 255, 0.85);
-  width: 48px;
-  height: 48px;
-  font-size: 1.1rem;
-  box-shadow: 0 3px 0 #000;
+.timer-bubble-stack {
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px 0 6px 0;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer-bubble-stack #turn-timer-value {
+  font-size: 1.35rem;
+  line-height: 1;
+  transform: translateY(-2px);
+}
+
+.timer-bubble-stack #match-timer {
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 0.9;
 }
 
 @keyframes tickPulse {
@@ -1416,13 +1432,17 @@ button:hover {
   }
 
   .hud-top { padding: 10px; }
-  .team-status { min-width: 90px; padding: 8px; }
+  .team-status { width: 170px; padding: 8px; }
   .team-name { font-size: 1rem; }
   .team-turn { font-size: 0.75rem; padding: 3px 8px; margin-bottom: 6px; }
   /* Compact HUD elements for mobile */
   .timer-bubble { width: 40px; height: 40px; font-size: 1.2rem; }
   .wind-bubble { font-size: 0.8rem; padding: 4px 8px; }
   .match-info { gap: 5px; }
+  .hp-bar-container { width: 130px; }
+  .timer-bubble-stack { padding: 6px 0 4px 0; }
+  .timer-bubble-stack #turn-timer-value { font-size: 1.05rem; transform: translateY(-1px); }
+  .timer-bubble-stack #match-timer { font-size: 0.8rem; }
   
   .hud-bottom { padding: 5px; }
   .weapon-slot { width: 50px; height: 50px; }
@@ -1463,8 +1483,9 @@ button:hover {
   .huge-text { font-size: 2.5rem; }
   .menu-actions { max-width: 100%; padding: 0 10px; }
   .menu-footer { max-width: 100%; padding: 10px; }
-  .team-status { min-width: 70px; padding: 5px; }
+  .team-status { width: 150px; padding: 5px; }
   .timer-bubble { width: 40px; height: 40px; font-size: 1.2rem; }
+  .hp-bar-container { width: 115px; }
 }
 
 .admin-table {
