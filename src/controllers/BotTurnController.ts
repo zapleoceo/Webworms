@@ -353,7 +353,7 @@ export class BotTurnController {
     const dt = Number.isFinite(presenter.deltaTime) ? presenter.deltaTime : (1 / 60);
     this.lastMovementCfg = botCfg.movement || this.lastMovementCfg;
 
-    if (presenter?.state?.mode === 'aivai' && !this.workerJobId && !this.planningInProgress) {
+    if ((presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai') && !this.workerJobId && !this.planningInProgress) {
       const view = this.buildBotView(presenter);
       if (!view) return;
       const rngSeed = this.rngSeedForTurn(presenter);

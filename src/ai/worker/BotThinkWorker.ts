@@ -2,6 +2,7 @@ import type { BotConfig } from '../BotConfig';
 import { chooseBotActionDebug, chooseBotPlan, type BotPlan, type BotWormSnapshot } from '../BotAI';
 import type { AIDifficulty } from '../AIDifficulty';
 import { mulberry32 } from '../../utils/SeededRng';
+import { planWithMcts } from '../mcts/MctsPlanner';
 
 type TerrainPayload = { width: number; height: number; grid: ArrayBuffer };
 type WormPayload = BotWormSnapshot;
@@ -68,7 +69,19 @@ ctx.onmessage = (evt: MessageEvent<PlanRequest>) => {
     const seed = (msg.rngSeed >>> 0) || 1;
     const rngPlan = mulberry32(seed);
     const rngDbg = mulberry32((seed ^ 0x9e3779b9) >>> 0);
-    const plan = chooseBotPlan(rngPlan, world as any, shooter, enemies, allies, msg.botCfg, msg.executeSeconds, msg.ropeRemaining, msg.difficulty, msg.shotMemory || []);
+    const mctsPlan = planWithMcts({
+      rng: rngPlan,
+      world: world as any,
+      shooter,
+      enemies,
+      allies,
+      botCfg: msg.botCfg,
+      difficulty: msg.difficulty,
+      moveSeconds: msg.executeSeconds,
+      ropeAttachBudget: msg.ropeRemaining,
+      shotMemory: msg.shotMemory || []
+    });
+    const plan = (mctsPlan as any) || chooseBotPlan(rngPlan, world as any, shooter, enemies, allies, msg.botCfg, msg.executeSeconds, msg.ropeRemaining, msg.difficulty, msg.shotMemory || []);
     const debug = chooseBotActionDebug(rngDbg, world as any, shooter, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || []);
     const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: plan ? 1 : 0, ms: performance.now() - t0, plan: plan || null, debug };
     ctx.postMessage(out);
