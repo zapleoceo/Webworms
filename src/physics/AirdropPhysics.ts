@@ -1,6 +1,7 @@
 import type { Landscape } from '../models/Landscape';
 import type { BrandLogo } from '../models/BrandLogo';
 import { DEFAULT_AIRDROP_PHYSICS, normalizeAirdropPhysicsConfig, type AirdropPhysicsConfig } from './AirdropConfig';
+import { TerrainDistanceField } from './TerrainDistanceField';
 
 type Vec = { x: number; y: number };
 
@@ -23,6 +24,15 @@ const rot = (v: Vec, c: number, s: number): Vec => ({ x: v.x * c - v.y * s, y: v
 const solid = (landscape: Landscape, x: number, y: number): boolean => {
   if (y < 0) return false;
   return landscape.getMaterial(x, y) > 0;
+};
+
+const dfCache: WeakMap<any, TerrainDistanceField> = new WeakMap();
+const getDf = (landscape: any): TerrainDistanceField => {
+  const cached = dfCache.get(landscape);
+  if (cached) return cached;
+  const df = new TerrainDistanceField(landscape);
+  dfCache.set(landscape, df);
+  return df;
 };
 
 const angleNorm = (a: number): number => {
@@ -73,6 +83,8 @@ export function integrateAirdrop(
   landscape: Landscape
 ): void {
   const cfg = normalizeAirdropPhysicsConfig((logo as any).airdropPhysics || DEFAULT_AIRDROP_PHYSICS);
+  const hasDims = typeof (landscape as any)?.width === 'number' && typeof (landscape as any)?.height === 'number';
+  const df = hasDims ? getDf(landscape as any) : null;
   const h = cfg.fixedStep;
   const maxSubSteps = cfg.maxSubSteps;
 
@@ -132,30 +144,47 @@ export function integrateAirdrop(
 
     for (const lp of logo.contactPointsLocal as any as Vec[]) {
       const wp = add({ x: logo.x, y: logo.y }, rot(lp, c, s));
-      const ix = Math.floor(wp.x);
-      const iy = Math.floor(wp.y);
-      if (!solid(landscape, ix, iy)) continue;
 
-      const gx = (solid(landscape, ix + 1, iy) ? 1 : 0) - (solid(landscape, ix - 1, iy) ? 1 : 0);
-      const gy = (solid(landscape, ix, iy + 1) ? 1 : 0) - (solid(landscape, ix, iy - 1) ? 1 : 0);
-      let n = norm({ x: -gx, y: -gy });
-      if (!Number.isFinite(n.x) || !Number.isFinite(n.y)) n = { x: 0, y: -1 };
+      if (df) {
+        const sd = df.signedDistance(wp.x, wp.y);
+        if (sd >= 0) continue;
 
-      let pen = 0;
-      let out = wp;
-      const maxPen = cfg.maxPenetration;
-      for (let k = 0; k < maxPen; k++) {
-        const tx = Math.floor(out.x);
-        const ty = Math.floor(out.y);
-        if (!solid(landscape, tx, ty)) break;
-        out = add(out, n);
-        pen += 1;
+        const pen = clamp(-sd, 0, cfg.maxPenetration);
+        if (pen <= 0) continue;
+
+        const n0 = df.normal(wp.x, wp.y);
+        let n = norm({ x: n0.nx, y: n0.ny });
+        if (!Number.isFinite(n.x) || !Number.isFinite(n.y)) n = { x: 0, y: -1 };
+
+        const r = sub(wp, comWorld);
+        contacts.push({ p: wp, n, pen, r });
+        if (contacts.length >= cfg.maxContactPoints) break;
+      } else {
+        const ix = Math.floor(wp.x);
+        const iy = Math.floor(wp.y);
+        if (!solid(landscape, ix, iy)) continue;
+
+        const gx = (solid(landscape, ix + 1, iy) ? 1 : 0) - (solid(landscape, ix - 1, iy) ? 1 : 0);
+        const gy = (solid(landscape, ix, iy + 1) ? 1 : 0) - (solid(landscape, ix, iy - 1) ? 1 : 0);
+        let n = norm({ x: -gx, y: -gy });
+        if (!Number.isFinite(n.x) || !Number.isFinite(n.y)) n = { x: 0, y: -1 };
+
+        let pen = 0;
+        let out = wp;
+        const maxPen = cfg.maxPenetration;
+        for (let k = 0; k < maxPen; k++) {
+          const tx = Math.floor(out.x);
+          const ty = Math.floor(out.y);
+          if (!solid(landscape, tx, ty)) break;
+          out = add(out, n);
+          pen += 1;
+        }
+        if (pen <= 0) continue;
+
+        const r = sub(wp, comWorld);
+        contacts.push({ p: wp, n, pen, r });
+        if (contacts.length >= cfg.maxContactPoints) break;
       }
-      if (pen <= 0) continue;
-
-      const r = sub(wp, comWorld);
-      contacts.push({ p: wp, n, pen, r });
-      if (contacts.length >= cfg.maxContactPoints) break;
     }
 
     if (contacts.length === 0) {

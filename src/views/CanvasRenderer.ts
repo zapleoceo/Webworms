@@ -54,6 +54,10 @@ export class CanvasRenderer {
     this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg?v=3');
     this.wormImages['brand_windows'] = this.loadImg('/brand_windows.svg?v=3');
     this.wormImages['brand_android'] = this.loadImg('/brand_android.svg?v=3');
+    for (let i = 1; i <= 6; i++) {
+      const src = `/sprites/Misc/grave${i}.png`;
+      this.wormImages[src] = this.loadImg(src);
+    }
   }
 
   private customFrameCache: { [key: string]: HTMLImageElement } = {};
