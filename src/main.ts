@@ -1287,6 +1287,7 @@ function updateWormSelectionUI(state: any) {
 
 function bindPresenterEvents() {
   const turnTimer = document.getElementById('turn-timer')!;
+  const matchTimer = document.getElementById('match-timer') as HTMLElement | null;
   const windIndicator = document.getElementById('wind-indicator') as HTMLElement | null;
   const windKnob = document.getElementById('wind-knob') as HTMLElement | null;
   const turnNotification = document.getElementById('turn-notification')!;
@@ -1341,6 +1342,11 @@ function bindPresenterEvents() {
       } else {
         turnTimer.classList.remove('ticking');
       }
+    }
+
+    if (matchTimer) {
+      const t = Number(state.matchDuration);
+      matchTimer.innerText = Number.isFinite(t) ? Math.floor(t).toString() : '0';
     }
 
     if (windIndicator) {

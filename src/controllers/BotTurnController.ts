@@ -68,6 +68,7 @@ export class BotTurnController {
   private planningInProgress: boolean = false;
   private planningDeadlineAt: number = 0;
   private lastDecisionDebug: any | null = null;
+  private lastTurnStateAt: number = -999;
 
   constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
     if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
@@ -266,6 +267,7 @@ export class BotTurnController {
       this.planningInProgress = false;
       this.planningDeadlineAt = 0;
       this.lastDecisionDebug = null;
+      this.lastTurnStateAt = -999;
       this.lastThinkSrc = 'main';
       this.lastWorkerMs = null;
       this.lastWorkerComputeMs = null;
@@ -306,6 +308,26 @@ export class BotTurnController {
     const now = presenter.matchDuration || 0;
     const dt = Number.isFinite(presenter.deltaTime) ? presenter.deltaTime : (1 / 60);
     this.lastMovementCfg = botCfg.movement || this.lastMovementCfg;
+
+    if (now - this.lastTurnStateAt >= 0.9) {
+      this.lastTurnStateAt = now;
+      this.emitAIVai(presenter, {
+        type: 'turn_state',
+        t: now,
+        team: player.team,
+        wormId: String(curIdx),
+        currentPlayerIndex: presenter.state.currentPlayerIndex,
+        isBotTurn: isBotTurn ? 1 : 0,
+        isWorldBusy: isWorldBusy ? 1 : 0,
+        projectiles: (presenter.state.projectiles?.length || 0),
+        turnTimeLeft: presenter.turnTimeLeft,
+        maxTurnTime: presenter.maxTurnTime,
+        plannedThisTurn: this.plannedThisTurn ? 1 : 0,
+        planningInProgress: this.planningInProgress ? 1 : 0,
+        firedThisTurn: this.firedThisTurn ? 1 : 0,
+        aiV: AI_V
+      });
+    }
 
     if (timeLeft <= reserveSeconds) {
       if (!isWorldBusy) {
@@ -490,6 +512,23 @@ export class BotTurnController {
   private fireAction(presenter: any, action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number }) {
     const player = presenter.state.getCurrentPlayer?.();
     if (!player) return;
+    if (presenter?.state?.mode === 'aivai') {
+      const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
+      const weaponId = typeof equipmentIds[action.weaponIndex] === 'string' ? equipmentIds[action.weaponIndex] : null;
+      this.emitAIVai(presenter, {
+        type: 'weapon_fired',
+        t: presenter.matchDuration || 0,
+        team: player.team,
+        wormId: String(presenter.state.currentPlayerIndex ?? ''),
+        weaponIndex: action.weaponIndex,
+        weaponId,
+        facingRight: action.facingRight ? 1 : 0,
+        aimAngle: action.aimAngle,
+        power: action.power,
+        pos: { x: player.x, y: player.y },
+        aiV: AI_V
+      });
+    }
     presenter.handleInput?.('switch', true, true, action.weaponIndex);
     player.facingRight = action.facingRight;
     player.aimAngle = action.aimAngle;
