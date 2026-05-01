@@ -1603,7 +1603,7 @@ export class PhysicsEngine {
       const dist = MathUtils.distance(x, y, player.x, player.y);
       if (dist <= finalRadius + playerRadius) {
         const damageRatio = 1 - (dist / (finalRadius + playerRadius));
-        let actualDamage = cfg.damage * damageRatio;
+        const actualDamage = Math.max(1, cfg.damage * damageRatio);
         player.takeDamage(actualDamage);
         this.addFloatingText(state, player.x, player.y - 20, `-${Math.round(actualDamage)}`, '#FF0000');
         if (this.onHurt) this.onHurt();
@@ -1646,7 +1646,7 @@ export class PhysicsEngine {
         const dist = MathUtils.distance(x, y, logo.x, logo.y);
         if (dist <= finalRadius + effectiveRadius) {
           const damageRatio = 1 - (dist / (finalRadius + effectiveRadius));
-          const damage = Math.max(5, cfg.damage * damageRatio);
+          const damage = Math.max(1, cfg.damage * damageRatio);
           logo.takeDamage(damage);
           logo.takeHit(x, y, finalRadius);
         }
