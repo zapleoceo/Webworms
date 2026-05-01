@@ -737,6 +737,7 @@ export function chooseBotPlan(
   moveSeconds: number,
   ropeAttachBudget: number
 ): BotPlan | null {
+  const deepBottom = shooter.y > world.terrain.height - 90;
   const pitGeom = (() => {
     const t = world.terrain;
     const px = Math.floor(shooter.x);
@@ -760,6 +761,11 @@ export function chooseBotPlan(
 
   const base = pitGeom ? chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true) : chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg);
   if (!base) return null;
+
+  if (deepBottom) {
+    const moveTo = { x: clamp(shooter.x, 30, world.terrain.width - 30), y: clamp(shooter.y - 260, 30, world.terrain.height - 30) };
+    return { moveTo, action: base.action };
+  }
 
   if (pitGeom && base.trace) {
     const chosen = base.trace.chosen;
@@ -962,7 +968,7 @@ export function chooseDigAction(
             maxTime,
             mode: weapon.id === 'grenade' ? 'grenade' : 'projectile',
             grenade: weapon.id === 'grenade'
-              ? { fuseSeconds, restitution: 0.45, friction: 0.85, stopSpeed: 0 }
+              ? { fuseSeconds, restitution: botCfg.grenade.restitution, friction: botCfg.grenade.friction, stopSpeed: botCfg.grenade.stopSpeed }
               : undefined
           },
           { x: digPoint.x, y: digPoint.y },

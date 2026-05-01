@@ -2,7 +2,7 @@ import { mulberry32, hashStringToSeed } from '../utils/SeededRng';
 import { getAIDifficulty } from '../ai/AIStorage';
 import type { AIDifficulty, BotConfig } from '../ai/BotConfig';
 import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
-import { chooseBotAction, chooseBotPlan, chooseDigAction, terrainFromLandscape, type BotWormSnapshot } from '../ai/BotAI';
+import { terrainFromLandscape, type BotWormSnapshot } from '../ai/BotAI';
 import { AI_V } from '../ai/AIVersion';
 import ThinkWorker from '../ai/worker/BotThinkWorker?worker';
 
@@ -20,7 +20,6 @@ export class BotTurnController {
   private ropeAttachUsed: number = 0;
   private ropeStartedAt: number = 0;
   private lastRopeAttemptAt: number = -999;
-  private digShotsThisTurn: number = 0;
 
   private matchKey: string = '';
   private matchAttempts: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
@@ -67,7 +66,6 @@ export class BotTurnController {
   private lastWorkerUsed: 0 | 1 | null = null;
   private didReplanThisTurn: boolean = false;
   private planningInProgress: boolean = false;
-  private planningDeadlineAt: number = 0;
   private lastDecisionDebug: any | null = null;
   private lastTurnStateAt: number = -999;
   private workerInitError: string | null = null;
@@ -251,7 +249,6 @@ export class BotTurnController {
       this.ropeAttachUsed = 0;
       this.ropeStartedAt = 0;
       this.lastRopeAttemptAt = -999;
-      this.digShotsThisTurn = 0;
       this.strategy = null;
       this.ropeMode = null;
       this.strategyCost0 = Infinity;
@@ -273,7 +270,6 @@ export class BotTurnController {
       this.ropeStallCount = 0;
       this.didReplanThisTurn = false;
       this.planningInProgress = false;
-      this.planningDeadlineAt = 0;
       this.lastDecisionDebug = null;
       this.lastTurnStateAt = -999;
       this.lastThinkSrc = 'main';
@@ -317,6 +313,14 @@ export class BotTurnController {
     const dt = Number.isFinite(presenter.deltaTime) ? presenter.deltaTime : (1 / 60);
     this.lastMovementCfg = botCfg.movement || this.lastMovementCfg;
 
+    if (presenter?.state?.mode === 'aivai' && !this.workerJobId && !this.planningInProgress) {
+      const view = this.buildBotView(presenter);
+      if (!view) return;
+      const rngSeed = this.rngSeedForTurn(presenter);
+      this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, executeSeconds, ropeRemaining, rngSeed);
+      this.planningInProgress = true;
+    }
+
     if (now - this.lastTurnStateAt >= 0.9) {
       this.lastTurnStateAt = now;
       this.emitAIVai(presenter, {
@@ -341,7 +345,7 @@ export class BotTurnController {
 
     if (timeLeft <= reserveSeconds) {
       if (!isWorldBusy) {
-        const action = this.computeActionFromCurrent(presenter, botCfg);
+        const action = this.plan?.action || this.fallbackAction(presenter);
         if (action) {
           const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter));
           this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', action, noisy);
@@ -355,16 +359,6 @@ export class BotTurnController {
     if (elapsed < planSeconds) return;
 
     if (!this.plannedThisTurn && !isWorldBusy) {
-      if (!this.planningInProgress) {
-        const view = this.buildBotView(presenter);
-        if (!view) return;
-        const rngSeed = this.rngSeedForTurn(presenter);
-        this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, executeSeconds, ropeRemaining, rngSeed);
-        this.planningInProgress = true;
-        this.planningDeadlineAt = performance.now() + 550;
-        return;
-      }
-
       const wr = (this.workerResult && this.workerJobId && this.workerResult.jobId === this.workerJobId) ? this.workerResult : null;
       const wrOk = !!(wr && wr.ok === 1 && wr.plan);
       if (wrOk) {
@@ -379,49 +373,21 @@ export class BotTurnController {
         this.plannedThisTurn = true;
         this.planningInProgress = false;
         this.debug('plan', { moveTo: wr.plan.moveTo ? { x: Math.round(wr.plan.moveTo.x), y: Math.round(wr.plan.moveTo.y) } : null, weaponIndex: wr.plan.action.weaponIndex, targetId: wr.plan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
-      } else if (performance.now() > this.planningDeadlineAt) {
-        const view = this.buildBotView(presenter);
-        if (!view) return;
-        const rngSeed = this.rngSeedForTurn(presenter);
-        const rng = mulberry32(rngSeed);
-        const plan = chooseBotPlan(rng, view.world, view.shooter, view.enemies, view.allies, botCfg, executeSeconds, ropeRemaining);
+      } else {
+        if (timeLeft > reserveSeconds + 0.35) return;
         this.lastWorkerArrivedAfterMain = wr ? 1 : null;
         this.lastWorkerMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
         this.lastWorkerComputeMs = wr ? Number(wr.ms) : null;
         this.lastWorkerUsed = 0;
-        this.lastThinkSrc = 'main';
+        this.lastThinkSrc = 'worker';
         this.lastDecisionDebug = wr?.debug || null;
-        if (plan) {
-          this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power, targetId: plan.action.targetId } };
+        const fallback = this.fallbackAction(presenter);
+        if (fallback) {
+          this.plan = { action: fallback };
           this.moveStartedAt = now;
-          this.debug('plan', { moveTo: plan.moveTo ? { x: Math.round(plan.moveTo.x), y: Math.round(plan.moveTo.y) } : null, weaponIndex: plan.action.weaponIndex, targetId: plan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
-        } else if (botCfg.dig.enabled && this.digShotsThisTurn < botCfg.dig.maxShotsPerTurn) {
-          const dig = chooseDigAction(rng, view.world, view.shooter, view.enemies, view.allies, botCfg);
-          if (dig) {
-            const noisy = this.applyError({ weaponIndex: dig.weaponIndex, facingRight: dig.facingRight, aimAngle: dig.aimAngle, power: dig.power }, botCfg, difficulty, this.rngForTurn(presenter));
-            this.recordAIVai(presenter, botCfg, difficulty, 'dig_fire', { weaponIndex: dig.weaponIndex, facingRight: dig.facingRight, aimAngle: dig.aimAngle, power: dig.power }, noisy);
-            this.fireAction(presenter, noisy);
-            this.firedThisTurn = true;
-            this.digShotsThisTurn += 1;
-            this.debug('dig_fire', { weaponIndex: noisy.weaponIndex });
-          }
-        } else {
-          const fallback = chooseBotAction(rng, view.world, view.shooter, view.enemies, view.allies, botCfg);
-          const closest = view.enemies
-            .map(e => ({ e, d: Math.hypot(e.x - view.shooter.x, e.y - view.shooter.y) }))
-            .sort((a, b) => a.d - b.d)[0]?.e;
-          if (fallback && closest) {
-            const dir = closest.x >= view.shooter.x ? -1 : 1;
-            const rx = Math.max(30, Math.min(view.world.terrain.width - 30, view.shooter.x + dir * 140));
-            this.plan = { moveTo: { x: rx, y: view.shooter.y }, action: { weaponIndex: fallback.weaponIndex, facingRight: fallback.facingRight, aimAngle: fallback.aimAngle, power: fallback.power, targetId: closest.id } };
-            this.moveStartedAt = now;
-            this.debug('plan', { moveTo: { x: Math.round(rx), y: Math.round(view.shooter.y) }, weaponIndex: fallback.weaponIndex, targetId: closest.id, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
-          }
         }
         this.plannedThisTurn = true;
         this.planningInProgress = false;
-      } else {
-        return;
       }
     }
 
@@ -474,8 +440,7 @@ export class BotTurnController {
         canUsePlanned = presenter.state.players.some((w: any, idx: number) => w.team !== player.team && w.health > 0 && String(idx) === String(planTarget));
       }
 
-      const computed = this.computeActionFromCurrent(presenter, botCfg);
-      const action = computed || (canUsePlanned ? this.plan.action : null);
+      const action = canUsePlanned ? this.plan.action : this.fallbackAction(presenter);
       if (!action) return;
       const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter));
       this.recordAIVai(presenter, botCfg, difficulty, 'execute_fire', action, noisy);
@@ -492,12 +457,29 @@ export class BotTurnController {
     return ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`ai:${presenter.matchDuration.toFixed(2)}:${presenter.state.currentPlayerIndex}`)) >>> 0;
   }
 
-  private computeActionFromCurrent(presenter: any, botCfg: BotConfig): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number } | null {
-    const view = this.buildBotView(presenter);
-    if (!view) return null;
-    const act = chooseBotAction(this.rngForTurn(presenter), view.world, view.shooter, view.enemies, view.allies, botCfg);
-    if (!act) return null;
-    return { weaponIndex: act.weaponIndex, facingRight: act.facingRight, aimAngle: act.aimAngle, power: act.power };
+  private fallbackAction(presenter: any): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number } | null {
+    const player = presenter?.state?.getCurrentPlayer?.();
+    if (!player) return null;
+    const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
+    const findIdx = (id: string) => equipmentIds.findIndex(x => x === id);
+    const grenadeIdx = findIdx('grenade');
+    const bazookaIdx = findIdx('bazooka');
+    const idx = grenadeIdx >= 0 ? grenadeIdx : (bazookaIdx >= 0 ? bazookaIdx : 0);
+
+    const enemies: any[] = Array.isArray(presenter?.state?.players)
+      ? presenter.state.players.filter((w: any) => w && w.team !== player.team && w.health > 0)
+      : [];
+    if (enemies.length === 0) {
+      return { weaponIndex: idx, facingRight: !!player.facingRight, aimAngle: player.aimAngle || 0, power: 60 };
+    }
+    enemies.sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y));
+    const e = enemies[0];
+    const dx = e.x - player.x;
+    const dy = (e.y - e.height * 0.35) - (player.y - player.height * 0.35);
+    const global = Math.atan2(dy, dx);
+    const facingRight = dx >= 0;
+    const aimAngle = facingRight ? global : (Math.PI - global);
+    return { weaponIndex: idx, facingRight, aimAngle: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle)), power: 60 };
   }
 
   private applyError(
