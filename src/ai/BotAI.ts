@@ -122,6 +122,18 @@ function samplePowers(n: number): number[] {
   return out;
 }
 
+function sampleGrenadePowers(): number[] {
+  const out: number[] = [];
+  const add = (v: number) => {
+    const x = Math.max(1, Math.min(100, Math.round(v)));
+    if (!out.includes(x)) out.push(x);
+  };
+  for (const v of [5, 8, 12, 16, 20, 24, 28]) add(v);
+  for (let v = 32; v <= 100; v += 8) add(v);
+  out.sort((a, b) => a - b);
+  return out;
+}
+
 function pickWeaponByRange(weapons: Array<{ index: number; weapon: Weapon; id: string }>, dist: number): Array<{ index: number; weapon: Weapon; id: string }> {
   const byId = new Map(weapons.map(w => [w.id, w]));
   const pick = (ids: string[]) => ids.map(id => byId.get(id)).filter(Boolean) as any[];
@@ -173,7 +185,9 @@ function chooseBotActionScored(
   if (weapons.length === 0) return null;
 
   const angleList = sampleAngles(18);
+  const grenadeAngleList = sampleAngles(28);
   const powerList = samplePowers(10);
+  const grenadePowerList = sampleGrenadePowers();
 
   const targetRadius = 10;
 
@@ -197,9 +211,11 @@ function chooseBotActionScored(
           ? { ...weapon, damage: weapon.damage / 5, explosionRadius: weapon.explosionRadius / Math.sqrt(5), knockback: weapon.knockback / Math.sqrt(5) }
           : weapon;
 
-      for (const localAngle of angleList) {
+      const angles = weapon.id === 'grenade' ? grenadeAngleList : angleList;
+      const powers = weapon.id === 'grenade' ? grenadePowerList : powerList;
+      for (const localAngle of angles) {
         const global = (target.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
-        for (const power of powerList) {
+        for (const power of powers) {
             let speed = power * 4.2 * (weapon.speedModifier || 1);
           const muzzle = gunMuzzlePosition(shooter, global);
           const projRadius = weapon.id === 'grenade' ? 6 : 3;
@@ -293,7 +309,7 @@ function chooseBotActionScored(
                 dt: 1 / 60,
                 maxTime,
                 mode: 'grenade',
-                grenade: { fuseSeconds, restitution: 0.45, friction: 0.85, stopSpeed: 0 }
+                grenade: { fuseSeconds, restitution: botCfg.grenade.restitution, friction: botCfg.grenade.friction, stopSpeed: botCfg.grenade.stopSpeed }
               },
               { x: target.x, y: target.y },
               targetRadius
