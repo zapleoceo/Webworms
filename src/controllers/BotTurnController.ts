@@ -410,6 +410,10 @@ export class BotTurnController {
     this.trackStuck(player, dt);
 
     if (!isWorldBusy) {
+      const summaryDx = moveTo ? moveTo.x - player.x : 0;
+      const summaryDy = moveTo ? moveTo.y - player.y : 0;
+      const dir: 'left' | 'right' = summaryDx < 0 ? 'left' : 'right';
+      const cliff = this.scanCliffAhead(presenter, player, dir);
       this.emitAIVai(presenter, {
         type: 'bot_movement_summary',
         t: now,
@@ -418,6 +422,15 @@ export class BotTurnController {
         moveElapsed: Math.max(0, now - this.moveStartedAt),
         stuckTime: this.stuckTime,
         didReplan: this.didReplanThisTurn ? 1 : 0,
+        strategy: this.strategy,
+        lastMoveDir: this.lastMoveDir,
+        dirFlips: this.dirFlipCount,
+        dx: summaryDx,
+        dy: summaryDy,
+        cliffMaxDrop: cliff.maxDrop,
+        cliffIsGap: cliff.isGapOrCliff ? 1 : 0,
+        cliffIsVoid: cliff.isDeepVoid ? 1 : 0,
+        bannedTurn: Array.from(this.bannedTurn),
         aiV: AI_V,
         thinkSrc: this.lastThinkSrc,
         workerMs: this.lastWorkerMs,
@@ -777,7 +790,7 @@ export class BotTurnController {
     }
 
     const isGapOrCliff = missingCount >= 2 || maxDrop >= 90;
-    const isDeepVoid = missingCount >= 4 || maxDrop >= 170;
+    const isDeepVoid = missingCount >= 4;
     return { isGapOrCliff, isDeepVoid, maxDrop };
   }
 
