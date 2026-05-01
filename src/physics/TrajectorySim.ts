@@ -69,6 +69,41 @@ export function terrainHitCircle(
   return { hit: false, material: 0 };
 }
 
+function ringOffsets(pr: number): Array<{ dx: number; dy: number }> {
+  const r1 = Math.max(1, Math.floor(pr));
+  const r2 = Math.max(1, Math.round(pr * 0.55));
+  const r3 = Math.max(1, Math.round(pr * 0.3));
+  const radii = [0, r1, r2, r3];
+  const out: Array<{ dx: number; dy: number }> = [];
+  const addRing = (r: number) => {
+    if (r === 0) { out.push({ dx: 0, dy: 0 }); return; }
+    const dd = Math.max(1, Math.round(r * 0.70710678));
+    out.push({ dx: r, dy: 0 }, { dx: -r, dy: 0 }, { dx: 0, dy: r }, { dx: 0, dy: -r });
+    out.push({ dx: dd, dy: dd }, { dx: -dd, dy: dd }, { dx: dd, dy: -dd }, { dx: -dd, dy: -dd });
+  };
+  for (const r of radii) addRing(r);
+  return out;
+}
+
+function terrainHitRing(
+  terrain: MaterialQuery,
+  x: number,
+  y: number,
+  pr: number
+): { hit: boolean; material: number } {
+  const px = Math.floor(x);
+  const py = Math.floor(y);
+  const offsets = ringOffsets(pr);
+  for (const o of offsets) {
+    const tx = px + o.dx;
+    const ty = py + o.dy;
+    if (tx < 0 || tx >= terrain.width || ty < 0 || ty >= terrain.height) continue;
+    const mat = terrain.getMaterial(tx, ty);
+    if (mat > 0) return { hit: true, material: mat };
+  }
+  return { hit: false, material: 0 };
+}
+
 function estimateNormal(terrain: MaterialQuery, x: number, y: number): Vec2 {
   const sx = Math.floor(x);
   const sy = Math.floor(y);
@@ -76,19 +111,18 @@ function estimateNormal(terrain: MaterialQuery, x: number, y: number): Vec2 {
     if (xx < 0 || xx >= terrain.width || yy < 0 || yy >= terrain.height) return 0;
     return terrain.getMaterial(xx, yy) > 0 ? 1 : 0;
   };
-  const l = get(sx - 2, sy);
-  const r = get(sx + 2, sy);
-  const u = get(sx, sy - 2);
-  const d = get(sx, sy + 2);
-  const gx = r - l;
-  const gy = d - u;
-  let nx = -gx;
-  let ny = -gy;
+  const l = get(sx - 1, sy);
+  const r = get(sx + 1, sy);
+  const u = get(sx, sy - 1);
+  const d = get(sx, sy + 1);
+  let nx = l - r;
+  let ny = u - d;
   const n = Math.hypot(nx, ny);
   if (n < 1e-6) return { x: 0, y: -1 };
   nx /= n;
   ny /= n;
-  return { x: nx, y: ny };
+  if (Math.abs(nx) > Math.abs(ny)) return { x: Math.sign(nx) || 1, y: 0 };
+  return { x: 0, y: Math.sign(ny) || -1 };
 }
 
 function simulateProjectile(
@@ -212,7 +246,7 @@ function simulateGrenade(
       }
 
       if (!resting && py >= 0) {
-        const hit = terrainHitCircle(terrain, cx, cy, pr);
+        const hit = terrainHitRing(terrain, cx, cy, pr);
         if (hit.hit) {
           hitTerrain = true;
           hitX = cx;

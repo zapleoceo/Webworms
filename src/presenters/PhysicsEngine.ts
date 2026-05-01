@@ -206,35 +206,6 @@ export class PhysicsEngine {
       (logo as any).onTrace = this.onTrace;
       logo.update(dt, this.gravity, state.landscape, state.brandLogos);
 
-      if (logo.isDynamic) {
-        const halfW = logo.collisionWidth / 2;
-        const halfH = logo.collisionHeight / 2;
-        for (const worm of state.players) {
-          if (worm.health <= 0) continue;
-          const wHalfW = (worm.width || 0) / 2;
-          const wHalfH = (worm.height || 0) / 2;
-          if (Math.abs(logo.x - worm.x) < halfW + wHalfW && Math.abs(logo.y - worm.y) < halfH + wHalfH) {
-            if (logo.vy > 80) {
-              const dmg = Math.max(2, Math.min(8, logo.vy * 0.02));
-              worm.takeDamage(dmg);
-              this.addFloatingText(state, worm.x, worm.y - 20, `-${Math.round(dmg)}`, '#FF0000');
-              if (this.onHurt) this.onHurt();
-              AudioManager.playDamage();
-            }
-
-            logo.y = worm.y - wHalfH - halfH;
-            logo.vy = 0;
-            logo.vx += (logo.x > worm.x ? 1 : -1) * 60;
-            if (this.onTrace) {
-              try {
-                this.onTrace({ type: 'physics_collision', t: (state as any).matchDuration || 0, kind: 'logo_worm', x: logo.x, y: logo.y, vx: logo.vx, vy: logo.vy });
-              } catch {}
-            }
-            break;
-          }
-        }
-      }
-
       if (!(logo as any).didImpact && !touchedBefore && logo.touchedGround) {
         (logo as any).didImpact = true;
         if (this.onHeavyImpact) {
@@ -249,8 +220,8 @@ export class PhysicsEngine {
         let hitWorm = false;
         for (const worm of state.players) {
           if (worm.health <= 0) continue;
-          const wHalfW = (worm.width || 0) / 2;
-          const wHalfH = (worm.height || 0) / 2;
+          const wHalfW = 6;
+          const wHalfH = 10;
           if (Math.abs(logo.x - worm.x) < halfW + wHalfW && Math.abs(logo.y - worm.y) < halfH + wHalfH) {
             hitWorm = true;
             logo.isDynamic = true;
@@ -437,6 +408,9 @@ export class PhysicsEngine {
 
   private handleWormBrandLogoCollisions(state: GameState, dt: number): void {
     if (!state.brandLogos) return;
+    const hw = 6;
+    const hh = 10;
+    const frame = this.getWormFrameOffsets(hw, hh);
 
     for (const worm of state.players) {
       if (worm.health <= 0) continue;
@@ -444,33 +418,118 @@ export class PhysicsEngine {
       for (const logo of state.brandLogos) {
         const halfW = logo.collisionWidth / 2;
         const halfH = logo.collisionHeight / 2;
-        
-        // Use a simple AABB collision check
-        const inX = worm.x + worm.width / 2 > logo.x - halfW && worm.x - worm.width / 2 < logo.x + halfW;
-        const inY = worm.y + worm.height > logo.y - halfH && worm.y < logo.y + halfH;
 
-        if (inX && inY) {
-          // If falling, stand on top
-          if (worm.vy > 0 && worm.y + worm.height - worm.vy * dt <= logo.y - halfH + 10) {
-            worm.y = logo.y - halfH - worm.height;
-            worm.vy = 0;
-            worm.isJumping = false;
-            
-            // If logo is moving, carry worm
-            if (logo.isDynamic) {
-              worm.x += logo.vx * dt;
-            }
+        const dx = worm.x - logo.x;
+        const dy = worm.y - logo.y;
+        if (Math.abs(dx) > halfW + hw + 6 || Math.abs(dy) > halfH + hh + 6) continue;
+
+        const cosL = Math.cos(-logo.angle);
+        const sinL = Math.sin(-logo.angle);
+        const cosW = Math.cos(logo.angle);
+        const sinW = Math.sin(logo.angle);
+
+        let bestPen = 0;
+        let bestN = { x: 0, y: 0 };
+
+        for (const o of frame) {
+          const px = worm.x + o.dx - logo.x;
+          const py = worm.y + o.dy - logo.y;
+          const lx = px * cosL - py * sinL;
+          const ly = px * sinL + py * cosL;
+          if (Math.abs(lx) > halfW || Math.abs(ly) > halfH) continue;
+
+          const penX = halfW - Math.abs(lx);
+          const penY = halfH - Math.abs(ly);
+          let nxL = 0;
+          let nyL = 0;
+          let pen = 0;
+          if (penX < penY) {
+            pen = penX;
+            nxL = lx >= 0 ? 1 : -1;
           } else {
-            // Push out horizontally
-            if (worm.x < logo.x) {
-              worm.x = logo.x - halfW - worm.width / 2;
-            } else {
-              worm.x = logo.x + halfW + worm.width / 2;
-            }
+            pen = penY;
+            nyL = ly >= 0 ? 1 : -1;
           }
+
+          const nx = nxL * cosW - nyL * sinW;
+          const ny = nxL * sinW + nyL * cosW;
+          if (pen > bestPen) {
+            bestPen = pen;
+            bestN = { x: nx, y: ny };
+          }
+        }
+
+        if (bestPen <= 0) continue;
+
+        const standOnTop = worm.vy > 0 && bestN.y < -0.7 && worm.y + hh - worm.vy * dt <= logo.y - halfH + 6;
+        if (standOnTop) {
+          worm.y = logo.y - halfH - hh;
+          worm.vy = 0;
+          worm.isJumping = false;
+          if (logo.isDynamic) worm.x += logo.vx * dt;
+          continue;
+        }
+
+        worm.x += bestN.x * bestPen;
+        worm.y += bestN.y * bestPen;
+        const vn = worm.vx * bestN.x + worm.vy * bestN.y;
+        if (vn > 0) {
+          worm.vx -= vn * bestN.x;
+          worm.vy -= vn * bestN.y;
+        }
+        worm.vx *= 0.92;
+        if (logo.isDynamic) {
+          if (logo.vy > 80) {
+            const dmg = Math.max(2, Math.min(8, logo.vy * 0.02));
+            worm.takeDamage(dmg);
+            this.addFloatingText(state, worm.x, worm.y - 20, `-${Math.round(dmg)}`, '#FF0000');
+            if (this.onHurt) this.onHurt();
+            AudioManager.playDamage();
+          }
+          logo.vx *= 0.92;
+          logo.vy *= 0.86;
+          logo.angularVelocity *= 0.8;
         }
       }
     }
+  }
+
+  private wormFrameOffsetsCache: Record<string, Array<{ dx: number; dy: number }>> = {};
+  private getWormFrameOffsets(hw: number, hh: number): Array<{ dx: number; dy: number }> {
+    const key = `${hw}:${hh}`;
+    const cached = this.wormFrameOffsetsCache[key];
+    if (cached) return cached;
+    const xs4 = [-hw, -hw / 3, hw / 3, hw];
+    const ys2 = [-hh / 2, hh / 2];
+    const out: Array<{ dx: number; dy: number }> = [];
+    for (const x of xs4) out.push({ dx: x, dy: hh });
+    for (const x of xs4) out.push({ dx: x, dy: -hh });
+    for (const y of ys2) out.push({ dx: -hw, dy: y });
+    for (const y of ys2) out.push({ dx: hw, dy: y });
+    this.wormFrameOffsetsCache[key] = out;
+    return out;
+  }
+
+  private grenadeRingOffsetsCache: Record<string, Array<{ dx: number; dy: number }>> = {};
+  private getGrenadeRingOffsets(pr: number): Array<{ dx: number; dy: number }> {
+    const key = String(pr);
+    const cached = this.grenadeRingOffsetsCache[key];
+    if (cached) return cached;
+    const r0 = 0;
+    const r1 = Math.max(1, pr);
+    const r2 = Math.max(1, Math.round(pr * 0.55));
+    const r3 = Math.max(1, Math.round(pr * 0.3));
+    const radii = [r0, r1, r2, r3];
+    const out: Array<{ dx: number; dy: number }> = [];
+    const addRing = (r: number) => {
+      if (r === 0) { out.push({ dx: 0, dy: 0 }); return; }
+      const dd = Math.max(1, Math.round(r * 0.70710678));
+      out.push({ dx: r, dy: 0 }, { dx: -r, dy: 0 }, { dx: 0, dy: r }, { dx: 0, dy: -r });
+      out.push({ dx: dd, dy: dd }, { dx: -dd, dy: dd }, { dx: dd, dy: -dd }, { dx: -dd, dy: -dd });
+    };
+    for (const r of radii) addRing(r);
+    this.grenadeRingOffsetsCache[key] = out;
+    return out;
   }
 
   private resolveAgainstTerrainWorm(worm: any, state: GameState): void {
@@ -878,7 +937,7 @@ export class PhysicsEngine {
     const pr = Math.max(1, Math.floor(proj.radius * 0.8)); // slightly smaller than visual radius for forgiveness
     const maxStepLen = Math.max(1, pr * 0.75);
     const steps = Math.max(1, Math.min(360, Math.ceil(dist / maxStepLen)));
-    const terrainOffsets = circleOffsets(pr);
+    const terrainOffsets = isGrenade ? this.getGrenadeRingOffsets(pr) : circleOffsets(pr);
 
     const sweepMinX = Math.min(oldX, newX) - proj.radius - 12;
     const sweepMaxX = Math.max(oldX, newX) + proj.radius + 12;
@@ -913,6 +972,8 @@ export class PhysicsEngine {
 
     let hitTerrain = false;
     let hitEntity = false;
+    let hitEntityType: 'player' | 'prop' | 'logo' | null = null;
+    let hitEntityRef: any = null;
     let hitMaterial = 0;
     let hitX = newX;
     let hitY = newY;
@@ -934,6 +995,8 @@ export class PhysicsEngine {
 
         if (MathUtils.distance(checkX, checkY, player.x, player.y) < playerRadius + proj.radius) {
           hitEntity = true;
+          hitEntityType = 'player';
+          hitEntityRef = player;
           hitX = checkX;
           hitY = checkY;
           break;
@@ -946,6 +1009,8 @@ export class PhysicsEngine {
         const prop = c.prop;
         if (MathUtils.distance(checkX, checkY, prop.x, prop.y) < c.r) {
           hitEntity = true;
+          hitEntityType = 'prop';
+          hitEntityRef = prop;
           hitX = checkX;
           hitY = checkY;
           break;
@@ -971,6 +1036,8 @@ export class PhysicsEngine {
           if (localX > -halfW - proj.radius && localX < halfW + proj.radius &&
               localY > -halfH - proj.radius && localY < halfH + proj.radius) {
             hitEntity = true;
+            hitEntityType = 'logo';
+            hitEntityRef = logo;
             hitX = checkX;
             hitY = checkY;
             break;
@@ -1028,24 +1095,38 @@ export class PhysicsEngine {
           nx = n.nx;
           ny = n.ny;
         } else {
-          const owner = (proj as any).owner;
-          let closest: any = null;
-          let best = Infinity;
-          for (const p of state.players) {
-            if (p.health <= 0) continue;
-            if (p === owner && (proj as any).framesAlive < 5) continue;
-            const d = MathUtils.distance(hitX, hitY, p.x, p.y);
-            if (d < best) {
-              best = d;
-              closest = p;
-            }
-          }
-          if (closest) {
-            const dx = hitX - closest.x;
-            const dy = hitY - closest.y;
+          if (hitEntityType === 'player' && hitEntityRef) {
+            const dx = hitX - hitEntityRef.x;
+            const dy = hitY - hitEntityRef.y;
             const n = Math.hypot(dx, dy) || 1;
             nx = dx / n;
             ny = dy / n;
+          } else if (hitEntityType === 'prop' && hitEntityRef) {
+            const dx = hitX - hitEntityRef.x;
+            const dy = hitY - hitEntityRef.y;
+            const n = Math.hypot(dx, dy) || 1;
+            nx = dx / n;
+            ny = dy / n;
+          } else if (hitEntityType === 'logo' && hitEntityRef) {
+            const logo = hitEntityRef;
+            const halfW = logo.collisionWidth / 2;
+            const halfH = logo.collisionHeight / 2;
+            const dx = hitX - logo.x;
+            const dy = hitY - logo.y;
+            const cosA = Math.cos(-logo.angle);
+            const sinA = Math.sin(-logo.angle);
+            const localX = dx * cosA - dy * sinA;
+            const localY = dx * sinA + dy * cosA;
+            const penX = halfW - Math.abs(localX);
+            const penY = halfH - Math.abs(localY);
+            let nxL = 0;
+            let nyL = 0;
+            if (penX < penY) nxL = localX >= 0 ? 1 : -1;
+            else nyL = localY >= 0 ? 1 : -1;
+            const cosW = Math.cos(logo.angle);
+            const sinW = Math.sin(logo.angle);
+            nx = nxL * cosW - nyL * sinW;
+            ny = nxL * sinW + nyL * cosW;
           }
         }
 
@@ -1055,7 +1136,8 @@ export class PhysicsEngine {
           ny = -ny;
         }
 
-        const bounce = (proj as any).bounce ?? 0.45;
+        const bounceTerrain = (proj as any).bounce ?? 0.45;
+        const bounce = hitEntityType === 'player' ? bounceTerrain / 3 : bounceTerrain;
         const baseFriction = (proj as any).friction ?? 0.85;
         const surfaceFactor = Math.max(0, Math.min(1, -ny));
         const friction = settlePhase ? (1 - (1 - baseFriction) * surfaceFactor) : 1;
