@@ -157,11 +157,13 @@ function setControlsOpen(open: boolean, persist: boolean = true) {
 function ensureControlsBoundOnce() {
   if (controlsBound) return;
   controlsBound = true;
-  if (!controlsToggleBtn || !controlsUI) return;
-  controlsToggleBtn.addEventListener('click', () => {
-    const open = controlsUI.classList.contains('is-open');
-    setControlsOpen(!open, true);
-  });
+  if (!controlsUI) return;
+  if (controlsToggleBtn) {
+    controlsToggleBtn.addEventListener('click', () => {
+      const open = controlsUI.classList.contains('is-open');
+      setControlsOpen(!open, true);
+    });
+  }
   document.getElementById('controls-toggle-top')?.addEventListener('click', () => {
     if (!controlsUI) return;
     const open = controlsUI.classList.contains('is-open');

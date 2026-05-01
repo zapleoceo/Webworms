@@ -2,7 +2,7 @@ import { mulberry32, hashStringToSeed } from '../utils/SeededRng';
 import { getAIDifficulty } from '../ai/AIStorage';
 import type { AIDifficulty, BotConfig } from '../ai/BotConfig';
 import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
-import { buildSnapshotFromState, chooseBotAction, chooseBotActionDebug, chooseBotPlan, chooseDigAction, terrainFromLandscape } from '../ai/BotAI';
+import { chooseBotAction, chooseBotPlan, chooseDigAction, terrainFromLandscape, type BotWormSnapshot } from '../ai/BotAI';
 import { AI_V } from '../ai/AIVersion';
 
 type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
@@ -65,6 +65,9 @@ export class BotTurnController {
   private lastWorkerArrivedAfterMain: 0 | 1 | null = null;
   private lastWorkerUsed: 0 | 1 | null = null;
   private didReplanThisTurn: boolean = false;
+  private planningInProgress: boolean = false;
+  private planningDeadlineAt: number = 0;
+  private lastDecisionDebug: any | null = null;
 
   constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
     if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
@@ -72,7 +75,7 @@ export class BotTurnController {
 
   private recordAIVai(
     presenter: any,
-    botCfg: BotConfig,
+    _botCfg: BotConfig,
     difficulty: AIDifficulty,
     stage: string,
     action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number } | null,
@@ -82,28 +85,17 @@ export class BotTurnController {
       if (presenter?.state?.mode !== 'aivai') return;
       const cb = presenter?.onAIVaiTrace;
       if (typeof cb !== 'function') return;
-      const terrain = terrainFromLandscape(presenter.state.landscape);
-      const snap = buildSnapshotFromState(presenter.state, presenter.physics.gravity, terrain);
       const p = presenter.state.getCurrentPlayer?.();
-      const shooter = snap.worms.find((w: any) => w.id === String(presenter.state.currentPlayerIndex));
-      if (!p || !shooter) return;
-      shooter.x = p.x;
-      shooter.y = p.y;
-      shooter.height = p.height || shooter.height;
-      shooter.health = p.health || shooter.health;
-      shooter.equipmentIds = Array.isArray(p.equipmentIds) ? p.equipmentIds : shooter.equipmentIds;
-      shooter.weaponCooldowns = p.weaponCooldowns || shooter.weaponCooldowns;
-      const enemies = snap.worms.filter((w: any) => w.team !== shooter.team && w.health > 0);
-      const allies = snap.worms.filter((w: any) => w.team === shooter.team && w.health > 0);
-      const dbg = chooseBotActionDebug(this.rngForTurn(presenter), snap.world, shooter, enemies, allies, botCfg);
+      if (!p) return;
+      const wormId = String(presenter.state.currentPlayerIndex ?? '');
       cb({
         type: 'bot_decision',
         t: presenter.matchDuration || 0,
         stage,
-        team: shooter.team,
-        wormId: shooter.id,
-        pos: { x: shooter.x, y: shooter.y },
-        health: shooter.health,
+        team: p.team,
+        wormId,
+        pos: { x: p.x, y: p.y },
+        health: p.health,
         difficulty,
         aiV: AI_V,
         thinkSrc: this.lastThinkSrc,
@@ -114,7 +106,7 @@ export class BotTurnController {
         plan: this.plan?.moveTo ? { x: this.plan.moveTo.x, y: this.plan.moveTo.y } : null,
         action,
         noisy,
-        debug: dbg
+        debug: this.lastDecisionDebug
       });
     } catch {}
   }
@@ -148,7 +140,7 @@ export class BotTurnController {
     }
   }
 
-  private startWorkerPlan(presenter: any, snap: any, shooter: any, botCfg: BotConfig, executeSeconds: number, ropeRemaining: number, rngSeed: number): void {
+  private startWorkerPlan(presenter: any, worms: BotWormSnapshot[], shooterId: string, botCfg: BotConfig, executeSeconds: number, ropeRemaining: number, rngSeed: number): void {
     try {
       this.ensureWorker();
       if (!this.thinkWorker) return;
@@ -168,8 +160,8 @@ export class BotTurnController {
         gravity: presenter.physics.gravity,
         wind: presenter.state.wind || 0,
         terrain: { width: terrain.width, height: terrain.height, grid: buf },
-        worms: snap.worms,
-        shooterId: shooter.id,
+        worms,
+        shooterId,
         botCfg,
         executeSeconds,
         ropeRemaining
@@ -192,6 +184,33 @@ export class BotTurnController {
     try {
       console.log('[BOT]', event, data);
     } catch {}
+  }
+
+  private buildBotView(presenter: any): { world: any; worms: BotWormSnapshot[]; shooter: BotWormSnapshot; enemies: BotWormSnapshot[]; allies: BotWormSnapshot[] } | null {
+    const terrain = terrainFromLandscape(presenter.state.landscape);
+    const world = { gravity: presenter.physics.gravity, wind: presenter.state.wind || 0, terrain };
+    const players: any[] = Array.isArray(presenter.state.players) ? presenter.state.players : [];
+    const worms: BotWormSnapshot[] = players.map((p: any, idx: number) => ({
+      id: String(idx),
+      team: p.team,
+      x: p.x,
+      y: p.y,
+      width: p.width || 10,
+      height: p.height || 10,
+      health: p.health || 0,
+      maxHealth: p.maxHealth || p.health || 0,
+      defense: p.defense || 0,
+      mass: p.mass || 1,
+      jumpForce: p.jumpForce || -150,
+      speedMultiplier: p.speedMultiplier || 1,
+      weaponCooldowns: p.weaponCooldowns || {},
+      equipmentIds: Array.isArray(p.equipmentIds) ? p.equipmentIds : []
+    }));
+    const shooter = worms.find((w) => w.id === String(presenter.state.currentPlayerIndex));
+    if (!shooter) return null;
+    const enemies = worms.filter((w) => w.team !== shooter.team && w.health > 0);
+    const allies = worms.filter((w) => w.team === shooter.team && w.health > 0);
+    return { world, worms, shooter, enemies, allies };
   }
 
   public update(presenter: any, isWorldBusy: boolean): void {
@@ -244,6 +263,9 @@ export class BotTurnController {
       this.lastDx = 0;
       this.ropeStallCount = 0;
       this.didReplanThisTurn = false;
+      this.planningInProgress = false;
+      this.planningDeadlineAt = 0;
+      this.lastDecisionDebug = null;
       this.lastThinkSrc = 'main';
       this.lastWorkerMs = null;
       this.lastWorkerComputeMs = null;
@@ -301,41 +323,48 @@ export class BotTurnController {
     if (elapsed < planSeconds) return;
 
     if (!this.plannedThisTurn && !isWorldBusy) {
-      this.plannedThisTurn = true;
-      const rngSeed = this.rngSeedForTurn(presenter);
-      const rng = mulberry32(rngSeed);
-      const terrain = terrainFromLandscape(presenter.state.landscape);
-      const snap = buildSnapshotFromState(presenter.state, presenter.physics.gravity, terrain);
-      const shooter = snap.worms.find(w => w.id === String(presenter.state.currentPlayerIndex));
-      if (shooter) {
-        const enemies = snap.worms.filter(w => w.team !== shooter.team && w.health > 0);
-        const allies = snap.worms.filter(w => w.team === shooter.team && w.health > 0);
-        this.startWorkerPlan(presenter, snap, shooter, botCfg, executeSeconds, ropeRemaining, rngSeed);
-        const plan = chooseBotPlan(rng, snap.world, shooter, enemies, allies, botCfg, executeSeconds, ropeRemaining);
-        const mainEnd1 = performance.now();
+      if (!this.planningInProgress) {
+        const view = this.buildBotView(presenter);
+        if (!view) return;
+        const rngSeed = this.rngSeedForTurn(presenter);
+        this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, executeSeconds, ropeRemaining, rngSeed);
+        this.planningInProgress = true;
+        this.planningDeadlineAt = performance.now() + 550;
+        return;
+      }
 
-        const wr = (this.workerResult && this.workerJobId && this.workerResult.jobId === this.workerJobId) ? this.workerResult : null;
-        const wrOk = !!(wr && wr.ok === 1 && wr.plan);
-        const arrivedAfterMain = wr ? (this.workerArrivedAt > mainEnd1 ? 1 : 0) : null;
-        const roundtripMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
-        const computeMs = wr ? Number(wr.ms) : null;
-
-        let useWorker = false;
-        if (wrOk && arrivedAfterMain === 0) useWorker = true;
-        if (!plan && wrOk) useWorker = true;
-
-        this.lastWorkerArrivedAfterMain = arrivedAfterMain;
-        this.lastWorkerMs = roundtripMs;
-        this.lastWorkerComputeMs = computeMs;
-        this.lastWorkerUsed = useWorker ? 1 : 0;
-        this.lastThinkSrc = useWorker ? 'worker' : 'main';
-        const usedPlan = useWorker ? (wr.plan as any) : plan;
-        if (usedPlan) {
-          this.plan = { moveTo: usedPlan.moveTo, action: { weaponIndex: usedPlan.action.weaponIndex, facingRight: usedPlan.action.facingRight, aimAngle: usedPlan.action.aimAngle, power: usedPlan.action.power, targetId: usedPlan.action.targetId } };
+      const wr = (this.workerResult && this.workerJobId && this.workerResult.jobId === this.workerJobId) ? this.workerResult : null;
+      const wrOk = !!(wr && wr.ok === 1 && wr.plan);
+      if (wrOk) {
+        this.lastWorkerArrivedAfterMain = 0;
+        this.lastWorkerMs = Math.max(0, this.workerArrivedAt - this.workerStartedAt);
+        this.lastWorkerComputeMs = Number(wr.ms);
+        this.lastWorkerUsed = 1;
+        this.lastThinkSrc = 'worker';
+        this.lastDecisionDebug = wr.debug || null;
+        this.plan = { moveTo: wr.plan.moveTo, action: { weaponIndex: wr.plan.action.weaponIndex, facingRight: wr.plan.action.facingRight, aimAngle: wr.plan.action.aimAngle, power: wr.plan.action.power, targetId: wr.plan.action.targetId } };
+        this.moveStartedAt = now;
+        this.plannedThisTurn = true;
+        this.planningInProgress = false;
+        this.debug('plan', { moveTo: wr.plan.moveTo ? { x: Math.round(wr.plan.moveTo.x), y: Math.round(wr.plan.moveTo.y) } : null, weaponIndex: wr.plan.action.weaponIndex, targetId: wr.plan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
+      } else if (performance.now() > this.planningDeadlineAt) {
+        const view = this.buildBotView(presenter);
+        if (!view) return;
+        const rngSeed = this.rngSeedForTurn(presenter);
+        const rng = mulberry32(rngSeed);
+        const plan = chooseBotPlan(rng, view.world, view.shooter, view.enemies, view.allies, botCfg, executeSeconds, ropeRemaining);
+        this.lastWorkerArrivedAfterMain = wr ? 1 : null;
+        this.lastWorkerMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
+        this.lastWorkerComputeMs = wr ? Number(wr.ms) : null;
+        this.lastWorkerUsed = 0;
+        this.lastThinkSrc = 'main';
+        this.lastDecisionDebug = wr?.debug || null;
+        if (plan) {
+          this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power, targetId: plan.action.targetId } };
           this.moveStartedAt = now;
-          this.debug('plan', { moveTo: usedPlan.moveTo ? { x: Math.round(usedPlan.moveTo.x), y: Math.round(usedPlan.moveTo.y) } : null, weaponIndex: usedPlan.action.weaponIndex, targetId: usedPlan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
+          this.debug('plan', { moveTo: plan.moveTo ? { x: Math.round(plan.moveTo.x), y: Math.round(plan.moveTo.y) } : null, weaponIndex: plan.action.weaponIndex, targetId: plan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
         } else if (botCfg.dig.enabled && this.digShotsThisTurn < botCfg.dig.maxShotsPerTurn) {
-          const dig = chooseDigAction(rng, snap.world, shooter, enemies, allies, botCfg);
+          const dig = chooseDigAction(rng, view.world, view.shooter, view.enemies, view.allies, botCfg);
           if (dig) {
             const noisy = this.applyError({ weaponIndex: dig.weaponIndex, facingRight: dig.facingRight, aimAngle: dig.aimAngle, power: dig.power }, botCfg, difficulty, this.rngForTurn(presenter));
             this.recordAIVai(presenter, botCfg, difficulty, 'dig_fire', { weaponIndex: dig.weaponIndex, facingRight: dig.facingRight, aimAngle: dig.aimAngle, power: dig.power }, noisy);
@@ -345,18 +374,22 @@ export class BotTurnController {
             this.debug('dig_fire', { weaponIndex: noisy.weaponIndex });
           }
         } else {
-          const fallback = chooseBotAction(rng, snap.world, shooter, enemies, allies, botCfg);
-          const closest = enemies
-            .map(e => ({ e, d: Math.hypot(e.x - shooter.x, e.y - shooter.y) }))
+          const fallback = chooseBotAction(rng, view.world, view.shooter, view.enemies, view.allies, botCfg);
+          const closest = view.enemies
+            .map(e => ({ e, d: Math.hypot(e.x - view.shooter.x, e.y - view.shooter.y) }))
             .sort((a, b) => a.d - b.d)[0]?.e;
           if (fallback && closest) {
-            const dir = closest.x >= shooter.x ? -1 : 1;
-            const rx = Math.max(30, Math.min(snap.world.terrain.width - 30, shooter.x + dir * 140));
-            this.plan = { moveTo: { x: rx, y: shooter.y }, action: { weaponIndex: fallback.weaponIndex, facingRight: fallback.facingRight, aimAngle: fallback.aimAngle, power: fallback.power, targetId: closest.id } };
+            const dir = closest.x >= view.shooter.x ? -1 : 1;
+            const rx = Math.max(30, Math.min(view.world.terrain.width - 30, view.shooter.x + dir * 140));
+            this.plan = { moveTo: { x: rx, y: view.shooter.y }, action: { weaponIndex: fallback.weaponIndex, facingRight: fallback.facingRight, aimAngle: fallback.aimAngle, power: fallback.power, targetId: closest.id } };
             this.moveStartedAt = now;
-            this.debug('plan', { moveTo: { x: Math.round(rx), y: Math.round(shooter.y) }, weaponIndex: fallback.weaponIndex, targetId: closest.id, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
+            this.debug('plan', { moveTo: { x: Math.round(rx), y: Math.round(view.shooter.y) }, weaponIndex: fallback.weaponIndex, targetId: closest.id, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
           }
         }
+        this.plannedThisTurn = true;
+        this.planningInProgress = false;
+      } else {
+        return;
       }
     }
 
@@ -415,20 +448,9 @@ export class BotTurnController {
   }
 
   private computeActionFromCurrent(presenter: any, botCfg: BotConfig): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number } | null {
-    const terrain = terrainFromLandscape(presenter.state.landscape);
-    const snap = buildSnapshotFromState(presenter.state, presenter.physics.gravity, terrain);
-    const p = presenter.state.getCurrentPlayer?.();
-    if (!p) return null;
-    const shooter = snap.worms.find(w => w.id === String(presenter.state.currentPlayerIndex));
-    if (!shooter) return null;
-    shooter.x = p.x;
-    shooter.y = p.y;
-    shooter.height = p.height || shooter.height;
-    shooter.equipmentIds = Array.isArray(p.equipmentIds) ? p.equipmentIds : shooter.equipmentIds;
-    shooter.weaponCooldowns = p.weaponCooldowns || shooter.weaponCooldowns;
-    const enemies = snap.worms.filter(w => w.team !== shooter.team && w.health > 0);
-    const allies = snap.worms.filter(w => w.team === shooter.team && w.health > 0);
-    const act = chooseBotAction(this.rngForTurn(presenter), snap.world, shooter, enemies, allies, botCfg);
+    const view = this.buildBotView(presenter);
+    if (!view) return null;
+    const act = chooseBotAction(this.rngForTurn(presenter), view.world, view.shooter, view.enemies, view.allies, botCfg);
     if (!act) return null;
     return { weaponIndex: act.weaponIndex, facingRight: act.facingRight, aimAngle: act.aimAngle, power: act.power };
   }
@@ -835,7 +857,12 @@ export class BotTurnController {
     }
 
     const dx = moveTo.x - player.x;
-    if (Math.abs(dx) < 110) {
+    const dy = moveTo.y - player.y;
+    const isClimb = strategy === 'rope_climb';
+    const isSwing = strategy === 'rope_swing';
+    const isDescend = strategy === 'rope_descend';
+    const allowNearDx = (isClimb || isDescend) && Math.abs(dy) >= 80;
+    if (Math.abs(dx) < 110 && !allowNearDx) {
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'dx_small', anglesTried: 0, bestScore: null, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining });
       return false;
     }
@@ -844,22 +871,21 @@ export class BotTurnController {
 
     const baseY = player.y - player.height / 2;
     const dirSign = dir === 'right' ? 1 : -1;
-    const isClimb = strategy === 'rope_climb';
-    const isSwing = strategy === 'rope_swing';
-    const isDescend = strategy === 'rope_descend';
 
     let best: { aimAngle: number; score: number } | null = null;
     const globalAngles: number[] = [];
+    const bothSides = (isClimb || isDescend) && Math.abs(dx) < 80;
     if (isClimb || isSwing) {
       const mags = [Math.PI / 4, Math.PI / 3, Math.PI * 0.42, Math.PI * 0.55];
-      if (dir === 'right') globalAngles.push(...mags.map(v => -v));
-      else globalAngles.push(...mags.map(v => Math.PI - v));
+      if (dir === 'right' || bothSides) globalAngles.push(...mags.map(v => -v));
+      if (dir === 'left' || bothSides) globalAngles.push(...mags.map(v => Math.PI - v));
     } else if (isDescend) {
       const up = [Math.PI / 6, Math.PI / 4, Math.PI / 3];
       const down = [0.18, 0.35];
-      if (dir === 'right') {
+      if (dir === 'right' || bothSides) {
         globalAngles.push(...up.map(v => -v), ...down);
-      } else {
+      }
+      if (dir === 'left' || bothSides) {
         globalAngles.push(...up.map(v => Math.PI - v), ...down.map(v => Math.PI + v));
       }
     }

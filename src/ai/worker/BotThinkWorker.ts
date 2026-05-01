@@ -1,5 +1,5 @@
 import type { BotConfig } from '../BotConfig';
-import { chooseBotPlan, type BotPlan, type BotWormSnapshot } from '../BotAI';
+import { chooseBotActionDebug, chooseBotPlan, type BotPlan, type BotWormSnapshot } from '../BotAI';
 import { mulberry32 } from '../../utils/SeededRng';
 
 type TerrainPayload = { width: number; height: number; grid: ArrayBuffer };
@@ -25,6 +25,7 @@ type PlanResponse = {
   ok: 1 | 0;
   ms: number;
   plan: BotPlan | null;
+  debug: any | null;
 };
 
 const ctx = self as any;
@@ -53,19 +54,22 @@ ctx.onmessage = (evt: MessageEvent<PlanRequest>) => {
     const worms = Array.isArray(msg.worms) ? msg.worms : [];
     const shooter = worms.find((x) => x.id === msg.shooterId) || null;
     if (!shooter) {
-      const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: 0, ms: performance.now() - t0, plan: null };
+      const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: 0, ms: performance.now() - t0, plan: null, debug: null };
       ctx.postMessage(out);
       return;
     }
     const enemies = worms.filter((w0) => w0.team !== shooter.team && w0.health > 0);
     const allies = worms.filter((w0) => w0.team === shooter.team && w0.health > 0);
 
-    const rng = mulberry32((msg.rngSeed >>> 0) || 1);
-    const plan = chooseBotPlan(rng, world as any, shooter, enemies, allies, msg.botCfg, msg.executeSeconds, msg.ropeRemaining);
-    const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: plan ? 1 : 0, ms: performance.now() - t0, plan: plan || null };
+    const seed = (msg.rngSeed >>> 0) || 1;
+    const rngPlan = mulberry32(seed);
+    const rngDbg = mulberry32((seed ^ 0x9e3779b9) >>> 0);
+    const plan = chooseBotPlan(rngPlan, world as any, shooter, enemies, allies, msg.botCfg, msg.executeSeconds, msg.ropeRemaining);
+    const debug = chooseBotActionDebug(rngDbg, world as any, shooter, enemies, allies, msg.botCfg);
+    const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: plan ? 1 : 0, ms: performance.now() - t0, plan: plan || null, debug };
     ctx.postMessage(out);
   } catch {
-    const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: 0, ms: performance.now() - t0, plan: null };
+    const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: 0, ms: performance.now() - t0, plan: null, debug: null };
     ctx.postMessage(out);
   }
 };

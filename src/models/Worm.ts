@@ -27,7 +27,7 @@ export class Worm {
 
   // Visual/team identifier
   public team: string;
-  public teamColor: string;
+  public teamColor: string = '';
   public name: string;
   public unitClass: 'soldier' | 'heavy' | 'scout';
   
@@ -73,7 +73,6 @@ export class Worm {
       this.mass = 1.5;
       this.jumpForce = -100;
       this.speedMultiplier = 0.6;
-      this.teamColor = '#FF3333'; // Red
       this.width = 12;
       this.height = 12;
     } else if (unitClass === 'scout') {
@@ -81,7 +80,6 @@ export class Worm {
       this.mass = 0.7;
       this.jumpForce = -200;
       this.speedMultiplier = 1.4;
-      this.teamColor = '#FFFF33'; // Yellow
       this.width = 8;
       this.height = 8;
     } else {
@@ -90,13 +88,16 @@ export class Worm {
       this.mass = 1.0;
       this.jumpForce = -150;
       this.speedMultiplier = 1.0;
-      this.teamColor = '#33FF33'; // Green
     }
 
     if (isDummy && window.location.pathname.indexOf('training') !== -1) {
       this.health = 10000;
       this.maxHealth = 10000;
       this.teamColor = '#4169E1';
+    }
+
+    if (!this.teamColor) {
+      this.teamColor = this.team === 'team1' ? '#33FF33' : '#FF3333';
     }
     
     this.equipmentIds = equipmentIds.length > 0 ? [...equipmentIds] : getDefaultLoadout();

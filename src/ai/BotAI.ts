@@ -721,8 +721,52 @@ export function chooseBotPlan(
   moveSeconds: number,
   ropeAttachBudget: number
 ): BotPlan | null {
-  const base = chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg);
+  const pitGeom = (() => {
+    const t = world.terrain;
+    const px = Math.floor(shooter.x);
+    const py = Math.floor(shooter.y);
+    const h = Math.max(8, shooter.height || 10);
+    const y0 = Math.max(0, Math.min(t.height - 1, py));
+    const y1 = Math.max(0, Math.min(t.height - 1, Math.floor(py - h * 0.35)));
+    const y2 = Math.max(0, Math.min(t.height - 1, Math.floor(py - h * 0.75)));
+    const leftX = Math.max(0, px - 18);
+    const rightX = Math.min(t.width - 1, px + 18);
+    const wallL = t.isSolid(leftX, y0) || t.isSolid(leftX, y1) || t.isSolid(leftX, y2);
+    const wallR = t.isSolid(rightX, y0) || t.isSolid(rightX, y1) || t.isSolid(rightX, y2);
+    if (!wallL && !wallR) return null;
+    let roof = 0;
+    for (let dy = 18; dy <= 90; dy += 18) {
+      const yy = Math.max(0, y2 - dy);
+      if (t.isSolid(px, yy)) roof += 1;
+    }
+    return { wallL, wallR, roof };
+  })();
+
+  const base = pitGeom ? chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true) : chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg);
   if (!base) return null;
+
+  if (pitGeom && base.trace) {
+    const chosen = base.trace.chosen;
+    const rejected = base.trace.rejected || {};
+    const muzzleBlocked = rejected.muzzle_blocked || 0;
+    const badShot = (chosen.expectedDamage <= 0.01 && chosen.miss >= 240) || chosen.score < -220;
+    const stuckByMuzzle = muzzleBlocked >= 90;
+    const wantsEscape = badShot || stuckByMuzzle;
+    (base.trace as any).pitDetected = 1;
+    (base.trace as any).pitGeom = pitGeom;
+    (base.trace as any).pitBadShot = badShot ? 1 : 0;
+    (base.trace as any).pitMuzzleBlocked = muzzleBlocked;
+
+    if (wantsEscape) {
+      const e = enemies.filter(x => x.health > 0).sort((a, b) => Math.hypot(a.x - shooter.x, a.y - shooter.y) - Math.hypot(b.x - shooter.x, b.y - shooter.y))[0] || null;
+      const dir = pitGeom.wallR && !pitGeom.wallL ? -1 : pitGeom.wallL && !pitGeom.wallR ? 1 : (e ? (e.x >= shooter.x ? 1 : -1) : (rng() < 0.5 ? -1 : 1));
+      const escapeY = clamp(shooter.y - 150 - pitGeom.roof * 28, 30, world.terrain.height - 30);
+      const escapeX = clamp(shooter.x + dir * 28, 30, world.terrain.width - 30);
+      const moveTo = { x: escapeX, y: escapeY };
+      (base.trace as any).escapeMoveTo = moveTo;
+      return { moveTo, action: base.action };
+    }
+  }
 
   const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
   const maxMoveDist = Math.max(0, maxSpeed * Math.max(0, moveSeconds));
