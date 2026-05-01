@@ -39,6 +39,7 @@ describe('AirdropPhysics (drops stability)', () => {
 
     const rng = seeded(12345);
     const logos: BrandLogo[] = [];
+    const traceCounts: number[] = [];
     for (let i = 0; i < 30; i++) {
       const x = 80 + rng() * (W - 160);
       const y = 80 + rng() * 160;
@@ -54,6 +55,10 @@ describe('AirdropPhysics (drops stability)', () => {
       (l as any).customContactPointsLocal = pts;
       (l as any).customContactKey = 't';
       (l as any).customContactWantKey = 't';
+      traceCounts.push(0);
+      (l as any).onTrace = (e: any) => {
+        if (e?.kind === 'airdrop_contact') traceCounts[i] += 1;
+      };
       logos.push(l);
     }
 
@@ -73,5 +78,10 @@ describe('AirdropPhysics (drops stability)', () => {
 
     const dynamic = logos.filter(l => l.isDynamic);
     expect(dynamic.length).toBeLessThanOrEqual(2);
+
+    const total = traceCounts.reduce((a, b) => a + b, 0);
+    const max = traceCounts.reduce((a, b) => Math.max(a, b), 0);
+    const avg = total / Math.max(1, traceCounts.length);
+    console.log('[drops] airdrop_contact traces total=%d avg=%.2f max=%d', total, avg, max);
   });
 });

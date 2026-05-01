@@ -533,6 +533,16 @@ export class CanvasRenderer {
 
     // Apply new stamps dynamically to both grid and offscreen canvas
     if (state.landscape.newStamps && state.landscape.newStamps.length > 0) {
+      const wormBoxes = (state.players || [])
+        .filter((w: any) => w && w.health > 0)
+        .map((w: any) => {
+          const halfW = (Number(w.width) || 0) * 0.5;
+          const left = Math.floor((Number(w.x) || 0) - halfW) - 2;
+          const right = Math.floor((Number(w.x) || 0) + halfW) + 2;
+          const top = Math.floor(Number(w.y) || 0) - 2;
+          const bottom = Math.floor((Number(w.y) || 0) + (Number(w.height) || 0)) + 2;
+          return { left, right, top, bottom };
+        });
       for (const stamp of state.landscape.newStamps) {
         let img = this.wormImages[stamp.imgKey];
         if (!img) {
@@ -578,6 +588,11 @@ export class CanvasRenderer {
                   if (mapX < 0 || mapX >= state.landscape.width || mapY < 0 || mapY >= state.landscape.height) continue;
                   if (mapX < 30 || mapX >= state.landscape.width - 30 || mapY >= state.landscape.height - 30) continue;
                   if (state.landscape.getMaterial(mapX, mapY) === 255) continue;
+                  let inWorm = false;
+                  for (const b of wormBoxes) {
+                    if (mapX >= b.left && mapX <= b.right && mapY >= b.top && mapY <= b.bottom) { inWorm = true; break; }
+                  }
+                  if (inWorm) continue;
                   state.landscape.grid[mapY * state.landscape.width + mapX] = 6; // Solid stamped material
                 }
               }
