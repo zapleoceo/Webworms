@@ -6,6 +6,7 @@
 - PRD: [PRD.md](./PRD.md)
 - Техническая архитектура: [Technical_Architecture.md](./Technical_Architecture.md)
 - Правила/алгоритм бота: [bot_rules.md](./bot_rules.md)
+- Дизайн стратегии бота (MCTS): [bot_strategy_mcts.md](./bot_strategy_mcts.md)
 - Маппинг спрайтов: [Sprite_Mapping.md](./Sprite_Mapping.md)
 
 ## Правила поддержки документации
