@@ -36,7 +36,7 @@ export class CanvasRenderer {
       'jump': { src: '/sprites/Worms/wjump.png', frameWidth: 60, frameHeight: 60, frameCount: 10 },
       'backflip': { src: '/sprites/Worms/wkamjmp.png', frameWidth: 60, frameHeight: 60, frameCount: 10 }, // approximation
       'idle': { src: '/sprites/Worms/wbrth1.png', frameWidth: 60, frameHeight: 60, frameCount: 15 }, // breathing
-      'grave': { src: '/sprites/Misc/grave1.png', frameWidth: 24, frameHeight: 32, frameCount: 1 }, // Grave
+      'grave': { src: '/sprites/Misc/grave1.png', frameWidth: 60, frameHeight: 60, frameCount: 20 }, // Grave
       // Weapons
       'bazooka': { src: '/sprites/Worms/wbaz.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
       'minigun': { src: '/sprites/Worms/wmini.png', frameWidth: 60, frameHeight: 60, frameCount: 32 },
@@ -566,7 +566,8 @@ export class CanvasRenderer {
   */
 
   private drawPlayers(state: GameState): void {
-    for (const player of state.players) {
+    for (let playerIndex = 0; playerIndex < state.players.length; playerIndex++) {
+      const player = state.players[playerIndex];
       this.ctx.save();
       this.ctx.translate(player.x, player.y);
 
@@ -584,7 +585,7 @@ export class CanvasRenderer {
       
       if (player.health <= 0) {
         animKey = 'grave';
-        frameIndex = 0;
+        frameIndex = playerIndex % this.animCtrl.getAnimLength('grave');
         offsetY = 0;
         flipX = false;
       } else if (player.isJumping) {

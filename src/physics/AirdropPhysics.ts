@@ -95,14 +95,14 @@ export function integrateAirdrop(
   const invI = I > 1e-6 ? 1 / I : 0;
   const comLocal: Vec = { x: 0, y: hh * cfg.centerOfMassYOffset };
 
-  const stepOnce = () => {
+  const stepOnce = (stepDt: number) => {
     logo.touchedGround = false;
 
-    logo.vy += gravity * h;
+    logo.vy += gravity * stepDt;
 
-    logo.x += logo.vx * h;
-    logo.y += logo.vy * h;
-    logo.angle = angleNorm(logo.angle + logo.angularVelocity * h);
+    logo.x += logo.vx * stepDt;
+    logo.y += logo.vy * stepDt;
+    logo.angle = angleNorm(logo.angle + logo.angularVelocity * stepDt);
 
     const trace = (logo as any).onTrace as ((e: any) => void) | undefined;
     const tracePos0 = { x: logo.x, y: logo.y };
@@ -146,10 +146,10 @@ export function integrateAirdrop(
 
     if (contacts.length === 0) {
       logo.sleepAccum = 0;
-      const air = Math.exp(-cfg.linearDampingAir * h);
+      const air = Math.exp(-cfg.linearDampingAir * stepDt);
       logo.vx *= air;
       logo.vy *= air;
-      logo.angularVelocity *= Math.exp(-cfg.angularDampingAir * h);
+      logo.angularVelocity *= Math.exp(-cfg.angularDampingAir * stepDt);
       return;
     }
 
@@ -231,29 +231,29 @@ export function integrateAirdrop(
     const hasContact = contacts.length > 0;
     if (logo.touchedGround || hasContact) {
       const scale = logo.touchedGround ? 1 : 0.55;
-      const dampLin = Math.exp(-(cfg.linearDampingGround * scale) * h);
-      const dampAng = Math.exp(-(cfg.angularDampingGround * scale) * h);
+      const dampLin = Math.exp(-(cfg.linearDampingGround * scale) * stepDt);
+      const dampAng = Math.exp(-(cfg.angularDampingGround * scale) * stepDt);
       logo.vx *= dampLin;
       logo.vy *= dampLin;
       logo.angularVelocity *= dampAng;
     } else {
-      const air = Math.exp(-cfg.linearDampingAir * h);
+      const air = Math.exp(-cfg.linearDampingAir * stepDt);
       logo.vx *= air;
       logo.vy *= air;
-      logo.angularVelocity *= Math.exp(-cfg.angularDampingAir * h);
+      logo.angularVelocity *= Math.exp(-cfg.angularDampingAir * stepDt);
     }
 
     const speed = Math.hypot(logo.vx, logo.vy);
     const aw = Math.abs(logo.angularVelocity);
     if (hasContact && speed < cfg.sleepLinear && aw < cfg.sleepAngular) {
-      logo.sleepAccum += h;
+      logo.sleepAccum += stepDt;
     } else {
       logo.sleepAccum = 0;
     }
 
     if (trace) {
       const ax = (logo as any).__aivaiTraceAccum;
-      const next = (typeof ax === 'number' ? ax : 0) + h;
+      const next = (typeof ax === 'number' ? ax : 0) + stepDt;
       const dv = Math.hypot((logo.vx - traceVel0.vx), (logo.vy - traceVel0.vy));
       const should = next >= 0.1 || dv > 65 || maxPen >= 3;
       (logo as any).__aivaiTraceAccum = should ? 0 : next;
@@ -299,7 +299,11 @@ export function integrateAirdrop(
 
   let steps = 0;
   while (logo.physicsAccum >= h && steps < maxSubSteps && logo.isDynamic) {
-    stepOnce();
+    const speed = Math.hypot(logo.vx, logo.vy);
+    const travel = speed * h;
+    const split = Math.max(1, Math.min(4, Math.ceil(travel / 30)));
+    const sub = h / split;
+    for (let i = 0; i < split && logo.isDynamic; i++) stepOnce(sub);
     logo.physicsAccum -= h;
     steps++;
   }

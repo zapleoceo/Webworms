@@ -63,6 +63,8 @@ const loaderProgressBarEl = document.getElementById('loader-progress-bar') as HT
 const loaderProgressTextEl = document.getElementById('loader-progress-text') as HTMLElement | null;
 const loaderWormImageEl = document.getElementById('loader-worm-image') as HTMLImageElement | null;
 const enemyDifficultyEl = document.getElementById('enemy-difficulty') as HTMLElement | null;
+const teamNameLeftEl = document.getElementById('team-name-left') as HTMLElement | null;
+const teamNameRightTextEl = document.getElementById('team-name-right-text') as HTMLElement | null;
 
 let currentAIDifficultyForMatch: AIDifficulty | null = null;
 let controlsBound = false;
@@ -126,6 +128,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 document.addEventListener('fullscreenchange', () => {
+  if (wakeLockWanted) requestWakeLock().catch(() => {});
+});
+
+window.addEventListener('focus', () => {
+  if (wakeLockWanted) requestWakeLock().catch(() => {});
+});
+
+window.addEventListener('pageshow', () => {
   if (wakeLockWanted) requestWakeLock().catch(() => {});
 });
 
@@ -201,6 +211,29 @@ function setEnemyDifficultyLabel(mode: 'training' | 'ai' | 'aivai' | 'friend' | 
   }
   const d = currentAIDifficultyForMatch || getAIDifficulty();
   enemyDifficultyEl.innerText = getDifficultyLabel(d);
+}
+
+function getHudSides(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random', _state: any): { leftTeam: 'team1' | 'team2'; rightTeam: 'team1' | 'team2'; leftName: string; rightName: string } {
+  const lt = window.presenter.localTeam as any;
+  const localTeam = (lt === 'team1' || lt === 'team2') ? lt : null;
+
+  if (mode === 'aivai') {
+    const a1 = new URLSearchParams(window.location.search).get('a1') || 'hard';
+    const a2 = new URLSearchParams(window.location.search).get('a2') || 'hard';
+    return { leftTeam: 'team1', rightTeam: 'team2', leftName: `${a1.toUpperCase()}1`, rightName: `${a2.toUpperCase()}2` };
+  }
+
+  if (mode === 'training' || mode === 'ai') {
+    const enemyName = mode === 'ai' ? 'ENEMY' : 'ENEMY';
+    return { leftTeam: 'team1', rightTeam: 'team2', leftName: 'YOU', rightName: enemyName };
+  }
+
+  if (!localTeam) {
+    return { leftTeam: 'team1', rightTeam: 'team2', leftName: 'TEAM1', rightName: 'TEAM2' };
+  }
+
+  if (localTeam === 'team1') return { leftTeam: 'team1', rightTeam: 'team2', leftName: 'YOU', rightName: 'ENEMY' };
+  return { leftTeam: 'team2', rightTeam: 'team1', leftName: 'YOU', rightName: 'ENEMY' };
 }
 
 function setLoaderDifficultyWorm(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random') {
@@ -1260,8 +1293,7 @@ function bindPresenterEvents() {
       syncModule.sendStateSync(state);
     }
 
-    const myTeam = (window.presenter.localTeam === 'training' ? 'team1' : window.presenter.localTeam) as 'team1' | 'team2';
-    const enemyTeam = (myTeam === 'team1' ? 'team2' : 'team1') as 'team1' | 'team2';
+    const hud = getHudSides(currentMode, state);
 
     const teamHpPct = (team: 'team1' | 'team2') => {
       const worms = Array.isArray(state.players) ? state.players.filter((p: any) => p.team === team) : [];
@@ -1271,8 +1303,11 @@ function bindPresenterEvents() {
       return Math.min(100, Math.max(0, (hpSum / denom) * 100));
     };
 
-    hpLocalEl.style.width = `${teamHpPct(myTeam)}%`;
-    hpEnemyEl.style.width = `${teamHpPct(enemyTeam)}%`;
+    hpLocalEl.style.width = `${teamHpPct(hud.leftTeam)}%`;
+    hpEnemyEl.style.width = `${teamHpPct(hud.rightTeam)}%`;
+
+    if (teamNameLeftEl) teamNameLeftEl.textContent = hud.leftName;
+    if (teamNameRightTextEl) teamNameRightTextEl.textContent = hud.rightName;
 
     // Update Turn Timer & Wind
     if (turnTimer) {
@@ -1310,17 +1345,29 @@ function bindPresenterEvents() {
       ? state.players[state.currentPlayerIndex].team 
       : 'team1';
     const localTeam = window.presenter.localTeam;
-    const isMyTurn = localTeam === 'training' || (typeof localTeam === 'string' && activeTeam === localTeam);
+    let isMyTurn = false;
+    if (currentMode === 'training') isMyTurn = true;
+    else if (localTeam === 'team1' || localTeam === 'team2') isMyTurn = activeTeam === localTeam;
+
+    const leftActive = activeTeam === hud.leftTeam;
+    const rightActive = activeTeam === hud.rightTeam;
 
     // Update Worm Selection UI
     updateWormSelectionUI(state);
 
     if (lastTurnActiveTeam !== activeTeam) {
       lastTurnActiveTeam = activeTeam;
-      if (localTurnLabel) localTurnLabel.textContent = isMyTurn ? 'YOUR TURN' : 'WAITING';
-      if (enemyTurnLabel) enemyTurnLabel.textContent = isMyTurn ? 'WAITING' : 'ENEMY TURN';
-      if (localTeamStatus) localTeamStatus.classList.toggle('turn-active', !!isMyTurn);
-      if (enemyTeamStatus) enemyTeamStatus.classList.toggle('turn-active', !isMyTurn && localTeam !== 'training');
+      if (currentMode === 'aivai') {
+        if (localTurnLabel) localTurnLabel.textContent = leftActive ? 'TURN' : 'WAITING';
+        if (enemyTurnLabel) enemyTurnLabel.textContent = rightActive ? 'TURN' : 'WAITING';
+        if (localTeamStatus) localTeamStatus.classList.toggle('turn-active', leftActive);
+        if (enemyTeamStatus) enemyTeamStatus.classList.toggle('turn-active', rightActive);
+      } else {
+        if (localTurnLabel) localTurnLabel.textContent = isMyTurn ? 'YOUR TURN' : 'WAITING';
+        if (enemyTurnLabel) enemyTurnLabel.textContent = isMyTurn ? 'WAITING' : 'ENEMY TURN';
+        if (localTeamStatus) localTeamStatus.classList.toggle('turn-active', !!isMyTurn);
+        if (enemyTeamStatus) enemyTeamStatus.classList.toggle('turn-active', !isMyTurn && localTeam !== 'training');
+      }
     }
 
     if (lastTurnPlayerIndex !== state.currentPlayerIndex) {

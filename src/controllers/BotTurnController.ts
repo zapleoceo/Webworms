@@ -12,7 +12,7 @@ export class BotTurnController {
   private lastTurnIndex: number = -1;
   private firedThisTurn: boolean = false;
   private plannedThisTurn: boolean = false;
-  private plan: { moveTo?: { x: number; y: number }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number } } | null = null;
+  private plan: { moveTo?: { x: number; y: number }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId?: string } } | null = null;
   private moveStartedAt: number = 0;
 
   private ropeAttachUsed: number = 0;
@@ -224,7 +224,7 @@ export class BotTurnController {
         const allies = snap.worms.filter(w => w.team === shooter.team && w.health > 0);
         const plan = chooseBotPlan(rng, snap.world, shooter, enemies, allies, botCfg, executeSeconds, ropeRemaining);
         if (plan) {
-          this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power } };
+          this.plan = { moveTo: plan.moveTo, action: { weaponIndex: plan.action.weaponIndex, facingRight: plan.action.facingRight, aimAngle: plan.action.aimAngle, power: plan.action.power, targetId: plan.action.targetId } };
           this.moveStartedAt = now;
           this.debug('plan', { moveTo: plan.moveTo ? { x: Math.round(plan.moveTo.x), y: Math.round(plan.moveTo.y) } : null, weaponIndex: plan.action.weaponIndex, targetId: plan.action.targetId, ropeRemaining });
         } else if (botCfg.dig.enabled && this.digShotsThisTurn < botCfg.dig.maxShotsPerTurn) {
@@ -245,7 +245,7 @@ export class BotTurnController {
           if (fallback && closest) {
             const dir = closest.x >= shooter.x ? -1 : 1;
             const rx = Math.max(30, Math.min(snap.world.terrain.width - 30, shooter.x + dir * 140));
-            this.plan = { moveTo: { x: rx, y: shooter.y }, action: { weaponIndex: fallback.weaponIndex, facingRight: fallback.facingRight, aimAngle: fallback.aimAngle, power: fallback.power } };
+            this.plan = { moveTo: { x: rx, y: shooter.y }, action: { weaponIndex: fallback.weaponIndex, facingRight: fallback.facingRight, aimAngle: fallback.aimAngle, power: fallback.power, targetId: closest.id } };
             this.moveStartedAt = now;
             this.debug('plan', { moveTo: { x: Math.round(rx), y: Math.round(shooter.y) }, weaponIndex: fallback.weaponIndex, targetId: closest.id, ropeRemaining });
           }
@@ -270,7 +270,15 @@ export class BotTurnController {
     this.trackStuck(player, dt);
 
     if (!isWorldBusy) {
-      const action = this.computeActionFromCurrent(presenter, botCfg) || this.plan.action;
+      const planTarget = this.plan.action.targetId;
+      let canUsePlanned = true;
+      if (planTarget) {
+        canUsePlanned = presenter.state.players.some((w: any, idx: number) => w.team !== player.team && w.health > 0 && String(idx) === String(planTarget));
+      }
+
+      const computed = this.computeActionFromCurrent(presenter, botCfg);
+      const action = computed || (canUsePlanned ? this.plan.action : null);
+      if (!action) return;
       const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter));
       this.recordAIVai(presenter, botCfg, difficulty, 'execute_fire', action, noisy);
       this.fireAction(presenter, noisy);
@@ -397,6 +405,18 @@ export class BotTurnController {
         this.plannedThisTurn = false;
         this.plan = null;
         this.debug('replan', { reason: 'box_stuck', banned: Array.from(this.bannedTurn) });
+      }
+      return true;
+    }
+
+    if (this.strategy === 'walk' && this.stuckTime > 0.9) {
+      this.bannedTurn.add('walk');
+      this.strategy = null;
+      if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
+        this.lastReplanAt = now;
+        this.plannedThisTurn = false;
+        this.plan = null;
+        this.debug('replan', { reason: 'walk_stuck', banned: Array.from(this.bannedTurn) });
       }
       return true;
     }
