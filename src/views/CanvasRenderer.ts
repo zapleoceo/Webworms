@@ -205,7 +205,7 @@ export class CanvasRenderer {
     else ctx.drawImage(img, 0, 0);
     const data = ctx.getImageData(0, 0, sw, sh).data;
 
-    const alphaOk = (x: number, y: number) => data[(y * sw + x) * 4 + 3] > 32;
+    const alphaOk = (x: number, y: number) => data[(y * sw + x) * 4 + 3] > 64;
     const pts: Array<{ x: number; y: number }> = [];
 
     const bottomCount = Math.max(10, Math.min(22, Math.round(sw / 14) + 1));
@@ -221,7 +221,7 @@ export class CanvasRenderer {
       pts.push({ x: lx, y: ly });
     }
 
-    const sideRows = [0.35, 0.6, 0.82];
+    const sideRows = [0.82];
     for (const rt of sideRows) {
       const y = Math.max(0, Math.min(sh - 1, Math.round(rt * (sh - 1))));
       let lxPix = -1;
@@ -256,7 +256,8 @@ export class CanvasRenderer {
   private static opaqueBoundsCache: Record<string, { x: number; y: number; w: number; h: number }> = {};
 
   private getOpaqueBounds(key: string, img: HTMLImageElement): { x: number; y: number; w: number; h: number } | null {
-    const cached = CanvasRenderer.opaqueBoundsCache[key];
+    const cacheKey = `${key}#a64`;
+    const cached = CanvasRenderer.opaqueBoundsCache[cacheKey];
     if (cached) return cached;
 
     const w = img.naturalWidth;
@@ -276,7 +277,7 @@ export class CanvasRenderer {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const a = data[(y * w + x) * 4 + 3];
-        if (a > 0) {
+        if (a > 64) {
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (x > maxX) maxX = x;
@@ -287,7 +288,7 @@ export class CanvasRenderer {
 
     if (maxX < 0 || maxY < 0) return null;
     const bounds = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
-    CanvasRenderer.opaqueBoundsCache[key] = bounds;
+    CanvasRenderer.opaqueBoundsCache[cacheKey] = bounds;
     return bounds;
   }
 

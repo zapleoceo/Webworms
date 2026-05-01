@@ -774,7 +774,8 @@ export class PhysicsEngine {
     if (n < 0.0001) return { nx: 0, ny: -1 };
     nx /= n;
     ny /= n;
-    return { nx, ny };
+    if (Math.abs(nx) > Math.abs(ny)) return { nx: Math.sign(nx) || 1, ny: 0 };
+    return { nx: 0, ny: Math.sign(ny) || -1 };
   }
 
   private bounceOnNormal(
@@ -1054,7 +1055,9 @@ export class PhysicsEngine {
         }
 
         const bounce = (proj as any).bounce ?? 0.45;
-        const friction = settlePhase ? ((proj as any).friction ?? 0.85) : 1;
+        const baseFriction = (proj as any).friction ?? 0.85;
+        const surfaceFactor = Math.max(0, Math.min(1, -ny));
+        const friction = settlePhase ? (1 - (1 - baseFriction) * surfaceFactor) : 1;
         const vBefore = { vx: proj.vx, vy: proj.vy };
         const posBefore = { x: proj.x, y: proj.y };
         this.bounceOnNormal(proj as any, nx, ny, bounce, friction, proj.radius + 0.5);

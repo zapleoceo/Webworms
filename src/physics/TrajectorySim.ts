@@ -228,6 +228,8 @@ function simulateGrenade(
 
     if (collided && !resting && y >= 0) {
       let nrm = estimateNormal(terrain, x, y);
+      if (Math.abs(nrm.x) > Math.abs(nrm.y)) nrm = { x: Math.sign(nrm.x) || 1, y: 0 };
+      else nrm = { x: 0, y: Math.sign(nrm.y) || -1 };
       const align = vx * nrm.x + vy * nrm.y;
       if (align > 0) nrm = { x: -nrm.x, y: -nrm.y };
       const vDot = vx * nrm.x + vy * nrm.y;
@@ -237,7 +239,7 @@ function simulateGrenade(
       const vty = vy - vny;
       const nextVnX = -vnx * rest;
       const nextVnY = -vny * rest;
-      const fric = settlePhase ? Math.max(0, Math.min(2, g.friction)) : 0;
+      const fric = settlePhase ? Math.max(0, Math.min(2, g.friction)) * Math.max(0, Math.min(1, -nrm.y)) : 0;
       const tanDamp = Math.max(0, 1 - fric * 0.18);
       const nextVtX = vtx * tanDamp;
       const nextVtY = vty * tanDamp;
