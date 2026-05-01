@@ -397,8 +397,6 @@ export class BotTurnController {
       return;
     }
 
-    if (elapsed < planSeconds) return;
-
     if (this.planningInProgress && !isWorldBusy) {
       const wr = (this.workerResult && this.workerJobId && this.workerResult.jobId === this.workerJobId) ? this.workerResult : null;
       const wrOk = !!(wr && wr.ok === 1 && wr.plan);
@@ -433,6 +431,8 @@ export class BotTurnController {
         this.lastDecisionDebug = wr?.debug || null;
       }
     }
+
+    if (!this.plannedThisTurn && elapsed < planSeconds) return;
 
     if (!this.plan) return;
 
