@@ -113,7 +113,7 @@ export class CanvasRenderer {
       animKey = 'grave';
       frameIndex = 0;
       flipX = false;
-      offsetY = 16;
+      offsetY = 0;
     } else {
       const equipmentId = player.getCurrentEquipmentId?.() || 'bazooka';
       if (equipmentId === 'rope') {
@@ -585,7 +585,7 @@ export class CanvasRenderer {
       if (player.health <= 0) {
         animKey = 'grave';
         frameIndex = 0;
-        offsetY = 16; // Adjust for smaller grave sprite
+        offsetY = 0;
         flipX = false;
       } else if (player.isJumping) {
         animKey = 'jump';

@@ -69,6 +69,7 @@ let controlsBound = false;
 let controlsAutoCloseTimer: number | null = null;
 let wakeLockSentinel: any = null;
 let wakeLockWanted = false;
+let wakeLockGestureHandler: ((e: Event) => void) | null = null;
 
 async function requestWakeLock(): Promise<void> {
   try {
@@ -79,6 +80,11 @@ async function requestWakeLock(): Promise<void> {
     if (!nav?.wakeLock?.request) return;
     wakeLockSentinel = await nav.wakeLock.request('screen');
     const cur = wakeLockSentinel;
+    if (wakeLockGestureHandler) {
+      document.removeEventListener('pointerdown', wakeLockGestureHandler);
+      document.removeEventListener('touchstart', wakeLockGestureHandler);
+      wakeLockGestureHandler = null;
+    }
     if (cur?.addEventListener) {
       cur.addEventListener('release', () => {
         if (wakeLockSentinel === cur) wakeLockSentinel = null;
@@ -100,6 +106,13 @@ async function releaseWakeLock(): Promise<void> {
 function setWakeLockWanted(wanted: boolean): void {
   wakeLockWanted = wanted;
   if (wanted) {
+    if (!wakeLockGestureHandler) {
+      wakeLockGestureHandler = () => {
+        requestWakeLock().catch(() => {});
+      };
+      document.addEventListener('pointerdown', wakeLockGestureHandler, { passive: true });
+      document.addEventListener('touchstart', wakeLockGestureHandler, { passive: true });
+    }
     requestWakeLock().catch(() => {});
   } else {
     releaseWakeLock().catch(() => {});
@@ -110,6 +123,10 @@ document.addEventListener('visibilitychange', () => {
   if (wakeLockWanted && document.visibilityState === 'visible') {
     requestWakeLock().catch(() => {});
   }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  if (wakeLockWanted) requestWakeLock().catch(() => {});
 });
 
 function setControlsOpen(open: boolean, persist: boolean = true) {
@@ -1242,15 +1259,19 @@ function bindPresenterEvents() {
       syncModule.sendStateSync(state);
     }
 
-    // Update local HP (team1)
-    const localWorms = state.players.length > 0 ? [state.players[0]] : [];
-    const localHp = localWorms.reduce((sum: number, w: any) => sum + w.health, 0);
-    hpLocalEl.style.width = `${Math.min(100, Math.max(0, (localHp / 100) * 100))}%`;
+    const myTeam = (window.presenter.localTeam === 'training' ? 'team1' : window.presenter.localTeam) as 'team1' | 'team2';
+    const enemyTeam = (myTeam === 'team1' ? 'team2' : 'team1') as 'team1' | 'team2';
 
-    // Update enemy HP (team2)
-    const enemyWorms = state.players.length > 1 ? [state.players[1]] : [];
-    const enemyHp = enemyWorms.reduce((sum: number, w: any) => sum + w.health, 0);
-    hpEnemyEl.style.width = `${Math.min(100, Math.max(0, (enemyHp / 100) * 100))}%`;
+    const teamHpPct = (team: 'team1' | 'team2') => {
+      const worms = Array.isArray(state.players) ? state.players.filter((p: any) => p.team === team) : [];
+      const hpSum = worms.reduce((sum: number, w: any) => sum + Math.max(0, Number(w.health) || 0), 0);
+      const maxSum = worms.reduce((sum: number, w: any) => sum + Math.max(0, Number(w.maxHealth) || 100), 0);
+      const denom = maxSum > 0 ? maxSum : 100;
+      return Math.min(100, Math.max(0, (hpSum / denom) * 100));
+    };
+
+    hpLocalEl.style.width = `${teamHpPct(myTeam)}%`;
+    hpEnemyEl.style.width = `${teamHpPct(enemyTeam)}%`;
 
     // Update Turn Timer & Wind
     if (turnTimer) {
