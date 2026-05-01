@@ -176,6 +176,7 @@ export class BotTurnController {
         difficulty,
         gravity: presenter.physics.gravity,
         wind: presenter.state.wind || 0,
+        teamAmmo: presenter.state.teamAmmo,
         terrain: { width: terrain.width, height: terrain.height, grid: buf },
         worms,
         shooterId,
@@ -206,7 +207,7 @@ export class BotTurnController {
 
   private buildBotView(presenter: any): { world: any; worms: BotWormSnapshot[]; shooter: BotWormSnapshot; enemies: BotWormSnapshot[]; allies: BotWormSnapshot[] } | null {
     const terrain = terrainFromLandscape(presenter.state.landscape);
-    const world = { gravity: presenter.physics.gravity, wind: presenter.state.wind || 0, terrain };
+    const world = { gravity: presenter.physics.gravity, wind: presenter.state.wind || 0, terrain, teamAmmo: presenter.state.teamAmmo };
     const players: any[] = Array.isArray(presenter.state.players) ? presenter.state.players : [];
     const worms: BotWormSnapshot[] = players.map((p: any, idx: number) => ({
       id: String(idx),

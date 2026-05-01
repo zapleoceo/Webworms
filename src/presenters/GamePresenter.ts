@@ -229,6 +229,8 @@ export class GamePresenter {
     this.state.aiDifficulty = settings.aiDifficulty;
     (this.state as any).aiDifficultyByTeam = settings.aiDifficultyByTeam;
     this.state.availableLogos = settings.logos || [];
+    const grenadeLimit = settings.mode === 'training' ? Infinity : 15;
+    this.state.teamAmmo = { team1: { grenade: grenadeLimit }, team2: { grenade: grenadeLimit } };
     
     // Require a custom map
     if (!settings.mapData) {
@@ -440,7 +442,7 @@ export class GamePresenter {
       this.state.turnTimeLeft = this.turnTimeLeft;
       this.state.hasFiredThisTurn = this.hasFiredThisTurn;
 
-      if (this.state.mode !== 'training' && this.hasFiredThisTurn && isStable) {
+      if (this.hasFiredThisTurn && isStable) {
         this.nextTurn();
         return;
       }
@@ -638,12 +640,13 @@ export class GamePresenter {
 
     if (this.activeInputs.has('fire')) {
       const weapon = player.getCurrentWeapon();
-      const blockMinigun = weapon?.id === 'minigun'
-        && (this.turnTimeLeft <= 0 || (this.shotsFiredThisTurnByWeaponId.minigun || 0) >= GamePresenter.MINIGUN_SHOTS_PER_TURN);
-      if (blockMinigun) {
+      const isBurstWeapon = weapon?.id === 'minigun' || weapon?.id === 'heavy_gun';
+      const burstUsed = weapon ? ((this.shotsFiredThisTurnByWeaponId as any)[weapon.id] || 0) : 0;
+      const blockBurstWeapon = isBurstWeapon && (this.turnTimeLeft <= 0 || burstUsed >= GamePresenter.MINIGUN_SHOTS_PER_TURN);
+      if (blockBurstWeapon) {
         player.aimPower = 0;
       } else if (weapon && player.weaponCooldowns[weapon.id] <= 0) {
-        if (weapon.id === 'minigun' && weapon.chargeSpeed <= 0) {
+        if (isBurstWeapon && weapon.chargeSpeed <= 0) {
           player.aimPower = 100;
           this.fireWeapon(player);
         } else {
@@ -926,8 +929,17 @@ export class GamePresenter {
       return;
     }
 
-    if (weapon.id === 'minigun') {
-      const used = this.shotsFiredThisTurnByWeaponId.minigun || 0;
+    if (weapon.id === 'grenade') {
+      const team = (player as any).team === 'team2' ? 'team2' : 'team1';
+      const cur = this.state.teamAmmo?.[team]?.grenade;
+      if (typeof cur === 'number' && Number.isFinite(cur)) {
+        if (cur <= 0) return;
+        this.state.teamAmmo[team].grenade = cur - 1;
+      }
+    }
+
+    if (weapon.id === 'minigun' || weapon.id === 'heavy_gun') {
+      const used = (this.shotsFiredThisTurnByWeaponId as any)[weapon.id] || 0;
       if (used >= GamePresenter.MINIGUN_SHOTS_PER_TURN) return;
       if (this.turnTimeLeft <= 0) return;
     }
@@ -967,20 +979,24 @@ export class GamePresenter {
     const isStream = weapon.kind === 'stream';
 
     if (isHitscan) {
-      const crater = weapon.id === 'shotgun';
+      const crater = weapon.crater !== false;
       const shots = Math.max(1, Math.floor(weapon.projectilesPerShot || 1));
       for (let i = 0; i < shots; i++) {
         const spreadRad = (weapon.spread || 0) * (Math.PI / 180);
         const rad = baseRad + (spreadRad > 0 ? (Random.next() - 0.5) * spreadRad : 0);
         const hit = this.raycastHitscan(player, rad, hitscanRange);
-        if (!hit) continue;
-        this.physics.explodeAt(
-          this.state,
-          hit.x,
-          hit.y,
-          { weaponId: weapon.id, damage: weapon.damage, explosionRadius: weapon.explosionRadius, knockback: weapon.knockback, crater, owner: player },
-          1.0
-        );
+        if (hit) {
+          this.physics.explodeAt(
+            this.state,
+            hit.x,
+            hit.y,
+            { weaponId: weapon.id, damage: weapon.damage, explosionRadius: weapon.explosionRadius, knockback: weapon.knockback, crater, owner: player },
+            1.0
+          );
+        }
+        if (weapon.id === 'heavy_gun') {
+          (this.shotsFiredThisTurnByWeaponId as any)[weapon.id] = ((this.shotsFiredThisTurnByWeaponId as any)[weapon.id] || 0) + 1;
+        }
       }
       return;
     }
@@ -988,7 +1004,7 @@ export class GamePresenter {
     if (isStream) {
       const ticks = Math.max(1, Math.floor((weapon as any).flameTicks || 6));
       const coneShots = Math.max(1, Math.floor(ticks));
-      const crater = false;
+      const crater = weapon.crater !== false;
       for (let i = 0; i < coneShots; i++) {
         const spreadRad = (weapon.spread || 0) * (Math.PI / 180);
         const rad = baseRad + (spreadRad > 0 ? (Random.next() - 0.5) * spreadRad : 0);
@@ -1199,6 +1215,7 @@ export class GamePresenter {
     this.activeInputs.clear();
     this.analogX = 0;
     this.analogY = 0;
+    this.shotsFiredThisTurnByWeaponId = {};
 
     this.hasFiredThisTurn = false;
     this.state.hasFiredThisTurn = false;

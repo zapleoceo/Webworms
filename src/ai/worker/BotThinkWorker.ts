@@ -13,6 +13,7 @@ type PlanRequest = {
   difficulty: AIDifficulty;
   gravity: number;
   wind: number;
+  teamAmmo?: any;
   terrain: TerrainPayload;
   worms: WormPayload[];
   shooterId: string;
@@ -53,7 +54,7 @@ ctx.onmessage = (evt: MessageEvent<PlanRequest>) => {
       }
     };
 
-    const world = { gravity: msg.gravity, wind: msg.wind, terrain };
+    const world = { gravity: msg.gravity, wind: msg.wind, terrain, teamAmmo: msg.teamAmmo };
     const worms = Array.isArray(msg.worms) ? msg.worms : [];
     const shooter = worms.find((x) => x.id === msg.shooterId) || null;
     if (!shooter) {

@@ -141,6 +141,9 @@ export class MultiplayerController {
     this.presenter.turnTimeLeft = s.turnTimeLeft;
     this.presenter.state.turnTimeLeft = s.turnTimeLeft;
     this.presenter.hasFiredThisTurn = s.hasFiredThisTurn;
+    if (s.teamAmmo) {
+      this.presenter.state.teamAmmo = s.teamAmmo;
+    }
     if (s.lastPlayedIndex) {
       this.presenter.state.lastPlayedIndex = s.lastPlayedIndex;
     }

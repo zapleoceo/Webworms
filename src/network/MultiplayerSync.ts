@@ -606,6 +606,7 @@ export class MultiplayerSync {
         turnTimeLeft: state.turnTimeLeft,
         hasFiredThisTurn: state.hasFiredThisTurn,
         lastPlayedIndex: state.lastPlayedIndex,
+        teamAmmo: state.teamAmmo,
         players: state.players.map((p: any) => ({
           x: p.x,
           y: p.y,

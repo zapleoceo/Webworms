@@ -1340,6 +1340,20 @@ button:hover {
   white-space: nowrap;
 }
 
+.worm-btn .equip-ammo {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
 /* === ANIMATIONS === */
 .turn-notification {
   position: absolute;

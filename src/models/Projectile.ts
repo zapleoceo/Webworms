@@ -31,6 +31,7 @@ export class Projectile {
     this.color = weapon.color;
     this.weaponId = weapon.id;
     this.rangeRemaining = weapon.maxRange > 0 ? weapon.maxRange : Infinity;
+    this.crater = weapon.crater !== false;
   }
 
   public updatePosition(dt: number): void {

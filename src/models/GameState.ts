@@ -38,6 +38,7 @@ export class GameState {
   public brandLogos: BrandLogo[] = [];
   public particles: Particle[] = [];
   public floatingTexts: FloatingText[] = [];
+  public teamAmmo: Record<'team1' | 'team2', { grenade: number }> = { team1: { grenade: Infinity }, team2: { grenade: Infinity } };
   
   public width: number;
   public height: number;

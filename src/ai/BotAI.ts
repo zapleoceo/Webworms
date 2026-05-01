@@ -11,6 +11,7 @@ export interface BotWorldSnapshot {
   gravity: number;
   wind: number;
   terrain: TerrainQuery;
+  teamAmmo?: Record<'team1' | 'team2', { grenade: number }>;
 }
 
 export interface BotWormSnapshot {
@@ -208,6 +209,11 @@ function chooseBotActionScored(
   const aliveEnemies = enemies.filter(e => e.health > 0);
   if (aliveEnemies.length === 0) return null;
 
+  const grenLeftRaw = (world as any)?.teamAmmo?.[shooter.team]?.grenade;
+  const grenLimited = typeof grenLeftRaw === 'number' && Number.isFinite(grenLeftRaw);
+  const grenLeft = grenLimited ? Math.max(0, Math.floor(grenLeftRaw)) : Infinity;
+  const grenadeWindSpan = 35;
+
   const weapons = weaponCandidates(shooter);
   if (weapons.length === 0) return null;
 
@@ -247,6 +253,10 @@ function chooseBotActionScored(
       const w = ordered[wIdx];
       const weapon = w.weapon;
       const simWeapon = weapon;
+      if (weapon.id === 'grenade' && grenLimited && grenLeft <= 0) {
+        bump('grenade_empty');
+        continue;
+      }
 
       const angles = weapon.id === 'grenade' ? grenadeAngleList : angleList;
       const powers = weapon.id === 'grenade' ? grenadePowerList : powerList;
@@ -293,6 +303,40 @@ function chooseBotActionScored(
 
           const distEnd = Math.hypot(res.end.x - target.x, res.end.y - target.y);
           let miss = weapon.id === 'grenade' ? distEnd : res.minDistToTarget;
+
+          if (weapon.id === 'grenade' && grenLimited) {
+            const hitTol = Math.max(6, simWeapon.explosionRadius * 0.55);
+            const winds = [-grenadeWindSpan, 0, grenadeWindSpan];
+            let ok = true;
+            for (const wv of winds) {
+              const resW = simulateTrajectory(
+                world.terrain,
+                {
+                  start: muzzle,
+                  velocity: { x: Math.cos(global) * speed, y: Math.sin(global) * speed },
+                  gravity: world.gravity,
+                  wind: wv,
+                  windMultiplier: simWeapon.windMultiplier || 0,
+                  radius: projRadius,
+                  dt: 1 / 60,
+                  maxTime,
+                  mode: 'grenade',
+                  grenade: { fuseSeconds, restitution: botCfg.grenade.restitution, friction: botCfg.grenade.friction, stopSpeed: botCfg.grenade.stopSpeed }
+                },
+                { x: target.x, y: target.y },
+                targetRadius
+              );
+              const missW = Math.hypot(resW.end.x - target.x, resW.end.y - target.y);
+              if (!Number.isFinite(missW) || missW > hitTol) {
+                ok = false;
+                break;
+              }
+            }
+            if (!ok) {
+              bump('grenade_not_robust');
+              continue;
+            }
+          }
           if (weapon.spread > 0) {
             const spreadRad = (weapon.spread * (Math.PI / 180)) * 0.5;
             const travel = Math.max(0, Math.hypot(target.x - muzzle.x, target.y - muzzle.y));
@@ -461,7 +505,7 @@ export function buildSnapshotFromState(
     weaponCooldowns: p.weaponCooldowns || {}
   }));
   return {
-    world: { gravity, wind: state.wind || 0, terrain },
+    world: { gravity, wind: state.wind || 0, terrain, teamAmmo: state.teamAmmo },
     worms
   };
 }

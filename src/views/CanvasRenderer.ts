@@ -8,6 +8,8 @@ export class CanvasRenderer {
   private ctx: CanvasRenderingContext2D;
   private terrainCanvas: HTMLCanvasElement;
   private terrainCtx: CanvasRenderingContext2D;
+  private alloyCanvas: HTMLCanvasElement;
+  private alloyCtx: CanvasRenderingContext2D;
   private animCtrl: AnimationController;
   
   private wormImages: { [key: string]: HTMLImageElement } = {};
@@ -31,6 +33,13 @@ export class CanvasRenderer {
     const terrainContext = this.terrainCanvas.getContext('2d');
     if (!terrainContext) throw new Error('Offscreen canvas not supported');
     this.terrainCtx = terrainContext;
+
+    this.alloyCanvas = document.createElement('canvas');
+    this.alloyCanvas.width = canvas.width;
+    this.alloyCanvas.height = canvas.height;
+    const alloyContext = this.alloyCanvas.getContext('2d');
+    if (!alloyContext) throw new Error('Offscreen canvas not supported');
+    this.alloyCtx = alloyContext;
 
     // Init Animations
     this.animCtrl = new AnimationController({
@@ -397,10 +406,15 @@ export class CanvasRenderer {
       
       this.terrainCanvas.width = width;
       this.terrainCanvas.height = height;
+      this.alloyCanvas.width = width;
+      this.alloyCanvas.height = height;
       this.terrainCtx.clearRect(0, 0, width, height);
+      this.alloyCtx.clearRect(0, 0, width, height);
       
       const imgData = this.terrainCtx.createImageData(width, height);
       const data = imgData.data;
+      const alloyImgData = this.alloyCtx.createImageData(width, height);
+      const alloyData = alloyImgData.data;
 
       // Generate base terrain mask and texture
       for (let y = 0; y < height; y++) {
@@ -448,10 +462,22 @@ export class CanvasRenderer {
               data[idx + 3] = 255;
             }
           }
+
+          if (material === 255) {
+            const isLine = (x + y) % 10 === 0 || (x - y) % 10 === 0;
+            const color = isLine ? [40, 40, 50] : [20, 20, 25];
+            alloyData[idx] = color[0];
+            alloyData[idx + 1] = color[1];
+            alloyData[idx + 2] = color[2];
+            alloyData[idx + 3] = 255;
+          } else {
+            alloyData[idx + 3] = 0;
+          }
         }
       }
       
       this.terrainCtx.putImageData(imgData, 0, 0);
+      this.alloyCtx.putImageData(alloyImgData, 0, 0);
       
       // Draw Grass on top of Dirt (Only for procedural maps!)
       if (!state.landscape.pixelData) {
@@ -536,33 +562,14 @@ export class CanvasRenderer {
       // Wait, we need to restore ONLY pixels that are 255 in the physics grid.
       // To do this FAST without CPU loops, we can use a clipping path or a temporary canvas.
       for (const crater of state.landscape.newCraters) {
-        // Expand the visual restoration area just in case physical radius was larger
         const minX = Math.max(0, Math.floor(crater.x - crater.r - 4));
         const maxX = Math.min(state.landscape.width - 1, Math.ceil(crater.x + crater.r + 4));
         const minY = Math.max(0, Math.floor(crater.y - crater.r - 4));
         const maxY = Math.min(state.landscape.height - 1, Math.ceil(crater.y + crater.r + 4));
         const w = maxX - minX + 1;
         const h = maxY - minY + 1;
-        
         if (w > 0 && h > 0) {
-          const imgData = this.terrainCtx.getImageData(minX, minY, w, h);
-          const data = imgData.data;
-          
-          for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-              const mapX = minX + x;
-              const mapY = minY + y;
-              if (state.landscape.getMaterial(mapX, mapY) === 255) {
-                const idx = (y * w + x) * 4;
-                
-                // For indestructible alloy, we ALWAYS draw the alloy texture (even on custom maps),
-                // so that players can clearly see why their rocket didn't destroy this part of the map.
-                data[idx] = 20; data[idx+1] = 20; data[idx+2] = 25; data[idx+3] = 255;
-                if ((mapX+mapY)%10 === 0) { data[idx] = 40; data[idx+1] = 40; data[idx+2] = 50; }
-              }
-            }
-          }
-          this.terrainCtx.putImageData(imgData, minX, minY);
+          this.terrainCtx.drawImage(this.alloyCanvas, minX, minY, w, h, minX, minY, w, h);
         }
       }
     }
@@ -834,7 +841,7 @@ export class CanvasRenderer {
     const src = this.framePath(row, 1);
     const img = this.getCustomFrame(src);
     const maxDim = Math.max(1, Math.max(img.width || 0, img.height || 0));
-    const base = equipmentId === 'ninja_rope' ? 46 : 44;
+    const base = (equipmentId === 'ninja_rope' ? 46 : 44) * 0.7;
     const k = base / maxDim;
 
     this.ctx.save();

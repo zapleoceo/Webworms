@@ -35,7 +35,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260430_0630';
+  const buildVersion = '20260501_1900';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -1212,10 +1212,18 @@ function updateWormSelectionUI(state: any) {
   const currentStateStr = teamWorms
     .map((item: any) => `${item.index}:${item.p.health}:${state.currentPlayerIndex}:${item.p.currentEquipmentIndex}:${item.p.facingRight ? 1 : 0}`)
     .join(',');
-  if (lastWormUIStateStr === currentStateStr) {
+  const ammoStr = (() => {
+    const g1 = state.teamAmmo?.team1?.grenade;
+    const g2 = state.teamAmmo?.team2?.grenade;
+    const s1 = typeof g1 === 'number' && Number.isFinite(g1) ? Math.max(0, Math.floor(g1)).toString() : 'inf';
+    const s2 = typeof g2 === 'number' && Number.isFinite(g2) ? Math.max(0, Math.floor(g2)).toString() : 'inf';
+    return `${s1}:${s2}`;
+  })();
+  const stateKey = `${currentStateStr}|ammo:${ammoStr}`;
+  if (lastWormUIStateStr === stateKey) {
     return; // No need to re-render DOM if nothing changed
   }
-  lastWormUIStateStr = currentStateStr;
+  lastWormUIStateStr = stateKey;
 
   panel.style.display = 'flex';
   panel.classList.toggle('team-left', currentTeam === hud.leftTeam);
@@ -1254,6 +1262,18 @@ function updateWormSelectionUI(state: any) {
       nameEl.className = 'equip-name';
       nameEl.innerText = def.name;
       btn.appendChild(nameEl);
+    }
+
+    if (equipmentId === 'grenade') {
+      const gren = state.teamAmmo?.[item.p.team]?.grenade;
+      if (typeof gren === 'number' && Number.isFinite(gren)) {
+        const ammoEl = document.createElement('div');
+        ammoEl.className = 'equip-ammo';
+        ammoEl.innerText = `x${Math.max(0, Math.floor(gren))}`;
+        btn.appendChild(ammoEl);
+        const nameEl = btn.querySelector('.equip-name') as HTMLElement | null;
+        if (nameEl) nameEl.style.bottom = '16px';
+      }
     }
 
     const hpEl = document.createElement('span');
