@@ -366,6 +366,10 @@ function chooseBotActionScored(
             bump('self_unsafe');
             continue;
           }
+          const selfNear = selfDist - selfSafe;
+          if (selfNear < 90) {
+            score -= (90 - selfNear) * 8;
+          }
           if (weapon.id === 'grenade' && selfDist < (selfSafe + grenadeExtraSelfMargin)) {
             bump('grenade_self_margin');
             continue;

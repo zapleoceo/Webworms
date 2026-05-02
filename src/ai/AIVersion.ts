@@ -1,1 +1,1 @@
-export const AI_V = '2026-05-03.18';
+export const AI_V = '2026-05-03.19';

@@ -186,6 +186,18 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
           return null;
         };
 
+        const edgePenaltyAt = (x: number, groundY: number): number => {
+          const sampleDx = 38;
+          const left = surfaceYAt(x - sampleDx, groundY);
+          const right = surfaceYAt(x + sampleDx, groundY);
+          if (left === null || right === null) return 220;
+          const dropL = left - groundY;
+          const dropR = right - groundY;
+          const maxDrop = Math.max(dropL, dropR);
+          if (maxDrop <= 60) return 0;
+          return Math.min(420, (maxDrop - 60) * 1.4);
+        };
+
         const evalX = (x: number) => {
           const groundY = surfaceYAt(x, shooter.y);
           if (groundY === null) return;
@@ -199,7 +211,8 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
           }
           if (!res) return;
           const expected = (res.trace as any)?.chosen?.expectedDamage || 0;
-          const s = res.score - Math.abs(x - shooter.x) * movePenalty - (expected <= 0.01 ? 120 : 0);
+          const edgePenalty = edgePenaltyAt(x, groundY);
+          const s = res.score - Math.abs(x - shooter.x) * movePenalty - edgePenalty - (expected <= 0.01 ? 120 : 0);
           if (!bestFound || s > bestScore) {
             bestFound = true;
             bestX = x;

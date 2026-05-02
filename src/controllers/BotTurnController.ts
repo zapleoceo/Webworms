@@ -83,6 +83,10 @@ export class BotTurnController {
 
   private shotMemory: Map<string, { stateKey: string; shotKey: string; noRes: number; ff: number; lastT: number; targetId: string }> = new Map();
   private pendingShotEval: { stateKey: string; shotKey: string; team: 'team1' | 'team2'; health0: number[]; targetId: string } | null = null;
+  private lastFiredWeaponId: string | null = null;
+  private lastFiredTargetId: string | null = null;
+  private postShotMoveUntil: number = 0;
+  private postShotDir: 'left' | 'right' | null = null;
   private replanCountThisTurn: number = 0;
   private movePathWaypoints: Array<{ x: number; y: number }> | null = null;
   private movePathIndex: number = 0;
@@ -544,6 +548,95 @@ export class BotTurnController {
     this.planCache.set(key, { key, createdAt: performance.now(), shooterId, rev: sig.rev, df: sig.df, plan, debug, score });
   }
 
+  private tryPostShotMove(presenter: any, player: any, now: number, timeLeft: number, reserveSeconds: number) {
+    if (this.lastFiredWeaponId === 'homing_missile') return;
+    if (timeLeft <= reserveSeconds + 0.35) return;
+    if (now < this.postShotMoveUntil && this.postShotDir) {
+      presenter.handleInput?.(this.postShotDir, true, true);
+      presenter.handleInput?.(this.postShotDir === 'left' ? 'right' : 'left', false, true);
+      return;
+    }
+    const allies: any[] = Array.isArray(presenter?.state?.players)
+      ? presenter.state.players.filter((w: any) => w && w.team === player.team && w !== player && w.health > 0)
+      : [];
+    let dir: 'left' | 'right' | null = null;
+    const clusterR = 78;
+    let bestD = Infinity;
+    let bestDx = 0;
+    for (const a of allies) {
+      const dx = (Number(player.x) || 0) - (Number(a.x) || 0);
+      const dy = (Number(player.y) || 0) - (Number(a.y) || 0);
+      const d = Math.hypot(dx, dy);
+      if (d < bestD) {
+        bestD = d;
+        bestDx = dx;
+      }
+    }
+    if (bestD < clusterR) {
+      dir = bestDx >= 0 ? 'right' : 'left';
+    } else {
+      const land = presenter?.state?.landscape;
+      if (land && typeof land.getMaterial === 'function') {
+        const sampleDx = 38;
+        const x0 = Number(player.x) || 0;
+        const y0 = Number(player.y) || 0;
+        const h = Number(presenter?.state?.height) || 0;
+        const groundYAt = (x: number, yHint: number): number | null => {
+          const px = Math.floor(x);
+          if (px < 0 || px >= (Number(presenter?.state?.width) || 0)) return null;
+          const yStart = Math.max(0, Math.min(h - 1, Math.floor(yHint)));
+          for (let y = yStart; y < h; y++) {
+            if (land.getMaterial(px, y) > 0) return y;
+          }
+          return null;
+        };
+        const g0 = groundYAt(x0, y0);
+        if (g0 !== null) {
+          const gl = groundYAt(x0 - sampleDx, g0) ?? (g0 + 260);
+          const gr = groundYAt(x0 + sampleDx, g0) ?? (g0 + 260);
+          const dropL = gl - g0;
+          const dropR = gr - g0;
+          const maxDrop = Math.max(dropL, dropR);
+          if (maxDrop > 80) {
+            dir = dropL > dropR ? 'right' : 'left';
+          }
+        }
+      }
+    }
+    if (dir) {
+      this.postShotDir = dir;
+      this.postShotMoveUntil = now + 0.35;
+      presenter.handleInput?.(dir, true, true);
+      presenter.handleInput?.(dir === 'left' ? 'right' : 'left', false, true);
+    } else {
+      this.postShotDir = null;
+      presenter.handleInput?.('left', false, true);
+      presenter.handleInput?.('right', false, true);
+    }
+  }
+
+  private steerHoming(presenter: any, player: any) {
+    const targetId = this.lastFiredTargetId;
+    if (!targetId) return;
+    const projs: any[] = Array.isArray(presenter?.state?.projectiles) ? presenter.state.projectiles : [];
+    const proj = projs.find((p: any) => p && p.weaponId === 'homing_missile' && (p.owner === player || p.owner === (presenter?.state?.getCurrentPlayer?.())));
+    if (!proj) return;
+    const tidx = Number(targetId);
+    const t = Number.isFinite(tidx) ? presenter?.state?.players?.[tidx] : null;
+    if (!t || t.health <= 0) return;
+    const desired = Math.atan2((Number(t.y) || 0) - (Number(proj.y) || 0), (Number(t.x) || 0) - (Number(proj.x) || 0));
+    const cur = Math.atan2(Number(proj.vy) || 0, Number(proj.vx) || 0);
+    const TAU = Math.PI * 2;
+    let d = (desired - cur) % TAU;
+    if (d > Math.PI) d -= TAU;
+    if (d < -Math.PI) d += TAU;
+    const dir = d > 0.02 ? 'right' : d < -0.02 ? 'left' : null;
+    player.vx = 0;
+    if (!player.isJumping) player.vy = 0;
+    presenter.handleInput?.('left', dir === 'left', true);
+    presenter.handleInput?.('right', dir === 'right', true);
+  }
+
   private debugEnabled(): boolean {
     try {
       const loc = (globalThis as any)?.location?.search || '';
@@ -606,6 +699,10 @@ export class BotTurnController {
       this.matchFailStreak = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
       this.shotMemory.clear();
       this.pendingShotEval = null;
+      this.lastFiredWeaponId = null;
+      this.lastFiredTargetId = null;
+      this.postShotMoveUntil = 0;
+      this.postShotDir = null;
       this.workerTerrainReady = false;
       this.workerTerrainDimKey = '';
       this.workerTerrainDfEventIndex = 0;
@@ -628,6 +725,10 @@ export class BotTurnController {
       this.firedThisTurn = false;
       this.plannedThisTurn = false;
       this.plan = null;
+      this.lastFiredWeaponId = null;
+      this.lastFiredTargetId = null;
+      this.postShotMoveUntil = 0;
+      this.postShotDir = null;
       this.movePathWaypoints = null;
       this.movePathIndex = 0;
       this.moveStartedAt = presenter.matchDuration || 0;
@@ -770,7 +871,17 @@ export class BotTurnController {
       });
       this.pendingShotEval = null;
     }
-    if (hasProjectiles) return;
+    if (hasProjectiles) {
+      const now0 = presenter.matchDuration || 0;
+      const botCfgP: BotConfig = presenter.state.botConfig || DEFAULT_BOT_CONFIG;
+      const timeLeft0 = Number.isFinite(presenter.turnTimeLeft) ? presenter.turnTimeLeft : 0;
+      const reserveSeconds0 = presenter?.state?.mode === 'aivai' ? 2.0 : botCfgP.reserveSeconds;
+      if (this.firedThisTurn) {
+        if (this.lastFiredWeaponId === 'homing_missile') this.steerHoming(presenter, player);
+        else this.tryPostShotMove(presenter, player, now0, timeLeft0, reserveSeconds0);
+      }
+      return;
+    }
     if (this.firedThisTurn) return;
 
     const botCfg: BotConfig = botCfg0;
@@ -1216,6 +1327,12 @@ export class BotTurnController {
   private fireAction(presenter: any, action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string }) {
     const player = presenter.state.getCurrentPlayer?.();
     if (!player) return;
+    const equipmentIds0: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
+    const weaponId0 = typeof equipmentIds0[action.weaponIndex] === 'string' ? equipmentIds0[action.weaponIndex] : null;
+    this.lastFiredWeaponId = weaponId0;
+    this.lastFiredTargetId = action.targetId || null;
+    this.postShotMoveUntil = 0;
+    this.postShotDir = null;
     if (presenter?.state?.mode === 'aivai') {
       const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
       const weaponId = typeof equipmentIds[action.weaponIndex] === 'string' ? equipmentIds[action.weaponIndex] : null;
