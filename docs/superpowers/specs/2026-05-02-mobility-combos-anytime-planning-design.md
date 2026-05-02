@@ -249,3 +249,16 @@
 - bump→pit события: “start bump”, “enemyJustFell”, “follow-up выбран”
 - edge-risk метрики: dropDepth, edgeExposureScore, pitFallRiskScore
 - post-shot метрики: postShotPlanner bestScore, plateau, выбранный манёвр
+
+## Анти-зацикливание (rope/walk)
+
+Цель: если выбранная подстратегия повторно даёт одинаковые фейлы (например, rope стреляет “в край карты” или много раз “fired без attached”), бот должен быстро:
+
+- пометить стратегию как failed (`hard`), повысить `matchFailStreak`, забанить на остаток хода,
+- и инициировать replan (в пределах лимитов replansPerTurn).
+
+Правила:
+
+- Rope anchor в зоне границы карты (низ/лево/право) считается invalid → `hard` fail.
+- Rope “fired”, но `ropeActiveAfterFire==0` считается `hard` fail.
+- Walk в сторону “gap/cliff” (или рядом с препятствием у обрыва) быстрее помечается как failure и переключает стратегию.
