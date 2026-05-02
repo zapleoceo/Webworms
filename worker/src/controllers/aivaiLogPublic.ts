@@ -72,10 +72,33 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
   let bad = 0;
   let maxStreak = 0;
   let curStreak = 0;
+  let decisionCount = 0;
+  let decisionFirstT: number | null = null;
+  let decisionLastT: number | null = null;
+  const decisionStages: Record<string, number> = {};
+  let plannedFirstT: number | null = null;
+  let planningFirstT: number | null = null;
   const types: Record<string, number> = {};
   for (const e of events) {
     const t = typeof e?.type === 'string' ? e.type : 'event';
     types[t] = (types[t] || 0) + 1;
+    if (t === 'turn_state') {
+      const tt = Number(e?.t);
+      if (Number.isFinite(tt)) {
+        if (!planningFirstT && e?.planningInProgress === 1) planningFirstT = tt;
+        if (!plannedFirstT && e?.plannedThisTurn === 1) plannedFirstT = tt;
+      }
+    }
+    if (t === 'bot_decision') {
+      decisionCount += 1;
+      const stage = typeof e?.stage === 'string' ? e.stage : 'unknown';
+      decisionStages[stage] = (decisionStages[stage] || 0) + 1;
+      const tt = Number(e?.t);
+      if (Number.isFinite(tt)) {
+        if (decisionFirstT === null || tt < decisionFirstT) decisionFirstT = tt;
+        if (decisionLastT === null || tt > decisionLastT) decisionLastT = tt;
+      }
+    }
     if (t === 'weapon_fired') fired += 1;
     if (t === 'shot_eval') {
       shotEval += 1;
@@ -99,6 +122,9 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
     uploaded: (obj as any).uploaded || null,
     aiV: parsed?.aiV || null,
     totalEvents: events.length,
+    decision: { count: decisionCount, firstT: decisionFirstT, lastT: decisionLastT, stages: decisionStages },
+    planningFirstT,
+    plannedFirstT,
     fired,
     shotEval,
     good,

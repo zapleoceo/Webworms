@@ -427,7 +427,8 @@ export class BotTurnController {
         this.planningInProgress = false;
         this.debug('plan', { moveTo: wr.plan.moveTo ? { x: Math.round(wr.plan.moveTo.x), y: Math.round(wr.plan.moveTo.y) } : null, weaponIndex: wr.plan.action.weaponIndex, targetId: wr.plan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
       } else if (!this.plannedThisTurn) {
-        if (timeLeft > reserveSeconds + 0.35) return;
+        const minWait = Math.min(0.45, Math.max(0.12, planSeconds * 0.25));
+        if (elapsed < minWait && timeLeft > reserveSeconds + 0.35) return;
         this.lastWorkerArrivedAfterMain = wr ? 1 : null;
         this.lastWorkerMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
         this.lastWorkerComputeMs = wr ? Number(wr.ms) : null;
@@ -435,12 +436,13 @@ export class BotTurnController {
         this.lastThinkSrc = 'worker';
         this.lastDecisionDebug = wr?.debug || null;
         const fallback = this.fallbackAction(presenter);
-        if (fallback) {
-          this.plan = { action: fallback };
+        const moveTo = this.fallbackMoveTo(presenter);
+        if (fallback || moveTo) {
+          const placeholder = { weaponIndex: -1, facingRight: !!player.facingRight, aimAngle: player.aimAngle || 0, power: 60, targetId: 'none' };
+          this.plan = { moveTo: moveTo || undefined, action: fallback || placeholder };
           this.moveStartedAt = now;
+          this.plannedThisTurn = true;
         }
-        this.plannedThisTurn = true;
-        this.planningInProgress = false;
       } else {
         this.lastDecisionDebug = wr?.debug || null;
       }
@@ -580,6 +582,20 @@ export class BotTurnController {
     const facingRight = dx >= 0;
     const aimAngle = facingRight ? global : (Math.PI - global);
     return { weaponIndex: idx, facingRight, aimAngle: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle)), power: 60, targetId: String(presenter.state.players.indexOf(e)) };
+  }
+
+  private fallbackMoveTo(presenter: any): { x: number; y: number } | null {
+    const player = presenter?.state?.getCurrentPlayer?.();
+    if (!player) return null;
+    const enemies: any[] = Array.isArray(presenter?.state?.players)
+      ? presenter.state.players.filter((w: any) => w && w.team !== player.team && w.health > 0)
+      : [];
+    if (enemies.length === 0) return null;
+    enemies.sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y));
+    const e = enemies[0];
+    const dx = (e.x - player.x) || 0;
+    const step = Math.max(-220, Math.min(220, dx * 0.6));
+    return { x: player.x + step, y: player.y };
   }
 
   private applyError(
