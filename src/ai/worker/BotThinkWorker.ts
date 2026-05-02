@@ -54,6 +54,16 @@ type PlanResponse = {
   debug: any | null;
 };
 
+type PlanProgress = {
+  kind: 'planProgress';
+  jobId: string;
+  ms: number;
+  stage: string;
+  bestScore: number;
+  comboCount: number;
+  evals: number;
+};
+
 const ctx = self as any;
 
 let terrainW: number = 0;
@@ -100,6 +110,13 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
 
   const t0 = performance.now();
   try {
+    const budgetMs = Math.max(35, Math.min(120, (Number(msg.executeSeconds) || 0) * 6 + 55));
+    const deadlineMs = t0 + budgetMs;
+    const plateauEvalWindow = 820;
+    const progress = (stage: string) => (p: { bestScore: number; comboCount: number; evals: number }) => {
+      const out: PlanProgress = { kind: 'planProgress', jobId: msg.jobId, ms: performance.now() - t0, stage, bestScore: p.bestScore, comboCount: p.comboCount, evals: p.evals };
+      ctx.postMessage(out);
+    };
     let grid: Uint8Array | null = null;
     let w = 0;
     let h = 0;
@@ -158,7 +175,7 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
     const plan = plan0 ? { ...plan0 } : null;
 
     if (plan && enemies.length > 0) {
-      const cur = chooseBotActionDebug(rngPlan, world as any, shooter, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || []);
+      const cur = chooseBotActionDebug(rngPlan, world as any, shooter, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('cur_shot') });
       const curExpected = (cur?.trace as any)?.chosen?.expectedDamage || 0;
       if (!(cur && curExpected > 0.15)) {
         const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
@@ -206,7 +223,7 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
           let res = shotCache.get(k);
           if (res === undefined) {
             const movedShooter = { ...shooter, x, y: yy };
-            res = chooseBotActionDebug(rngPlan, world as any, movedShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || []);
+            res = chooseBotActionDebug(rngPlan, world as any, movedShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('move_shot') });
             shotCache.set(k, res || null);
           }
           if (!res) return;
@@ -260,7 +277,7 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
       if (plan?.moveTo) return { ...shooter, x: plan.moveTo.x, y: plan.moveTo.y };
       return shooter;
     })();
-    const debug = chooseBotActionDebug(rngDbg, world as any, debugShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || []);
+    const debug = chooseBotActionDebug(rngDbg, world as any, debugShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('final_shot') });
     if (plan && debug?.action) {
       plan.action = { weaponIndex: debug.action.weaponIndex, facingRight: debug.action.facingRight, aimAngle: debug.action.aimAngle, power: debug.action.power, targetId: debug.action.targetId };
     }

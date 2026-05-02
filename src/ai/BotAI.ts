@@ -171,6 +171,12 @@ function pickWeaponByRange(weapons: Array<{ index: number; weapon: Weapon; id: s
 }
 
 type ScoredAction = { action: BotAction; score: number; impact: { x: number; y: number }; trace?: BotDecisionTrace };
+type ShotSearchOpts = {
+  deadlineMs?: number;
+  plateauEvalWindow?: number;
+  plateauEps?: number;
+  onProgress?: (p: { bestScore: number; comboCount: number; evals: number }) => void;
+};
 
 function chooseBotActionScored(
   rng: Rng,
@@ -181,7 +187,8 @@ function chooseBotActionScored(
   botCfg: BotConfig,
   traceEnabled: boolean = false,
   difficulty: AIDifficulty = 'medium',
-  shotMemory: ShotMemoryEntry[] = []
+  shotMemory: ShotMemoryEntry[] = [],
+  opts?: ShotSearchOpts
 ): ScoredAction | null {
   const aliveEnemies = enemies.filter(e => e.health > 0);
   if (aliveEnemies.length === 0) return null;
@@ -219,8 +226,26 @@ function chooseBotActionScored(
   const grenadeExtraSelfMargin = (botCfg as any).scoring?.grenadeExtraSelfMargin ?? 50;
 
   let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot; trace?: BotDecisionTrace } | null = null;
+  const deadlineMs = typeof opts?.deadlineMs === 'number' && Number.isFinite(opts.deadlineMs) ? opts.deadlineMs : Infinity;
+  const plateauEvalWindow = Math.max(120, Math.floor(opts?.plateauEvalWindow || 1200));
+  const plateauEps = typeof opts?.plateauEps === 'number' && Number.isFinite(opts.plateauEps) ? opts.plateauEps : 0.25;
+  const onProgress = typeof opts?.onProgress === 'function' ? opts.onProgress : null;
+  let evals = 0;
+  let comboCount = 0;
+  let lastBestAt = 0;
+  let lastComboAt = 0;
+  const shouldStop = (): boolean => {
+    if (performance.now() >= deadlineMs) return true;
+    if (evals >= 420 && (evals - lastBestAt) >= plateauEvalWindow && (evals - lastComboAt) >= plateauEvalWindow) return true;
+    return false;
+  };
+  const progress = () => {
+    if (!onProgress) return;
+    if (evals % 220 !== 0) return;
+    onProgress({ bestScore: best?.score ?? -Infinity, comboCount, evals });
+  };
 
-  for (const target of aliveEnemies) {
+  outer: for (const target of aliveEnemies) {
     const dist = Math.hypot(target.x - shooter.x, target.y - shooter.y);
     const ordered = pickWeaponByRange(weapons, dist);
 
@@ -242,10 +267,19 @@ function chooseBotActionScored(
 
       const angles = weapon.id === 'grenade' ? grenadeAngleList : angleList;
       const powers = weapon.id === 'grenade' ? grenadePowerList : powerList;
+      const seen = new Set<string>();
       for (const localAngle of angles) {
         const global = (target.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
         for (const power of powers) {
-            let speed = power * 4.2 * (weapon.speedModifier || 1);
+          evals += 1;
+          if (evals % 180 === 0 && shouldStop()) break outer;
+          progress();
+          const angleBin = Math.round((global * 180 / Math.PI) / 2);
+          const powerBin = Math.round(power / 4);
+          const dk = `${weapon.id}|${angleBin}|${powerBin}`;
+          if (seen.has(dk)) continue;
+          seen.add(dk);
+          let speed = power * 4.2 * (weapon.speedModifier || 1);
           const projRadius = weapon.id === 'grenade' ? 6 : 3;
           const pr = Math.max(1, Math.floor(projRadius * 0.8));
           const startRes = resolveProjectileStart(world.terrain, shooter, global, pr);
@@ -395,6 +429,10 @@ function chooseBotActionScored(
             continue;
           }
           score -= expectedFriendlyDamage * friendlyDamageWeight;
+          if (expectedDamage >= 7 && expectedFriendlyDamage <= 0.01 && selfNear >= 26) {
+            comboCount += 1;
+            lastComboAt = evals;
+          }
 
           let risk: number | undefined = undefined;
           if (weapon.id === 'grenade') {
@@ -462,7 +500,7 @@ function chooseBotActionScored(
       }
     }
 
-    if (targetBest && (!best || targetBest.score > best.score)) {
+    if (targetBest && (!best || targetBest.score > best.score + plateauEps)) {
       const trace = traceEnabled && bestByWeaponId[targetBest.weaponId]
         ? {
             shooter: { id: shooter.id, team: shooter.team, x: shooter.x, y: shooter.y, health: shooter.health },
@@ -473,7 +511,9 @@ function chooseBotActionScored(
           }
         : undefined;
       best = { ...targetBest, trace };
+      if (best) lastBestAt = evals;
     }
+    if (shouldStop()) break;
   }
 
   if (!best) return null;
@@ -821,9 +861,10 @@ export function chooseBotAction(
   allies: BotWormSnapshot[] = [shooter],
   botCfg: BotConfig = DEFAULT_BOT_CONFIG,
   difficulty: AIDifficulty = 'medium',
-  shotMemory: ShotMemoryEntry[] = []
+  shotMemory: ShotMemoryEntry[] = [],
+  opts?: ShotSearchOpts
 ): BotAction | null {
-  return chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, false, difficulty, shotMemory)?.action || null;
+  return chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, false, difficulty, shotMemory, opts)?.action || null;
 }
 
 export function chooseBotActionDebug(
@@ -834,9 +875,10 @@ export function chooseBotActionDebug(
   allies: BotWormSnapshot[] = [shooter],
   botCfg: BotConfig = DEFAULT_BOT_CONFIG,
   difficulty: AIDifficulty = 'medium',
-  shotMemory: ShotMemoryEntry[] = []
+  shotMemory: ShotMemoryEntry[] = [],
+  opts?: ShotSearchOpts
 ): { action: BotAction; score: number; impact: { x: number; y: number }; trace?: BotDecisionTrace } | null {
-  const res = chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true, difficulty, shotMemory);
+  const res = chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true, difficulty, shotMemory, opts);
   if (!res) return null;
   return { action: res.action, score: res.score, impact: res.impact, trace: res.trace };
 }

@@ -35,6 +35,7 @@ export class BotTurnController {
   private matchAttempts: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
   private matchSuccess: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
   private matchFailStreak: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+  private matchSpecialFail: { ropeBorder: number; ropeNoAttach: number; walkCliff: number; walkObstacle: number } = { ropeBorder: 0, ropeNoAttach: 0, walkCliff: 0, walkObstacle: 0 };
 
   private strategy: MoveStrategy | null = null;
   private ropeMode: RopeMode | null = null;
@@ -78,6 +79,7 @@ export class BotTurnController {
   private didReplanThisTurn: boolean = false;
   private planningInProgress: boolean = false;
   private lastDecisionDebug: any | null = null;
+  private lastPlanningProgress: any | null = null;
   private lastTurnStateAt: number = -999;
   private workerInitError: string | null = null;
 
@@ -97,6 +99,7 @@ export class BotTurnController {
   private bgWorker: Worker | null = null;
   private bgWorkerJobId: string | null = null;
   private bgWorkerResult: any | null = null;
+  private lastBgPlanningProgress: any | null = null;
   private bgPlanningInProgress: boolean = false;
   private bgPlanKey: string | null = null;
   private bgWorkerTerrainReady: boolean = false;
@@ -241,7 +244,13 @@ export class BotTurnController {
       };
       worker.onmessage = (evt: MessageEvent<any>) => {
         const msg = evt.data;
-        if (!msg || msg.kind !== 'planResult') return;
+        if (!msg) return;
+        if (msg.kind === 'planProgress') {
+          if (!this.workerJobId || msg.jobId !== this.workerJobId) return;
+          this.lastPlanningProgress = msg;
+          return;
+        }
+        if (msg.kind !== 'planResult') return;
         if (!this.workerJobId || msg.jobId !== this.workerJobId) return;
         this.workerResult = msg;
         this.workerArrivedAt = performance.now();
@@ -266,7 +275,13 @@ export class BotTurnController {
       };
       worker.onmessage = (evt: MessageEvent<any>) => {
         const msg = evt.data;
-        if (!msg || msg.kind !== 'planResult') return;
+        if (!msg) return;
+        if (msg.kind === 'planProgress') {
+          if (!this.bgWorkerJobId || msg.jobId !== this.bgWorkerJobId) return;
+          this.lastBgPlanningProgress = msg;
+          return;
+        }
+        if (msg.kind !== 'planResult') return;
         if (!this.bgWorkerJobId || msg.jobId !== this.bgWorkerJobId) return;
         this.bgWorkerResult = msg;
       };
@@ -697,6 +712,7 @@ export class BotTurnController {
       this.matchAttempts = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
       this.matchSuccess = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
       this.matchFailStreak = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
+      this.matchSpecialFail = { ropeBorder: 0, ropeNoAttach: 0, walkCliff: 0, walkObstacle: 0 };
       this.shotMemory.clear();
       this.pendingShotEval = null;
       this.lastFiredWeaponId = null;
@@ -764,6 +780,7 @@ export class BotTurnController {
       this.replanCountThisTurn = 0;
       this.planningInProgress = false;
       this.lastDecisionDebug = null;
+      this.lastPlanningProgress = null;
       this.lastTurnStateAt = -999;
       this.lastThinkSrc = 'main';
       this.lastWorkerMs = null;
@@ -776,6 +793,7 @@ export class BotTurnController {
       this.workerStartedAt = 0;
       this.bgWorkerJobId = null;
       this.bgWorkerResult = null;
+      this.lastBgPlanningProgress = null;
       this.bgPlanningInProgress = false;
       this.bgPlanKey = null;
       this.debug('turn_start', { idx: curIdx, name: player.name, x: Math.round(player.x), y: Math.round(player.y) });
@@ -946,6 +964,10 @@ export class BotTurnController {
         plannedThisTurn: this.plannedThisTurn ? 1 : 0,
         planningInProgress: this.planningInProgress ? 1 : 0,
         firedThisTurn: this.firedThisTurn ? 1 : 0,
+        planningBestScore: (this.lastPlanningProgress && Number.isFinite(this.lastPlanningProgress.bestScore)) ? this.lastPlanningProgress.bestScore : null,
+        planningComboCount: (this.lastPlanningProgress && Number.isFinite(this.lastPlanningProgress.comboCount)) ? this.lastPlanningProgress.comboCount : null,
+        planningEvals: (this.lastPlanningProgress && Number.isFinite(this.lastPlanningProgress.evals)) ? this.lastPlanningProgress.evals : null,
+        bgBestScore: (this.lastBgPlanningProgress && Number.isFinite(this.lastBgPlanningProgress.bestScore)) ? this.lastBgPlanningProgress.bestScore : null,
         workerReady: this.thinkWorker ? 1 : 0,
         workerInitError: this.workerInitError,
         aiV: AI_V
@@ -1578,6 +1600,7 @@ export class BotTurnController {
 
     if (this.strategy === 'walk' && this.stuckTime > 0.9) {
       if (this.tryDigEscape(presenter, player, dir)) return true;
+      this.matchSpecialFail.walkObstacle += 1;
       this.bannedTurn.add('walk');
       this.strategy = null;
       if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
@@ -1656,6 +1679,7 @@ export class BotTurnController {
     }
 
     if (this.strategy === 'walk' && (cliff.isDeepVoid || cliff.isGapOrCliff)) {
+      this.matchSpecialFail.walkCliff += 1;
       this.recordStrategyFailure('walk', now);
       this.strategy = null;
       return true;
@@ -1762,6 +1786,8 @@ export class BotTurnController {
       if (s === 'walk' && ceilingLow) score -= 1.4;
       if (cliff.isGapOrCliff && s === 'walk') score -= 3.0;
       if (ceilingLow && s === 'jump') score -= 3.0;
+      if (s === 'walk') score -= this.matchSpecialFail.walkCliff * 0.9 + this.matchSpecialFail.walkObstacle * 0.6;
+      if (s === 'rope_climb' || s === 'rope_swing' || s === 'rope_descend') score -= this.matchSpecialFail.ropeBorder * 1.1 + this.matchSpecialFail.ropeNoAttach * 0.9;
 
       const att = this.matchAttempts[s] || 0;
       const suc = this.matchSuccess[s] || 0;
@@ -2047,6 +2073,7 @@ export class BotTurnController {
     const edgePadYBot = 70;
     if (best.ray.x <= edgePadX || best.ray.x >= w - edgePadX || best.ray.y <= edgePadYTop || best.ray.y >= h - edgePadYBot) {
       this.lastRopeAttemptAt = now;
+      this.matchSpecialFail.ropeBorder += 1;
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'border', anglesTried: globalAngles.length, bestScore: best.score, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining, aimAngle: null, facingRight: null, rayHit: best.ray, ropeActiveAfterFire: 0, ropeCast: null });
       return 'hard';
     }
@@ -2067,6 +2094,7 @@ export class BotTurnController {
     }
 
     this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'fired_no_attach', anglesTried: globalAngles.length, bestScore: best.score, anchor: { x: best.ray.x, y: best.ray.y, dist: best.ray.dist }, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining, aimAngle: player.aimAngle, facingRight: player.facingRight ? 1 : 0, rayHit: best.ray, ropeActiveAfterFire: 0, ropeCast: { x: player.ropeCastX, y: player.ropeCastY, t: player.ropeCastTime } });
+    this.matchSpecialFail.ropeNoAttach += 1;
     return 'hard';
   }
 

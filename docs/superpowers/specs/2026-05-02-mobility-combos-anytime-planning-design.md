@@ -217,6 +217,61 @@
 - если мир стабилен (нет projectiles/взрывов и террейн не меняется), запускаем preplanning для **следующего** bot-хода и добавляем результат в кэш
 - на старте bot-хода сначала пытаемся взять план из кэша по ключу состояния; если совпадения нет — запускаем обычное планирование
 
+## Server-side policy store (D1/KV): templates + priors
+
+Цель: получать прирост качества и скорости за счёт reuse “шаблонов подстратегий” и priors для выбора угла/пауэра, не пытаясь хранить точные планы по координатам.
+
+### Feature-key (v1)
+
+Ключ должен быть грубым (чтобы переиспользовать), но достаточно информативным:
+
+- `mapSeed`
+- `spawnType`: `pit|pit_overhang|box|open|cliff|gap`
+- `weaponId`
+- `windBin`: `round(wind/10)`
+- `distBin`: `round(distance/80)` (до ближайшего таргета)
+- `dYBin`: `round((targetY-shooterY)/60)` (квантизация по высоте)
+
+Пример ключа KV:
+
+`ai:priors:v1:${mapSeed}:${spawnType}:${weaponId}:w${windBin}:d${distBin}:dy${dYBin}`
+
+### Что писать (priors)
+
+JSON-значение (малое, агрегируемое):
+
+- `n`: число наблюдений
+- `bestAngleBin`: бин `round(globalAngleDeg/2)`
+- `bestPowerBin`: бин `round(power/4)`
+- `meanScore`: EMA среднего score
+- `meanEnemyDelta`, `meanAllyDelta`
+- `updatedAt`
+
+Пишем только “чистые” сэмплы:
+
+- `enemyDelta > 0`
+- `allyDelta == 0`
+- нет self-hit (по trace/оценке)
+
+### Templates (подстратегии)
+
+Отдельный слой: хранить не цифры прицела, а “какая подстратегия обычно работает”:
+
+KV ключ:
+
+`ai:tpl:v1:${mapSeed}:${spawnType}:${templateId}`
+
+Значение:
+
+- `program`: `pit_escape_overhang|wall_climb_rope|gap_cross_rope|box_escape_dig|micro_reposition_for_safety`
+- `params`: компактные параметры (например `side=left/right`, `setupBackoffMs`, `apexWindowMs`)
+- `n`, `successRate`, `updatedAt`
+
+### D1 схема (если нужно аналитика/дашборды)
+
+- `ai_priors_v1(key TEXT PRIMARY KEY, n INTEGER, bestAngleBin INTEGER, bestPowerBin INTEGER, meanScore REAL, meanEnemyDelta REAL, meanAllyDelta REAL, updatedAt INTEGER)`
+- `ai_templates_v1(key TEXT PRIMARY KEY, program TEXT, params TEXT, n INTEGER, successRate REAL, updatedAt INTEGER)`
+
 ## Post-shot reposition: двигаться, пока летит снаряд
 
 Цель: после выбора и выполнения выстрела использовать время полёта снаряда, чтобы улучшить end-turn позицию:
