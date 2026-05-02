@@ -2,7 +2,7 @@ import { getWeaponByEquipmentId, isWeaponEquipment } from '../equipment/Equipmen
 import type { Weapon } from '../models/Weapon';
 import type { BotConfig } from './BotConfig';
 import { DEFAULT_BOT_CONFIG } from './BotConfig';
-import { gunMuzzlePosition, simulateTrajectory, type TerrainQuery } from './PhysicsHelper';
+import { resolveProjectileStart, simulateTrajectory, type TerrainQuery } from './PhysicsHelper';
 import type { AIDifficulty } from './AIDifficulty';
 
 export type Rng = () => number;
@@ -172,30 +172,6 @@ function pickWeaponByRange(weapons: Array<{ index: number; weapon: Weapon; id: s
 
 type ScoredAction = { action: BotAction; score: number; impact: { x: number; y: number }; trace?: BotDecisionTrace };
 
-function isCircleBlocked(terrain: TerrainQuery, x: number, y: number, r: number): boolean {
-  const cx = Math.floor(x);
-  const cy = Math.floor(y);
-  const rr = Math.max(1, Math.floor(r));
-  const pts = [
-    [0, 0],
-    [rr, 0],
-    [-rr, 0],
-    [0, rr],
-    [0, -rr],
-    [Math.floor(rr * 0.7), Math.floor(rr * 0.7)],
-    [Math.floor(-rr * 0.7), Math.floor(rr * 0.7)],
-    [Math.floor(rr * 0.7), Math.floor(-rr * 0.7)],
-    [Math.floor(-rr * 0.7), Math.floor(-rr * 0.7)]
-  ];
-  for (const [dx, dy] of pts) {
-    const tx = cx + dx;
-    const ty = cy + dy;
-    if (tx < 0 || tx >= terrain.width || ty < 0 || ty >= terrain.height) continue;
-    if (terrain.isSolid(tx, ty)) return true;
-  }
-  return false;
-}
-
 function chooseBotActionScored(
   rng: Rng,
   world: BotWorldSnapshot,
@@ -270,12 +246,11 @@ function chooseBotActionScored(
         const global = (target.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
         for (const power of powers) {
             let speed = power * 4.2 * (weapon.speedModifier || 1);
-          const muzzle = gunMuzzlePosition(shooter, global);
           const projRadius = weapon.id === 'grenade' ? 6 : 3;
-          if (isCircleBlocked(world.terrain, muzzle.x, muzzle.y, projRadius)) {
-            bump('muzzle_blocked');
-            continue;
-          }
+          const pr = Math.max(1, Math.floor(projRadius * 0.8));
+          const startRes = resolveProjectileStart(world.terrain, shooter, global, pr);
+          const muzzle = startRes.start;
+          if (startRes.adjusted) bump('muzzle_adjusted');
 
           const maxByRange = Number.isFinite(weapon.maxRange) && weapon.maxRange > 0 ? (weapon.maxRange / Math.max(1e-3, speed)) : Infinity;
           const fuseSeconds = weapon.id === 'grenade' ? (typeof weapon.fuseSeconds === 'number' ? weapon.fuseSeconds : 3.0) : 0;
@@ -1124,9 +1099,9 @@ export function chooseDigAction(
       const global = (digPoint.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
       for (const power of powerList) {
         let speed = power * 4.2 * (weapon.speedModifier || 1);
-        const muzzle = gunMuzzlePosition(shooter, global);
         const projRadius = weapon.id === 'grenade' ? 6 : 3;
-        if (isCircleBlocked(world.terrain, muzzle.x, muzzle.y, projRadius)) continue;
+        const pr = Math.max(1, Math.floor(projRadius * 0.8));
+        const muzzle = resolveProjectileStart(world.terrain, shooter, global, pr).start;
         const maxByRange = Number.isFinite(weapon.maxRange) && weapon.maxRange > 0 ? (weapon.maxRange / Math.max(1e-3, speed)) : Infinity;
         const fuseSeconds = weapon.id === 'grenade' ? (typeof weapon.fuseSeconds === 'number' ? weapon.fuseSeconds : 3.0) : 0;
         const maxTime = weapon.id === 'grenade'
