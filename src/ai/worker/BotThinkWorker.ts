@@ -163,12 +163,16 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
       if (!(cur && curExpected > 0.15)) {
         const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
         const span = Math.max(180, Math.min(740, maxSpeed * Math.max(0.3, msg.executeSeconds) + (msg.ropeRemaining > 0 ? 200 : 0)));
-        const stepX = 32;
         const minX = Math.max(30, shooter.x - span);
         const maxX = Math.min(world.terrain.width - 30, shooter.x + span);
-        let best: { x: number; y: number; action: any; score: number } | null = null;
+        let bestFound = false;
+        let bestX = shooter.x;
+        let bestY = shooter.y;
+        let bestAction: any = null;
+        let bestScore = -Infinity;
 
         const movePenalty = (msg.botCfg?.scoring?.movePenaltyPerPx ?? 0.08) * 0.55;
+        const shotCache = new Map<string, any | null>();
         const surfaceYAt = (x: number, yHint: number): number | null => {
           const px = Math.floor(x);
           if (px < 0 || px >= w) return null;
@@ -182,21 +186,50 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
           return null;
         };
 
-        for (let x = minX; x <= maxX + 0.001; x += stepX) {
+        const evalX = (x: number) => {
           const groundY = surfaceYAt(x, shooter.y);
-          if (groundY === null) continue;
+          if (groundY === null) return;
           const yy = clamp(groundY - (shooter.height || 10) / 2 - 1, 25, h - 25);
-          const movedShooter = { ...shooter, x, y: yy };
-          const res = chooseBotActionDebug(rngPlan, world as any, movedShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || []);
-          if (!res) continue;
+          const k = `${Math.round(x)}|${Math.round(yy)}`;
+          let res = shotCache.get(k);
+          if (res === undefined) {
+            const movedShooter = { ...shooter, x, y: yy };
+            res = chooseBotActionDebug(rngPlan, world as any, movedShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || []);
+            shotCache.set(k, res || null);
+          }
+          if (!res) return;
           const expected = (res.trace as any)?.chosen?.expectedDamage || 0;
           const s = res.score - Math.abs(x - shooter.x) * movePenalty - (expected <= 0.01 ? 120 : 0);
-          if (!best || s > best.score) best = { x, y: yy, action: res.action, score: s };
+          if (!bestFound || s > bestScore) {
+            bestFound = true;
+            bestX = x;
+            bestY = yy;
+            bestAction = res.action;
+            bestScore = s;
+          }
+        };
+
+        const coarseN: number = 9;
+        if (maxX - minX < 8) {
+          evalX(shooter.x);
+        } else {
+          for (let i = 0; i < coarseN; i++) {
+            const t = coarseN === 1 ? 0.5 : i / (coarseN - 1);
+            evalX(minX + (maxX - minX) * t);
+          }
         }
 
-        if (best) {
-          plan.action = { weaponIndex: best.action.weaponIndex, facingRight: best.action.facingRight, aimAngle: best.action.aimAngle, power: best.action.power, targetId: best.action.targetId };
-          plan.moveTo = { x: best.x, y: best.y };
+        if (bestFound) {
+          const refineSpan = 96;
+          const refineStep = 32;
+          const rMin = Math.max(minX, bestX - refineSpan);
+          const rMax = Math.min(maxX, bestX + refineSpan);
+          for (let x = rMin; x <= rMax + 0.001; x += refineStep) evalX(x);
+        }
+
+        if (bestFound && bestAction) {
+          plan.action = { weaponIndex: bestAction.weaponIndex, facingRight: bestAction.facingRight, aimAngle: bestAction.aimAngle, power: bestAction.power, targetId: bestAction.targetId };
+          plan.moveTo = { x: bestX, y: bestY };
         }
       }
 
