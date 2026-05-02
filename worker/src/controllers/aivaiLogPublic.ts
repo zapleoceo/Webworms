@@ -79,6 +79,9 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
   let plannedFirstT: number | null = null;
   let planningFirstT: number | null = null;
   const types: Record<string, number> = {};
+  const weaponCounts: Record<string, number> = {};
+  const stageWeaponCounts: Record<string, Record<string, number>> = {};
+  const lastN: any[] = [];
   for (const e of events) {
     const t = typeof e?.type === 'string' ? e.type : 'event';
     types[t] = (types[t] || 0) + 1;
@@ -93,6 +96,10 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
       decisionCount += 1;
       const stage = typeof e?.stage === 'string' ? e.stage : 'unknown';
       decisionStages[stage] = (decisionStages[stage] || 0) + 1;
+      const weapon = typeof e?.weapon === 'string' ? e.weapon : typeof e?.weaponName === 'string' ? e.weaponName : typeof e?.weaponId === 'string' ? e.weaponId : 'unknown';
+      weaponCounts[weapon] = (weaponCounts[weapon] || 0) + 1;
+      stageWeaponCounts[stage] = stageWeaponCounts[stage] || {};
+      stageWeaponCounts[stage][weapon] = (stageWeaponCounts[stage][weapon] || 0) + 1;
       const tt = Number(e?.t);
       if (Number.isFinite(tt)) {
         if (decisionFirstT === null || tt < decisionFirstT) decisionFirstT = tt;
@@ -114,6 +121,11 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
         curStreak = 0;
       }
     }
+    if (lastN.length < 50) lastN.push(e);
+    else {
+      lastN.shift();
+      lastN.push(e);
+    }
   }
   return new Response(JSON.stringify({
     success: true,
@@ -123,6 +135,8 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
     aiV: parsed?.aiV || null,
     totalEvents: events.length,
     decision: { count: decisionCount, firstT: decisionFirstT, lastT: decisionLastT, stages: decisionStages },
+    weaponsTop: Object.entries(weaponCounts).sort((a, b) => b[1] - a[1]).slice(0, 10),
+    stageWeaponsTop: Object.fromEntries(Object.entries(stageWeaponCounts).map(([stage, m]) => [stage, Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6)])),
     planningFirstT,
     plannedFirstT,
     fired,
@@ -132,4 +146,53 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
     maxStreak,
     typesTop: Object.entries(types).sort((a, b) => b[1] - a[1]).slice(0, 12)
   }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+}
+
+export async function getAIVaiLogExtract(request: Request, env: any, corsHeaders: Record<string, string>): Promise<Response> {
+  if (!isAllowedOrigin(request)) {
+    return new Response(JSON.stringify({ success: false, error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+  if (!env.AIVAI_LOGS) {
+    return new Response(JSON.stringify({ success: false, error: 'R2 not configured' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+  const url = new URL(request.url);
+  const matchId = url.searchParams.get('matchId')?.trim() || '';
+  if (!matchId) {
+    return new Response(JSON.stringify({ success: false, error: 'Missing matchId' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+  const limit = Math.max(1, Math.min(400, Number(url.searchParams.get('limit') || '120') || 120));
+  const fromEnd = (url.searchParams.get('fromEnd') || '1') !== '0';
+  const typesParam = (url.searchParams.get('types') || '').trim();
+  const allowedDefault = ['bot_decision', 'weapon_fired', 'shot_eval', 'bot_move_strategy', 'bot_movement_summary', 'bot_rope_attempt', 'anomaly', 'turn_state'];
+  const allowed = new Set<string>((typesParam ? typesParam.split(',') : allowedDefault).map(s => s.trim()).filter(Boolean));
+
+  const key = keyForMatch(matchId);
+  const obj = await env.AIVAI_LOGS.get(key);
+  if (!obj) {
+    return new Response(JSON.stringify({ success: true, exists: false, key }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+  const bodyText = await obj.text();
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return new Response(JSON.stringify({ success: false, error: 'Invalid JSON', key }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+  const events: any[] = Array.isArray(parsed?.events) ? parsed.events : [];
+  const filtered: any[] = [];
+  if (fromEnd) {
+    for (let i = events.length - 1; i >= 0 && filtered.length < limit; i--) {
+      const e = events[i];
+      const t = typeof e?.type === 'string' ? e.type : '';
+      if (allowed.has(t)) filtered.push(e);
+    }
+    filtered.reverse();
+  } else {
+    for (let i = 0; i < events.length && filtered.length < limit; i++) {
+      const e = events[i];
+      const t = typeof e?.type === 'string' ? e.type : '';
+      if (allowed.has(t)) filtered.push(e);
+    }
+  }
+  return new Response(JSON.stringify({ success: true, exists: true, key, uploaded: (obj as any).uploaded || null, count: filtered.length, events: filtered }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }

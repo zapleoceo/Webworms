@@ -466,8 +466,9 @@ export class BotTurnController {
     if (!this.plannedThisTurn && elapsed < planSeconds) return;
 
     if (!this.plan) return;
+    const plan = this.plan;
 
-    let moveTo = this.plan.moveTo;
+    let moveTo = plan.moveTo;
     if (this.movePathWaypoints && this.movePathWaypoints.length > 0) {
       while (this.movePathIndex < this.movePathWaypoints.length) {
         const p = this.movePathWaypoints[this.movePathIndex];
@@ -784,7 +785,29 @@ export class BotTurnController {
       return true;
     }
 
-    const strategy = this.selectStrategy(presenter, player, moveTo, dir, ropeRemaining);
+    const forced = this.plan?.movePath?.primitive || null;
+    let strategy: MoveStrategy | null = null;
+    if (forced === 'jump' && !ceilingLow && !this.bannedTurn.has('jump')) {
+      strategy = 'jump';
+    }
+    if (!strategy && forced === 'rope' && ropeRemaining > 0) {
+      const dy = moveTo.y - player.y;
+      const needUp = dy < -30;
+      const needDown = dy > 30;
+      const gap = cliff.isGapOrCliff;
+      const candidates: MoveStrategy[] = [];
+      if (needUp) candidates.push('rope_climb');
+      if (gap) candidates.push('rope_swing');
+      if (needDown && !cliff.isDeepVoid) candidates.push('rope_descend');
+      candidates.push('rope_swing', 'rope_climb', 'rope_descend');
+      for (const c of candidates) {
+        if (!this.bannedTurn.has(c)) {
+          strategy = c;
+          break;
+        }
+      }
+    }
+    if (!strategy) strategy = this.selectStrategy(presenter, player, moveTo, dir, ropeRemaining);
     this.ensureStrategy(strategy, presenter, player, moveTo, now);
 
     if (this.strategy === 'rope_climb' || this.strategy === 'rope_swing' || this.strategy === 'rope_descend') {
