@@ -800,8 +800,8 @@ button:hover {
 
 .aivai-ai-stats {
   position: absolute;
-  top: 86px;
-  max-width: 420px;
+  top: calc(100% + 8px);
+  max-width: 320px;
   padding: 8px 10px;
   font-family: Courier New, monospace;
   font-size: 12px;
@@ -814,8 +814,8 @@ button:hover {
   z-index: 12;
 }
 
-.aivai-ai-stats.left { left: 10px; }
-.aivai-ai-stats.right { right: 10px; text-align: right; }
+.aivai-ai-stats.left { left: 0; text-align: left; }
+.aivai-ai-stats.right { right: 0; text-align: right; }
 
 .left-team {
   display: flex;

@@ -16,7 +16,7 @@ const ensure = (id: string, side: 'left' | 'right'): HTMLElement => {
   el = document.createElement('div');
   el.id = id;
   el.className = `aivai-ai-stats ${side}`;
-  const root = document.querySelector('.hud-top');
+  const root = document.querySelector(side === 'left' ? '.team-status.left-team' : '.team-status.right-team');
   (root || document.body).appendChild(el);
   return el;
 };
