@@ -28,6 +28,7 @@ dist-ssr
 
 # Local debug scripts / artifacts (do not commit)
 paypal.txt
+aivai_*.json
 check_room.js
 debug_map.cjs
 get_creds.js
