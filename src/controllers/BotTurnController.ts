@@ -102,6 +102,66 @@ export class BotTurnController {
       const weaponId = action && action.weaponIndex >= 0 && typeof equipmentIds[action.weaponIndex] === 'string'
         ? equipmentIds[action.weaponIndex]
         : null;
+      const grenLeftRaw = presenter?.state?.teamAmmo?.[p.team]?.grenade;
+      const grenLeft = typeof grenLeftRaw === 'number' && Number.isFinite(grenLeftRaw) ? Math.max(0, Math.floor(grenLeftRaw)) : null;
+      const vx = typeof p.vx === 'number' && Number.isFinite(p.vx) ? p.vx : null;
+      const vy = typeof p.vy === 'number' && Number.isFinite(p.vy) ? p.vy : null;
+      const compactDebug = (() => {
+        const d = this.lastDecisionDebug;
+        if (!d) return grenLeft === null && vx === null && vy === null ? null : { g: grenLeft, v: vx, w: vy };
+        const tr = d.trace;
+        if (!tr) return { g: grenLeft, v: vx, w: vy, s: d.score ?? null };
+        const ch = tr.chosen;
+        const chosenArr = ch
+          ? [
+              ch.weaponId,
+              ch.weaponIndex,
+              ch.targetId,
+              ch.globalAngle,
+              ch.power,
+              ch.miss,
+              ch.expectedDamage,
+              ch.score,
+              ch.impact?.x ?? 0,
+              ch.impact?.y ?? 0,
+              ch.selfDist,
+              ch.selfSafe,
+              ch.safeRadius,
+              ch.risk ?? 0
+            ]
+          : null;
+        const bw = tr.bestByWeaponId && typeof tr.bestByWeaponId === 'object'
+          ? Object.entries(tr.bestByWeaponId).map(([id, s0]: any) => {
+              const s = s0 as any;
+              return [
+                id,
+                s.weaponIndex,
+                s.targetId,
+                s.globalAngle,
+                s.power,
+                s.miss,
+                s.expectedDamage,
+                s.score,
+                s.impact?.x ?? 0,
+                s.impact?.y ?? 0,
+                s.selfDist,
+                s.selfSafe,
+                s.safeRadius,
+                s.risk ?? 0
+              ];
+            })
+          : null;
+        return {
+          g: grenLeft,
+          v: vx,
+          w: vy,
+          sh: [tr.shooter?.id ?? null, tr.shooter?.team ?? null, tr.shooter?.x ?? null, tr.shooter?.y ?? null, tr.shooter?.health ?? null],
+          t: tr.targetId ?? null,
+          ch: chosenArr,
+          bw,
+          rj: tr.rejected || null
+        };
+      })();
       const wormId = String(presenter.state.currentPlayerIndex ?? '');
       cb({
         type: 'bot_decision',
@@ -122,7 +182,7 @@ export class BotTurnController {
         plan: this.plan?.moveTo ? { x: this.plan.moveTo.x, y: this.plan.moveTo.y } : null,
         action,
         noisy,
-        debug: this.lastDecisionDebug
+        debug: compactDebug
       });
     } catch {}
   }
@@ -501,9 +561,9 @@ export class BotTurnController {
         this.lastWorkerMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
         this.lastWorkerComputeMs = wr ? Number(wr.ms) : null;
         this.lastWorkerUsed = 0;
-        this.lastThinkSrc = 'worker';
+        this.lastThinkSrc = 'main';
         this.lastDecisionDebug = wr?.debug || null;
-        const fallback = this.fallbackAction(presenter);
+        const fallback = this.safeFallbackAction(presenter);
         const moveTo = this.fallbackMoveTo(presenter);
         if (fallback || moveTo) {
           const placeholder = { weaponIndex: -1, facingRight: !!player.facingRight, aimAngle: player.aimAngle || 0, power: 60, targetId: 'none' };
@@ -646,31 +706,6 @@ export class BotTurnController {
     return ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`ai:${presenter.matchDuration.toFixed(2)}:${presenter.state.currentPlayerIndex}`)) >>> 0;
   }
 
-  private fallbackAction(presenter: any): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string } | null {
-    const player = presenter?.state?.getCurrentPlayer?.();
-    if (!player) return null;
-    const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
-    const findIdx = (id: string) => equipmentIds.findIndex(x => x === id);
-    const grenadeIdx = findIdx('grenade');
-    const bazookaIdx = findIdx('bazooka');
-    const idx = grenadeIdx >= 0 ? grenadeIdx : (bazookaIdx >= 0 ? bazookaIdx : 0);
-
-    const enemies: any[] = Array.isArray(presenter?.state?.players)
-      ? presenter.state.players.filter((w: any) => w && w.team !== player.team && w.health > 0)
-      : [];
-    if (enemies.length === 0) {
-      return { weaponIndex: idx, facingRight: !!player.facingRight, aimAngle: player.aimAngle || 0, power: 60, targetId: 'none' };
-    }
-    enemies.sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y));
-    const e = enemies[0];
-    const dx = e.x - player.x;
-    const dy = (e.y - e.height * 0.35) - (player.y - player.height * 0.35);
-    const global = Math.atan2(dy, dx);
-    const facingRight = dx >= 0;
-    const aimAngle = facingRight ? global : (Math.PI - global);
-    return { weaponIndex: idx, facingRight, aimAngle: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle)), power: 60, targetId: String(presenter.state.players.indexOf(e)) };
-  }
-
   private safeFallbackAction(presenter: any): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string } | null {
     const player = presenter?.state?.getCurrentPlayer?.();
     if (!player) return null;
@@ -764,6 +799,11 @@ export class BotTurnController {
         aimAngle: action.aimAngle,
         power: action.power,
         pos: { x: player.x, y: player.y },
+        g: typeof presenter?.state?.teamAmmo?.[player.team]?.grenade === 'number' && Number.isFinite(presenter.state.teamAmmo[player.team].grenade)
+          ? Math.max(0, Math.floor(presenter.state.teamAmmo[player.team].grenade))
+          : null,
+        v: typeof player.vx === 'number' && Number.isFinite(player.vx) ? player.vx : null,
+        w: typeof player.vy === 'number' && Number.isFinite(player.vy) ? player.vy : null,
         targetId: action.targetId,
         aiV: AI_V
       });
