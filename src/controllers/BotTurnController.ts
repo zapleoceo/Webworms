@@ -26,6 +26,9 @@ export class BotTurnController {
   private ropeJumpDir: 'left' | 'right' | null = null;
   private ropeJumpBudget: number = 0;
   private ropeJumpStrategy: MoveStrategy | null = null;
+  private backoffJumpAt: number = 0;
+  private backoffJumpUntil: number = 0;
+  private backoffJumpDir: 'left' | 'right' | null = null;
 
   private matchKey: string = '';
   private matchAttempts: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
@@ -955,10 +958,10 @@ export class BotTurnController {
     }
 
     if (this.ropeJumpAttachUntil > now && this.ropeJumpMoveTo && this.ropeJumpDir) {
-      if (player.isJumping && this.ropeJumpStrategy && now >= this.lastRopeAttemptAt + 0.12) {
+      const vy0 = Number.isFinite(player.vy) ? Number(player.vy) : 0;
+      if ((player.isJumping || vy0 > 40) && this.ropeJumpStrategy && now >= this.lastRopeAttemptAt + 0.12) {
         const jt = Math.max(0, now - (this.lastJumpAt || 0));
-        const vy = Number.isFinite(player.vy) ? Number(player.vy) : 0;
-        if (jt < 0.1 || Math.abs(vy) > 120) return true;
+        if (jt < 0.1 || vy0 < -160 || vy0 > 300) return true;
         const res = this.tryAttachRope(presenter, player, this.ropeJumpMoveTo, this.ropeJumpDir, this.ropeJumpBudget, now, this.ropeJumpStrategy);
         if (res === 'ok') {
           this.ropeJumpAttachUntil = 0;
@@ -976,6 +979,28 @@ export class BotTurnController {
         this.ropeJumpBudget = 0;
         this.ropeJumpStrategy = null;
       }
+    }
+
+    if (this.backoffJumpDir && now < this.backoffJumpAt) {
+      presenter.handleInput?.('left', false, true);
+      presenter.handleInput?.('right', false, true);
+      presenter.handleInput?.('jump', false, true);
+      presenter.handleInput?.(this.backoffJumpDir === 'left' ? 'right' : 'left', true, true);
+      this.trackStuck(player, dt);
+      return true;
+    }
+
+    if (this.backoffJumpDir && now >= this.backoffJumpAt && now < this.backoffJumpUntil) {
+      if (this.tryJump(presenter, player, now)) {
+        presenter.handleInput?.('left', false, true);
+        presenter.handleInput?.('right', false, true);
+        presenter.handleInput?.(this.backoffJumpDir, true, true);
+        this.trackStuck(player, dt);
+        return true;
+      }
+      this.backoffJumpDir = null;
+      this.backoffJumpAt = 0;
+      this.backoffJumpUntil = 0;
     }
 
     if (this.lastMoveDir && this.lastMoveDir !== dir) {
@@ -1006,7 +1031,15 @@ export class BotTurnController {
     const obstacle = this.detectObstacle(presenter, player, dir);
     const ceilingLow = this.detectCeilingLow(presenter, player, dir);
 
+    if (obstacle && !ceilingLow && this.stuckTime > 0.45 && !this.backoffJumpDir && now - this.lastJumpAt > 0.9) {
+      this.backoffJumpDir = dir;
+      this.backoffJumpAt = now + 0.22;
+      this.backoffJumpUntil = this.backoffJumpAt + 0.32;
+      return true;
+    }
+
     if (obstacle && ceilingLow && this.stuckTime > 0.35) {
+      if (this.tryDigEscape(presenter, player, dir)) return true;
       this.bannedTurn.add('walk');
       this.bannedTurn.add('jump');
       if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
@@ -1022,6 +1055,7 @@ export class BotTurnController {
     }
 
     if (this.strategy === 'walk' && this.stuckTime > 0.9) {
+      if (this.tryDigEscape(presenter, player, dir)) return true;
       this.bannedTurn.add('walk');
       this.strategy = null;
       if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
@@ -1074,7 +1108,7 @@ export class BotTurnController {
       if (res === 'ok' || res === 'cooldown') return true;
       if (res === 'hard') this.recordStrategyFailure(this.strategy, now);
       if ((res === 'soft' || res === 'hard') && (moveTo.y - player.y) <= -120 && ropeRemaining > 0 && now - this.lastJumpAt > 0.85 && this.ropeJumpAttachUntil <= now) {
-        this.ropeJumpAttachUntil = now + 0.35;
+        this.ropeJumpAttachUntil = now + 0.65;
         this.ropeJumpMoveTo = moveTo;
         this.ropeJumpDir = dir;
         this.ropeJumpBudget = ropeBudget;
@@ -1313,6 +1347,35 @@ export class BotTurnController {
     this.lastJumpAt = now;
     this.jumpHoldUntil = now + 0.35;
     presenter.handleInput?.('jump', true, true);
+    return true;
+  }
+
+  private tryDigEscape(presenter: any, player: any, dir: 'left' | 'right'): boolean {
+    if (this.firedThisTurn) return false;
+    const cfg: any = presenter?.state?.botConfig || null;
+    if (!cfg?.dig?.enabled) return false;
+    const timeLeft = Number(presenter?.turnTimeLeft) || 0;
+    const reserve = Number(cfg?.reserveSeconds) || 1;
+    if (timeLeft <= reserve + 2.2) return false;
+    const equipmentIds: string[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
+    const bazookaIndex = equipmentIds.findIndex((id: string) => id === 'bazooka');
+    const grenadeIndex = equipmentIds.findIndex((id: string) => id === 'grenade');
+    let weaponIndex = bazookaIndex;
+    let weaponId: string | null = null;
+    if (weaponIndex >= 0) weaponId = 'bazooka';
+    if (weaponIndex < 0 && grenadeIndex >= 0) {
+      const g = presenter?.state?.teamAmmo?.[player.team]?.grenade;
+      if (typeof g === 'number' && g > 0) {
+        weaponIndex = grenadeIndex;
+        weaponId = 'grenade';
+      }
+    }
+    if (weaponIndex < 0 || !weaponId) return false;
+    const aimAngle = weaponId === 'grenade' ? 0.35 : 0.18;
+    const power = weaponId === 'grenade' ? 26 : 34;
+    const action = { weaponIndex, facingRight: dir === 'right', aimAngle, power, targetId: 'dig_escape' };
+    this.fireAction(presenter, action);
+    this.firedThisTurn = true;
     return true;
   }
 

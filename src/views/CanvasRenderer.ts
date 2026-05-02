@@ -213,7 +213,18 @@ export class CanvasRenderer {
       }
       let crop: { x: number; y: number; w: number; h: number } | undefined;
       if (img.complete && img.naturalWidth !== 0) {
-        const bounds = this.getOpaqueBounds(logo.sprite, img);
+        const isGrave = logo.sprite.indexOf('/grave') !== -1;
+        let bounds: { x: number; y: number; w: number; h: number } | null = null;
+        if (isGrave && img.naturalHeight > img.naturalWidth * 2) {
+          const frames = Math.max(1, Math.min(32, Math.round(img.naturalHeight / Math.max(1, img.naturalWidth))));
+          const frameH = Math.max(1, Math.floor(img.naturalHeight / frames));
+          const raw = Number((logo as any).graveFrame) || 0;
+          const idx = ((raw % frames) + frames) % frames;
+          const frameCrop = { x: 0, y: idx * frameH, w: img.naturalWidth, h: frameH };
+          bounds = this.getOpaqueBoundsInCrop(logo.sprite, img, frameCrop);
+        } else {
+          bounds = this.getOpaqueBounds(logo.sprite, img);
+        }
         if (bounds) {
           crop = bounds;
           logo.spriteCrop = bounds;
@@ -270,6 +281,47 @@ export class CanvasRenderer {
   }
 
   private static opaqueBoundsCache: Record<string, { x: number; y: number; w: number; h: number }> = {};
+
+  private getOpaqueBoundsInCrop(
+    key: string,
+    img: HTMLImageElement,
+    crop: { x: number; y: number; w: number; h: number }
+  ): { x: number; y: number; w: number; h: number } | null {
+    const cacheKey = `${key}#a64#${crop.x},${crop.y},${crop.w},${crop.h}`;
+    const cached = CanvasRenderer.opaqueBoundsCache[cacheKey];
+    if (cached) return cached;
+
+    const w = Math.max(1, Math.floor(crop.w));
+    const h = Math.max(1, Math.floor(crop.h));
+    if (!w || !h) return null;
+
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const a = data[(y * w + x) * 4 + 3];
+        if (a > 64) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (maxX < 0 || maxY < 0) return null;
+    const bounds = { x: crop.x + minX, y: crop.y + minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+    CanvasRenderer.opaqueBoundsCache[cacheKey] = bounds;
+    return bounds;
+  }
 
   private getOpaqueBounds(key: string, img: HTMLImageElement): { x: number; y: number; w: number; h: number } | null {
     const cacheKey = `${key}#a64`;
