@@ -2,7 +2,7 @@ import { mulberry32, hashStringToSeed } from '../utils/SeededRng';
 import { getAIDifficulty } from '../ai/AIStorage';
 import type { AIDifficulty, BotConfig } from '../ai/BotConfig';
 import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
-import { terrainFromLandscape, type BotWormSnapshot } from '../ai/BotAI';
+import { terrainFromLandscape, chooseBotActionDebug, type BotWormSnapshot } from '../ai/BotAI';
 import { AI_V } from '../ai/AIVersion';
 import ThinkWorker from '../ai/worker/BotThinkWorker?worker';
 
@@ -746,81 +746,39 @@ export class BotTurnController {
   }
 
   private lateFallbackFireAction(presenter: any): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string } | null {
-    const player = presenter?.state?.getCurrentPlayer?.();
-    if (!player) return null;
-    const terrain = presenter?.state?.landscape;
-    const grid: Uint8Array | null = terrain?.grid instanceof Uint8Array ? terrain.grid : null;
-    const w = Number(terrain?.width) || 0;
-    const h = Number(terrain?.height) || 0;
-    if (!grid || !w || !h) return null;
+    const view = this.buildBotView(presenter);
+    if (!view) return null;
+    if (view.enemies.length === 0) return null;
+    const seed = this.rngSeedForTurn(presenter) ^ 0x2a4bcd57;
+    const rng = mulberry32(seed);
+    const teamKey: 'team1' | 'team2' = view.shooter.team === 'team1' ? 'team1' : 'team2';
+    const diff = presenter.state.mode === 'aivai'
+      ? ((this.difficultyByTeam[teamKey] as AIDifficulty | undefined) || 'hard')
+      : (((getAIDifficulty() as AIDifficulty) || undefined) || 'medium');
+    const res = chooseBotActionDebug(rng, view.world as any, view.shooter as any, view.enemies as any, view.allies as any, presenter.state.botConfig || DEFAULT_BOT_CONFIG, diff, Array.from(this.shotMemory.values()));
+    if (!res || !res.trace) return null;
 
-    const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
-    const findIdx = (id: string) => equipmentIds.findIndex(x => x === id);
-    const bazookaIdx = findIdx('bazooka');
-    const weaponIndex = bazookaIdx >= 0 ? bazookaIdx : (equipmentIds.length > 0 ? 0 : -1);
-    if (weaponIndex < 0) return null;
+    const p = presenter?.state?.getCurrentPlayer?.();
+    const equipmentIds: any[] = Array.isArray(p?.equipmentIds) ? p.equipmentIds : [];
+    const mainWeaponId = equipmentIds.includes('bazooka') ? 'bazooka' : (typeof equipmentIds[0] === 'string' ? equipmentIds[0] : null);
+    const byWeapon = (res.trace as any).bestByWeaponId || {};
+    const cand = (mainWeaponId && byWeapon[mainWeaponId]) ? byWeapon[mainWeaponId] : (res.trace as any).chosen;
+    if (!cand) return null;
 
-    const enemies: any[] = Array.isArray(presenter?.state?.players)
-      ? presenter.state.players.filter((w0: any) => w0 && w0.team !== player.team && w0.health > 0)
-      : [];
-    if (enemies.length === 0) return null;
-    enemies.sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y));
-    const e = enemies[0];
-
-    const sx = Number(player.x) || 0;
-    const sy = (Number(player.y) || 0) - (Number(player.height) || 10) * 0.35;
-    const tx = Number(e.x) || 0;
-    const ty = (Number(e.y) || 0) - (Number(e.height) || 10) * 0.35;
-
-    const dx = tx - sx;
-    const dy = ty - sy;
-    const global = Math.atan2(dy, dx);
-    const facingRight = dx >= 0;
-    const aimAngle = facingRight ? global : (Math.PI - global);
-    const localAim = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle));
-
-    const isSolid = (x: number, y: number): boolean => {
-      const ix = x | 0;
-      const iy = y | 0;
-      if (iy < 0) return false;
-      if (ix < 0 || ix >= w || iy >= h) return true;
-      return grid[iy * w + ix] > 0;
+    const TAU = Math.PI * 2;
+    const angleNorm = (a: number): number => {
+      a = (a + Math.PI) % TAU;
+      if (a < 0) a += TAU;
+      return a - Math.PI;
     };
-
-    let ix = tx;
-    let iy = ty;
-    const dist = Math.hypot(dx, dy);
-    const steps = Math.max(1, Math.min(800, Math.ceil(dist / 4)));
-    let px = sx;
-    let py = sy;
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps;
-      const x = sx + dx * t;
-      const y = sy + dy * t;
-      if (isSolid(x, y)) {
-        ix = px;
-        iy = py;
-        break;
-      }
-      px = x;
-      py = y;
-    }
-
-    const blastR = 90;
-    const selfDist = Math.hypot(ix - sx, iy - sy);
-    if (selfDist < blastR) return null;
-
-    const allies: any[] = Array.isArray(presenter?.state?.players)
-      ? presenter.state.players.filter((w0: any) => w0 && w0.team === player.team && w0.health > 0)
-      : [];
-    for (const a of allies) {
-      if (!a || a === player) continue;
-      const ax = Number(a.x) || 0;
-      const ay = Number(a.y) || 0;
-      if (Math.hypot(ix - ax, iy - ay) < blastR) return null;
-    }
-
-    return { weaponIndex, facingRight, aimAngle: localAim, power: 60, targetId: String(presenter.state.players.indexOf(e)) };
+    const global = Number(cand.globalAngle) || 0;
+    const facingRight = Math.cos(global) >= 0;
+    const aimAngle = facingRight ? angleNorm(global) : angleNorm(Math.PI - global);
+    const localAim = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle));
+    const weaponIndex = Number(cand.weaponIndex) || 0;
+    const power = Number(cand.power) || 60;
+    const targetId = String(cand.targetId ?? res.action.targetId ?? '');
+    return { weaponIndex, facingRight, aimAngle: localAim, power, targetId };
   }
 
   private fallbackMoveTo(presenter: any): { x: number; y: number } | null {
