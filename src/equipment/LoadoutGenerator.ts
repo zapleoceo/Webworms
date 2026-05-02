@@ -6,7 +6,7 @@ const FULL_LOADOUT = ['bazooka', 'shotgun', 'minigun', 'homing_missile', 'heavy_
 const RANDOM_WEAPONS = ['bazooka', 'shotgun', 'minigun', 'homing_missile', 'heavy_gun', 'handgun', 'plasma_gun', 'flamethrower'];
 
 export function getLoadoutForWorm(mode: GameMode, seed: number, team: string, wormIndex: number): string[] {
-  if (mode === 'training') return [...FULL_LOADOUT];
+  if (mode === 'training' || mode === 'ai' || (mode as any) === 'aivai') return [...FULL_LOADOUT];
 
   const rngSeed = (seed ^ hashStringToSeed(team) ^ (wormIndex * 0x9E3779B1)) >>> 0;
   const rng = mulberry32(rngSeed);
