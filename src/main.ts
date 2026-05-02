@@ -35,7 +35,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260501_2140';
+  const buildVersion = '20260501_2145';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -825,10 +825,12 @@ let currentRoomPlayerId: string | null = null;
       };
       window.presenter.onAIVaiTrace = pushEvent;
       window.presenter.onPhysicsTrace = pushEvent;
+      (window as any).__aivaiMatchId = aivaiLog.matchId;
     } else {
       aivaiLog = null;
       window.presenter.onAIVaiTrace = undefined;
       window.presenter.onPhysicsTrace = undefined;
+      (window as any).__aivaiMatchId = null;
     }
     await window.presenter.startGame({
       width: 1500,

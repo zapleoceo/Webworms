@@ -16,6 +16,7 @@ import { startMatch, reportMatchEnd } from './controllers/matches';
 import { handleContactEmail } from './controllers/contact';
 import { uploadAIVaiLog } from './controllers/aivaiLogs';
 import { getAIVaiLog, listAIVaiLogs } from './controllers/adminAivaiLogs';
+import { getAIVaiLogMeta, getAIVaiLogStats } from './controllers/aivaiLogPublic';
 
 export interface Env {
   DB: D1Database;
@@ -400,6 +401,12 @@ export default {
       }
       else if (url.pathname === '/api/aivai/logs' && request.method === 'POST') {
         response = await uploadAIVaiLog(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/aivai/log/meta' && request.method === 'GET') {
+        response = await getAIVaiLogMeta(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/aivai/log/stats' && request.method === 'GET') {
+        response = await getAIVaiLogStats(request, env, corsHeaders);
       }
       else if (url.pathname === '/api/admin/aivai/logs' && request.method === 'GET') {
         response = await listAIVaiLogs(request, env, corsHeaders);
