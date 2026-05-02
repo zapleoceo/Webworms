@@ -18,6 +18,7 @@ import { normalizeBotConfig } from './ai/BotConfig';
 import type { AIDifficulty } from './ai/AIDifficulty';
 import { debugSurfacePathMatrix, terrainFromLandscape } from './ai/BotAI';
 import { AI_V } from './ai/AIVersion';
+import { updateAivaiOverlay } from './ui/AiVainOverlay';
 
 declare global {
   interface Window {
@@ -25,6 +26,8 @@ declare global {
     renderer: CanvasRenderer;
     inputHandler: InputHandler;
     botDebugMatrix?: () => any;
+    getHudSides?: any;
+    currentMode?: any;
   }
 }
 
@@ -35,7 +38,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260503_2140';
+  const buildVersion = '20260503_2235';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -246,6 +249,8 @@ function getHudSides(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random', _s
   if (localTeam === 'team1') return { leftTeam: 'team1', rightTeam: 'team2', leftName: 'YOU', rightName: 'ENEMY' };
   return { leftTeam: 'team2', rightTeam: 'team1', leftName: 'YOU', rightName: 'ENEMY' };
 }
+
+(window as any).getHudSides = getHudSides;
 
 function setLoaderDifficultyWorm(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random') {
   if (!loaderWormImageEl) return;
@@ -472,6 +477,8 @@ weaponCheckboxes.forEach(cb => {
 let currentMode: 'training' | 'ai' | 'aivai' | 'friend' | 'random' = 'training';
 let aivaiLog: any | null = null;
 
+(window as any).currentMode = currentMode;
+
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const GAME_WIDTH = 1280;
@@ -660,6 +667,7 @@ let currentRoomPlayerId: string | null = null;
   // Start Game Helpers
   async function startGame(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random') {
     currentMode = mode;
+    (window as any).currentMode = mode;
     setWakeLockWanted(true);
     aivaiLogSent = false;
     setLoaderProgress(0, 'LOADING...');
@@ -1479,6 +1487,7 @@ function bindPresenterEvents() {
 
     // Update Worm Selection UI
     updateWormSelectionUI(state);
+    updateAivaiOverlay(state);
 
     if (lastTurnActiveTeam !== activeTeam) {
       lastTurnActiveTeam = activeTeam;

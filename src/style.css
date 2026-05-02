@@ -773,6 +773,7 @@ button:hover {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  position: relative;
   padding: calc(15px + env(safe-area-inset-top)) calc(15px + env(safe-area-inset-right)) 15px calc(15px + env(safe-area-inset-left));
   width: 100%;
   box-sizing: border-box;
@@ -796,6 +797,25 @@ button:hover {
   align-items: center;
   text-align: center;
 }
+
+.aivai-ai-stats {
+  position: absolute;
+  top: 86px;
+  max-width: 420px;
+  padding: 8px 10px;
+  font-family: Courier New, monospace;
+  font-size: 12px;
+  line-height: 1.15;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.aivai-ai-stats.left { left: 10px; }
+.aivai-ai-stats.right { right: 10px; text-align: right; }
 
 .left-team {
   display: flex;

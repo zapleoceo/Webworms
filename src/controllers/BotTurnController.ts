@@ -35,7 +35,16 @@ export class BotTurnController {
   private matchAttempts: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
   private matchSuccess: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
   private matchFailStreak: Record<MoveStrategy, number> = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
-  private matchSpecialFail: { ropeBorder: number; ropeNoAttach: number; walkCliff: number; walkObstacle: number } = { ropeBorder: 0, ropeNoAttach: 0, walkCliff: 0, walkObstacle: 0 };
+  private matchSpecialFailByTeam: Record<'team1' | 'team2', { ropeBorder: number; ropeNoAttach: number; walkCliff: number; walkObstacle: number }> = {
+    team1: { ropeBorder: 0, ropeNoAttach: 0, walkCliff: 0, walkObstacle: 0 },
+    team2: { ropeBorder: 0, ropeNoAttach: 0, walkCliff: 0, walkObstacle: 0 }
+  };
+  private lastPlannedTeam: 'team1' | 'team2' | null = null;
+  private lastPlanningProgressByTeam: Record<'team1' | 'team2', any | null> = { team1: null, team2: null };
+  private lastWorkerMsByTeam: Record<'team1' | 'team2', number | null> = { team1: null, team2: null };
+  private lastWorkerComputeMsByTeam: Record<'team1' | 'team2', number | null> = { team1: null, team2: null };
+  private lastThinkSrcByTeam: Record<'team1' | 'team2', 'main' | 'worker' | null> = { team1: null, team2: null };
+  private lastCacheHitByTeam: Record<'team1' | 'team2', 0 | 1> = { team1: 0, team2: 0 };
 
   private strategy: MoveStrategy | null = null;
   private ropeMode: RopeMode | null = null;
@@ -248,6 +257,8 @@ export class BotTurnController {
         if (msg.kind === 'planProgress') {
           if (!this.workerJobId || msg.jobId !== this.workerJobId) return;
           this.lastPlanningProgress = msg;
+          const team = this.lastPlannedTeam || 'team1';
+          this.lastPlanningProgressByTeam[team] = msg;
           return;
         }
         if (msg.kind !== 'planResult') return;
@@ -712,7 +723,16 @@ export class BotTurnController {
       this.matchAttempts = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
       this.matchSuccess = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
       this.matchFailStreak = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
-      this.matchSpecialFail = { ropeBorder: 0, ropeNoAttach: 0, walkCliff: 0, walkObstacle: 0 };
+      this.matchSpecialFailByTeam = {
+        team1: { ropeBorder: 0, ropeNoAttach: 0, walkCliff: 0, walkObstacle: 0 },
+        team2: { ropeBorder: 0, ropeNoAttach: 0, walkCliff: 0, walkObstacle: 0 }
+      };
+      this.lastPlannedTeam = null;
+      this.lastPlanningProgressByTeam = { team1: null, team2: null };
+      this.lastWorkerMsByTeam = { team1: null, team2: null };
+      this.lastWorkerComputeMsByTeam = { team1: null, team2: null };
+      this.lastThinkSrcByTeam = { team1: null, team2: null };
+      this.lastCacheHitByTeam = { team1: 0, team2: 0 };
       this.shotMemory.clear();
       this.pendingShotEval = null;
       this.lastFiredWeaponId = null;
@@ -781,6 +801,9 @@ export class BotTurnController {
       this.planningInProgress = false;
       this.lastDecisionDebug = null;
       this.lastPlanningProgress = null;
+      this.lastPlannedTeam = null;
+      const t0 = player.team === 'team1' ? 'team1' : player.team === 'team2' ? 'team2' : null;
+      if (t0) this.lastCacheHitByTeam[t0] = 0;
       this.lastTurnStateAt = -999;
       this.lastThinkSrc = 'main';
       this.lastWorkerMs = null;
@@ -814,6 +837,23 @@ export class BotTurnController {
     const ropeRemaining0 = Math.max(0, ropeBudget0 - this.ropeAttachUsed);
     this.prunePlanCache(presenter);
     this.maybeConsumeBgResult(presenter, ropeRemaining0);
+
+    if (presenter?.state?.mode === 'aivai') {
+      const build = (team: 'team1' | 'team2') => {
+        const p = this.lastPlanningProgressByTeam[team];
+        return {
+          thinkSrc: this.lastThinkSrcByTeam[team],
+          workerMs: this.lastWorkerMsByTeam[team],
+          computeMs: this.lastWorkerComputeMsByTeam[team],
+          bestScore: p && Number.isFinite(p.bestScore) ? p.bestScore : null,
+          evals: p && Number.isFinite(p.evals) ? p.evals : null,
+          comboCount: p && Number.isFinite(p.comboCount) ? p.comboCount : null,
+          cacheHit: this.lastCacheHitByTeam[team],
+          fail: this.matchSpecialFailByTeam[team]
+        };
+      };
+      (presenter.state as any).aiStats = { team1: build('team1'), team2: build('team2') };
+    }
 
     if (!isBotTurn) {
       const hasProjectiles0 = (presenter.state.projectiles?.length || 0) > 0;
@@ -941,10 +981,16 @@ export class BotTurnController {
         this.lastWorkerComputeMs = 0;
         this.lastWorkerArrivedAfterMain = 0;
         this.lastDecisionDebug = cached.debug || null;
+        this.lastThinkSrcByTeam[activeTeam0] = 'worker';
+        this.lastWorkerMsByTeam[activeTeam0] = 0;
+        this.lastWorkerComputeMsByTeam[activeTeam0] = 0;
+        this.lastCacheHitByTeam[activeTeam0] = 1;
       } else {
         const rngSeed = ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`turn:${key}`)) >>> 0;
+        this.lastPlannedTeam = activeTeam0;
         this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, executeSeconds, ropeRemaining, rngSeed, difficulty);
         this.planningInProgress = true;
+        this.lastCacheHitByTeam[activeTeam0] = 0;
       }
     }
 
@@ -1021,6 +1067,9 @@ export class BotTurnController {
         this.moveStartedAt = now;
         this.plannedThisTurn = true;
         this.planningInProgress = false;
+        this.lastThinkSrcByTeam[activeTeam0] = 'worker';
+        this.lastWorkerMsByTeam[activeTeam0] = this.lastWorkerMs;
+        this.lastWorkerComputeMsByTeam[activeTeam0] = this.lastWorkerComputeMs;
         const key = this.worldKey(presenter, curIdx, ropeRemaining);
         const score = Number(wr.debug?.score) || 0;
         const sig = this.terrainSig(presenter);
@@ -1038,6 +1087,9 @@ export class BotTurnController {
         this.lastWorkerUsed = 0;
         this.lastThinkSrc = 'main';
         this.lastDecisionDebug = wr?.debug || null;
+        this.lastThinkSrcByTeam[activeTeam0] = 'main';
+        this.lastWorkerMsByTeam[activeTeam0] = this.lastWorkerMs;
+        this.lastWorkerComputeMsByTeam[activeTeam0] = this.lastWorkerComputeMs;
         const fallback = this.safeFallbackAction(presenter);
         const moveTo = this.fallbackMoveTo(presenter);
         if (fallback || moveTo) {
@@ -1600,7 +1652,8 @@ export class BotTurnController {
 
     if (this.strategy === 'walk' && this.stuckTime > 0.9) {
       if (this.tryDigEscape(presenter, player, dir)) return true;
-      this.matchSpecialFail.walkObstacle += 1;
+      const team = player.team === 'team1' ? 'team1' : player.team === 'team2' ? 'team2' : null;
+      if (team) this.matchSpecialFailByTeam[team].walkObstacle += 1;
       this.bannedTurn.add('walk');
       this.strategy = null;
       if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
@@ -1679,7 +1732,8 @@ export class BotTurnController {
     }
 
     if (this.strategy === 'walk' && (cliff.isDeepVoid || cliff.isGapOrCliff)) {
-      this.matchSpecialFail.walkCliff += 1;
+      const team = player.team === 'team1' ? 'team1' : player.team === 'team2' ? 'team2' : null;
+      if (team) this.matchSpecialFailByTeam[team].walkCliff += 1;
       this.recordStrategyFailure('walk', now);
       this.strategy = null;
       return true;
@@ -1765,6 +1819,8 @@ export class BotTurnController {
     const gap = cliff.isGapOrCliff;
     const ceilingLow = this.detectCeilingLow(presenter, player, dir);
     const hasRope = Array.isArray(player.equipmentIds) && player.equipmentIds.includes('ninja_rope') && ropeRemaining > 0;
+    const team = player.team === 'team1' ? 'team1' : player.team === 'team2' ? 'team2' : 'team1';
+    const tf = this.matchSpecialFailByTeam[team];
 
     const candidates: MoveStrategy[] = [];
     if (hasRope && needUp) candidates.push('rope_climb');
@@ -1786,8 +1842,8 @@ export class BotTurnController {
       if (s === 'walk' && ceilingLow) score -= 1.4;
       if (cliff.isGapOrCliff && s === 'walk') score -= 3.0;
       if (ceilingLow && s === 'jump') score -= 3.0;
-      if (s === 'walk') score -= this.matchSpecialFail.walkCliff * 0.9 + this.matchSpecialFail.walkObstacle * 0.6;
-      if (s === 'rope_climb' || s === 'rope_swing' || s === 'rope_descend') score -= this.matchSpecialFail.ropeBorder * 1.1 + this.matchSpecialFail.ropeNoAttach * 0.9;
+      if (s === 'walk') score -= tf.walkCliff * 0.9 + tf.walkObstacle * 0.6;
+      if (s === 'rope_climb' || s === 'rope_swing' || s === 'rope_descend') score -= tf.ropeBorder * 1.1 + tf.ropeNoAttach * 0.9;
 
       const att = this.matchAttempts[s] || 0;
       const suc = this.matchSuccess[s] || 0;
@@ -2073,7 +2129,8 @@ export class BotTurnController {
     const edgePadYBot = 70;
     if (best.ray.x <= edgePadX || best.ray.x >= w - edgePadX || best.ray.y <= edgePadYTop || best.ray.y >= h - edgePadYBot) {
       this.lastRopeAttemptAt = now;
-      this.matchSpecialFail.ropeBorder += 1;
+      const team = player.team === 'team1' ? 'team1' : player.team === 'team2' ? 'team2' : null;
+      if (team) this.matchSpecialFailByTeam[team].ropeBorder += 1;
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'border', anglesTried: globalAngles.length, bestScore: best.score, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining, aimAngle: null, facingRight: null, rayHit: best.ray, ropeActiveAfterFire: 0, ropeCast: null });
       return 'hard';
     }
@@ -2094,7 +2151,8 @@ export class BotTurnController {
     }
 
     this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'fired_no_attach', anglesTried: globalAngles.length, bestScore: best.score, anchor: { x: best.ray.x, y: best.ray.y, dist: best.ray.dist }, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining, aimAngle: player.aimAngle, facingRight: player.facingRight ? 1 : 0, rayHit: best.ray, ropeActiveAfterFire: 0, ropeCast: { x: player.ropeCastX, y: player.ropeCastY, t: player.ropeCastTime } });
-    this.matchSpecialFail.ropeNoAttach += 1;
+    const team = player.team === 'team1' ? 'team1' : player.team === 'team2' ? 'team2' : null;
+    if (team) this.matchSpecialFailByTeam[team].ropeNoAttach += 1;
     return 'hard';
   }
 

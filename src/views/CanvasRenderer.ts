@@ -1021,8 +1021,9 @@ export class CanvasRenderer {
         const idx = Math.floor(((proj as any).age || 0) * 18) % trail.length;
         const img = this.getCustomFrame(trail[idx]);
         if (this.isImgReady(img) && Number.isFinite(proj.radius)) {
-          const s = Math.max(6, proj.radius * 2.2);
-          const off = Math.max(10, proj.radius * 3);
+          const k = proj.weaponId === 'grenade' ? 0.7 : 1.0;
+          const s = Math.max(6, proj.radius * 2.2 * k);
+          const off = Math.max(10, proj.radius * 3 * k);
           this.ctx.save();
           this.ctx.rotate(angle + Math.PI);
           this.ctx.globalAlpha = 0.85;
@@ -1036,7 +1037,8 @@ export class CanvasRenderer {
       if (sprite) {
         const img = this.getCustomFrame(sprite);
         if (this.isImgReady(img) && Number.isFinite(proj.radius)) {
-          const s = Math.max(10, proj.radius * 4.2);
+          const k = proj.weaponId === 'grenade' ? 0.55 : 1.0;
+          const s = Math.max(10, proj.radius * 4.2 * k);
           this.ctx.save();
           this.ctx.rotate(angle);
           this.ctx.drawImage(img, -s / 2, -s / 2, s, s);
