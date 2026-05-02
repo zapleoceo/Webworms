@@ -435,22 +435,16 @@ export class GamePresenter {
         }
       }
       
-      const hasProjectiles = this.state.projectiles.length > 0;
-      const isStable = !hasProjectiles;
-      const turnStep = stepTurn({
+      const turnStepTimer = stepTurn({
         mode: this.state.mode as any,
         hasFiredThisTurn: this.hasFiredThisTurn,
-        isStable,
+        isStable: false,
         turnTimeLeft: this.turnTimeLeft,
         dtTimer
       });
-      this.turnTimeLeft = turnStep.turnTimeLeft;
+      this.turnTimeLeft = turnStepTimer.turnTimeLeft;
       this.state.turnTimeLeft = this.turnTimeLeft;
-      this.state.hasFiredThisTurn = this.hasFiredThisTurn;
-      if (turnStep.nextTurn) {
-        this.nextTurn();
-        return;
-      }
+      this.state.hasFiredThisTurn = this.hasFiredThisTurn
 
       // Airdrop Logic
       this.state.airdropTimer -= dtTimer;
@@ -461,8 +455,24 @@ export class GamePresenter {
       
       this.processActiveInputs(dt);
 
+      const hasProjectiles = this.state.projectiles.length > 0;
       if (this.botTurnController) {
         this.botTurnController.update(this, hasProjectiles);
+      }
+      const isStable = this.state.projectiles.length === 0;
+      const turnStep = stepTurn({
+        mode: this.state.mode as any,
+        hasFiredThisTurn: this.hasFiredThisTurn,
+        isStable,
+        turnTimeLeft: this.turnTimeLeft,
+        dtTimer: 0
+      });
+      this.turnTimeLeft = turnStep.turnTimeLeft;
+      this.state.turnTimeLeft = this.turnTimeLeft;
+      this.state.hasFiredThisTurn = this.hasFiredThisTurn;
+      if (turnStep.nextTurn) {
+        this.nextTurn();
+        return;
       }
       
       // Check game over
