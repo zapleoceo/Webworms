@@ -236,6 +236,9 @@ function chooseBotActionScored(
   const powPct = (botCfg.powerErrorPct && (botCfg.powerErrorPct as any)[difficulty]) ?? 0.08;
   const rangePenaltyPerPx = (botCfg as any).scoring?.rangePenaltyPerPx ?? 0.02;
   const friendlyDamageWeight = (botCfg as any).scoring?.friendlyDamageWeight ?? 4.0;
+  const grenadeScarcityWeight = (botCfg as any).scoring?.grenadeScarcityWeight ?? 48;
+  const grenadeCloseRangePx = (botCfg as any).scoring?.grenadeCloseRangePx ?? 170;
+  const grenadeCloseAbsAngleMax = (botCfg as any).scoring?.grenadeCloseAbsAngleMax ?? 1.2;
 
   let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot; trace?: BotDecisionTrace } | null = null;
 
@@ -360,6 +363,17 @@ function chooseBotActionScored(
           if (isKill) score += botCfg.scoring.killBonus;
           score -= travel * rangePenaltyPerPx;
           score += (rng() - 0.5) * 1e-6;
+
+          if (weapon.id === 'grenade') {
+            const local0 = localAimFromGlobal(global);
+            if (travel < grenadeCloseRangePx && Math.abs(local0.aimAngle) > grenadeCloseAbsAngleMax) {
+              bump('grenade_close_vertical');
+              continue;
+            }
+            if (grenLimited) {
+              score -= grenadeScarcityWeight / (grenLeft + 1);
+            }
+          }
 
           const safeRadius = simWeapon.explosionRadius + botCfg.scoring.safeExtraRadius;
           const selfSafe = simWeapon.explosionRadius + 18 + botCfg.scoring.safeExtraRadius;

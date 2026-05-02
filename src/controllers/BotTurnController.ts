@@ -403,8 +403,8 @@ export class BotTurnController {
 
     if (timeLeft <= reserveSeconds) {
       if (!isWorldBusy) {
-        const action0 = this.plan?.action || this.fallbackAction(presenter);
-        const action = action0 && action0.weaponIndex >= 0 ? action0 : this.fallbackAction(presenter);
+        const action0 = this.plan?.action && this.plan.action.weaponIndex >= 0 ? this.plan.action : null;
+        const action = action0 || this.safeFallbackAction(presenter);
         if (action) {
           const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
           this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', action, noisy);
@@ -550,7 +550,7 @@ export class BotTurnController {
         canUsePlanned = presenter.state.players.some((w: any, idx: number) => w.team !== player.team && w.health > 0 && String(idx) === String(planTarget));
       }
 
-      const action = canUsePlanned ? this.plan.action : this.fallbackAction(presenter);
+      const action = canUsePlanned ? this.plan.action : this.safeFallbackAction(presenter);
       if (!action) return;
       if (action.weaponIndex < 0) {
         const maxReplans = this.lastMovementCfg.maxReplansPerTurn ?? 4;
@@ -568,7 +568,7 @@ export class BotTurnController {
           }
           return;
         }
-        const fb = this.fallbackAction(presenter);
+        const fb = this.safeFallbackAction(presenter);
         if (!fb) return;
         const noisyFb = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
         this.recordAIVai(presenter, botCfg, difficulty, 'execute_fire', fb, noisyFb);
@@ -614,6 +614,41 @@ export class BotTurnController {
     const facingRight = dx >= 0;
     const aimAngle = facingRight ? global : (Math.PI - global);
     return { weaponIndex: idx, facingRight, aimAngle: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle)), power: 60, targetId: String(presenter.state.players.indexOf(e)) };
+  }
+
+  private safeFallbackAction(presenter: any): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string } | null {
+    const player = presenter?.state?.getCurrentPlayer?.();
+    if (!player) return null;
+    const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
+    const findIdx = (id: string) => equipmentIds.findIndex(x => x === id);
+    const bazookaIdx = findIdx('bazooka');
+    const grenadeIdx = findIdx('grenade');
+
+    const enemies: any[] = Array.isArray(presenter?.state?.players)
+      ? presenter.state.players.filter((w: any) => w && w.team !== player.team && w.health > 0)
+      : [];
+    if (enemies.length === 0) return null;
+    enemies.sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y));
+    const e = enemies[0];
+    const dx = e.x - player.x;
+    const dy = (e.y - e.height * 0.35) - (player.y - player.height * 0.35);
+    const global = Math.atan2(dy, dx);
+    const facingRight = dx >= 0;
+    const aimAngle = facingRight ? global : (Math.PI - global);
+    const localAim = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle));
+    const dist = Math.hypot(dx, dy);
+
+    if (bazookaIdx >= 0) {
+      return { weaponIndex: bazookaIdx, facingRight, aimAngle: localAim, power: 60, targetId: String(presenter.state.players.indexOf(e)) };
+    }
+
+    const grenLeftRaw = presenter?.state?.teamAmmo?.[player.team]?.grenade;
+    const grenLeft = typeof grenLeftRaw === 'number' && Number.isFinite(grenLeftRaw) ? Math.max(0, Math.floor(grenLeftRaw)) : Infinity;
+    if (grenadeIdx >= 0 && grenLeft > 0 && dist > 240 && Math.abs(localAim) < 1.2) {
+      return { weaponIndex: grenadeIdx, facingRight, aimAngle: localAim, power: 60, targetId: String(presenter.state.players.indexOf(e)) };
+    }
+
+    return null;
   }
 
   private fallbackMoveTo(presenter: any): { x: number; y: number } | null {
