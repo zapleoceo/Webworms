@@ -402,7 +402,7 @@ export class BotTurnController {
         const action0 = this.plan?.action || this.fallbackAction(presenter);
         const action = action0 && action0.weaponIndex >= 0 ? action0 : this.fallbackAction(presenter);
         if (action) {
-          const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter));
+          const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
           this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', action, noisy);
           this.fireAction(presenter, noisy);
           this.firedThisTurn = true;
@@ -536,13 +536,13 @@ export class BotTurnController {
         }
         const fb = this.fallbackAction(presenter);
         if (!fb) return;
-        const noisyFb = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter));
+        const noisyFb = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
         this.recordAIVai(presenter, botCfg, difficulty, 'execute_fire', fb, noisyFb);
         this.fireAction(presenter, noisyFb);
         this.firedThisTurn = true;
         return;
       }
-      const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter));
+      const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
       this.recordAIVai(presenter, botCfg, difficulty, 'execute_fire', action, noisy);
       this.fireAction(presenter, noisy);
       this.firedThisTurn = true;
@@ -586,8 +586,10 @@ export class BotTurnController {
     action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string },
     botCfg: BotConfig,
     difficulty: AIDifficulty,
-    rng: () => number
+    rng: () => number,
+    noNoise: boolean
   ): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string } {
+    if (noNoise) return action;
     const maxLocal = 78 * (Math.PI / 180);
     const aimPct = botCfg.aimErrorPct[difficulty] ?? 0;
     const powPct = botCfg.powerErrorPct[difficulty] ?? 0;
