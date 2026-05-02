@@ -85,8 +85,8 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
     if (t === 'turn_state') {
       const tt = Number(e?.t);
       if (Number.isFinite(tt)) {
-        if (!planningFirstT && e?.planningInProgress === 1) planningFirstT = tt;
-        if (!plannedFirstT && e?.plannedThisTurn === 1) plannedFirstT = tt;
+        if (planningFirstT === null && Number(e?.planningInProgress) === 1) planningFirstT = tt;
+        if (plannedFirstT === null && Number(e?.plannedThisTurn) === 1) plannedFirstT = tt;
       }
     }
     if (t === 'bot_decision') {
