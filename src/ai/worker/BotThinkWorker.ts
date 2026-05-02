@@ -248,6 +248,9 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
       return shooter;
     })();
     const debug = chooseBotActionDebug(rngDbg, world as any, debugShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || []);
+    if (plan && debug?.action) {
+      plan.action = { weaponIndex: debug.action.weaponIndex, facingRight: debug.action.facingRight, aimAngle: debug.action.aimAngle, power: debug.action.power, targetId: debug.action.targetId };
+    }
     const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: plan ? 1 : 0, ms: performance.now() - t0, plan: plan || null, debug };
     ctx.postMessage(out);
   } catch {
