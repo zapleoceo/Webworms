@@ -521,6 +521,7 @@ export class BotTurnController {
         const action0 = this.plan?.action && this.plan.action.weaponIndex >= 0 ? this.plan.action : null;
         const action = action0 || this.safeFallbackAction(presenter);
         if (action) {
+          if (presenter?.state?.mode === 'aivai' && this.lastWorkerUsed !== 1) return;
           const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
           this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', action, noisy);
           this.fireAction(presenter, noisy);
@@ -555,7 +556,9 @@ export class BotTurnController {
         this.planningInProgress = false;
         this.debug('plan', { moveTo: wr.plan.moveTo ? { x: Math.round(wr.plan.moveTo.x), y: Math.round(wr.plan.moveTo.y) } : null, weaponIndex: wr.plan.action.weaponIndex, targetId: wr.plan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
       } else if (!this.plannedThisTurn) {
-        const minWait = Math.min(0.45, Math.max(0.12, planSeconds * 0.25));
+        const minWait = presenter?.state?.mode === 'aivai'
+          ? 1.0
+          : Math.min(0.45, Math.max(0.12, planSeconds * 0.25));
         if (elapsed < minWait && timeLeft > reserveSeconds + 0.35) return;
         this.lastWorkerArrivedAfterMain = wr ? 1 : null;
         this.lastWorkerMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
@@ -667,6 +670,7 @@ export class BotTurnController {
 
       const action = canUsePlanned ? this.plan.action : this.safeFallbackAction(presenter);
       if (!action) return;
+      if (presenter?.state?.mode === 'aivai' && this.lastWorkerUsed !== 1) return;
       if (action.weaponIndex < 0) {
         const maxReplans = this.lastMovementCfg.maxReplansPerTurn ?? 4;
         const remaining = Math.max(0, executeSeconds - moveElapsed);
