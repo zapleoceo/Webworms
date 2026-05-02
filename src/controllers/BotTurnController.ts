@@ -568,6 +568,7 @@ export class BotTurnController {
           ? 1.0
           : Math.min(0.45, Math.max(0.12, planSeconds * 0.25));
         if (elapsed < minWait && timeLeft > reserveSeconds + 0.35) return;
+        if (presenter?.state?.mode === 'aivai' && timeLeft > reserveSeconds + 0.2) return;
         this.lastWorkerArrivedAfterMain = wr ? 1 : null;
         this.lastWorkerMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
         this.lastWorkerComputeMs = wr ? Number(wr.ms) : null;
