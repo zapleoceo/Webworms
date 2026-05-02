@@ -956,6 +956,9 @@ export class BotTurnController {
 
     if (this.ropeJumpAttachUntil > now && this.ropeJumpMoveTo && this.ropeJumpDir) {
       if (player.isJumping && this.ropeJumpStrategy && now >= this.lastRopeAttemptAt + 0.12) {
+        const jt = Math.max(0, now - (this.lastJumpAt || 0));
+        const vy = Number.isFinite(player.vy) ? Number(player.vy) : 0;
+        if (jt < 0.1 || Math.abs(vy) > 120) return true;
         const res = this.tryAttachRope(presenter, player, this.ropeJumpMoveTo, this.ropeJumpDir, this.ropeJumpBudget, now, this.ropeJumpStrategy);
         if (res === 'ok') {
           this.ropeJumpAttachUntil = 0;
