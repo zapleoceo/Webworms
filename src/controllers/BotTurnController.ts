@@ -1586,7 +1586,7 @@ export class BotTurnController {
       this.strategy = null;
     }
 
-    if (this.strategy === 'walk' && cliff.isDeepVoid) {
+    if (this.strategy === 'walk' && (cliff.isDeepVoid || cliff.isGapOrCliff)) {
       this.recordStrategyFailure('walk', now);
       this.strategy = null;
       return true;
@@ -1805,6 +1805,7 @@ export class BotTurnController {
 
   private tryDigEscape(presenter: any, player: any, dir: 'left' | 'right'): boolean {
     if (this.firedThisTurn) return false;
+    if (player.ropeActive || player.isJumping) return false;
     const cfg: any = presenter?.state?.botConfig || null;
     if (!cfg?.dig?.enabled) return false;
     const timeLeft = Number(presenter?.turnTimeLeft) || 0;
@@ -1968,6 +1969,17 @@ export class BotTurnController {
       return 'hard';
     }
 
+    const w = Number(presenter?.state?.width) || 0;
+    const h = Number(presenter?.state?.height) || 0;
+    const edgePadX = 70;
+    const edgePadYTop = 10;
+    const edgePadYBot = 70;
+    if (best.ray.x <= edgePadX || best.ray.x >= w - edgePadX || best.ray.y <= edgePadYTop || best.ray.y >= h - edgePadYBot) {
+      this.lastRopeAttemptAt = now;
+      this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'border', anglesTried: globalAngles.length, bestScore: best.score, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining, aimAngle: null, facingRight: null, rayHit: best.ray, ropeActiveAfterFire: 0, ropeCast: null });
+      return 'hard';
+    }
+
     player.aimAngle = best.aimAngle;
     presenter.handleInput?.('fire', true, true);
     this.lastRopeAttemptAt = now;
@@ -1983,7 +1995,8 @@ export class BotTurnController {
       return 'ok';
     }
 
-    return 'soft';
+    this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'fired_no_attach', anglesTried: globalAngles.length, bestScore: best.score, anchor: { x: best.ray.x, y: best.ray.y, dist: best.ray.dist }, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining, aimAngle: player.aimAngle, facingRight: player.facingRight ? 1 : 0, rayHit: best.ray, ropeActiveAfterFire: 0, ropeCast: { x: player.ropeCastX, y: player.ropeCastY, t: player.ropeCastTime } });
+    return 'hard';
   }
 
   private executeRope(
