@@ -717,7 +717,7 @@ export class BotTurnController {
         return;
       }
       const timeLeftNow = typeof presenter?.turnTimeLeft === 'number' ? presenter.turnTimeLeft : (typeof presenter?.state?.turnTimeLeft === 'number' ? presenter.state.turnTimeLeft : 0);
-      if (timeLeftNow > reserveSeconds + 1.2 && this.shouldSuppressShot(action)) {
+      if (timeLeftNow > reserveSeconds + 1.2 && this.shouldSuppressShot(presenter, action)) {
         const moveTo2 = this.fallbackMoveTo(presenter);
         this.plan = {
           moveTo: moveTo2 || undefined,
@@ -749,13 +749,26 @@ export class BotTurnController {
     return ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`ai:${presenter.matchDuration.toFixed(2)}:${presenter.state.currentPlayerIndex}`)) >>> 0;
   }
 
-  private shouldSuppressShot(action: { weaponIndex: number }): boolean {
-    const tr = this.lastDecisionDebug?.trace;
-    const chosen = tr?.chosen;
-    if (!chosen) return false;
-    if (typeof chosen.weaponIndex === 'number' && chosen.weaponIndex !== action.weaponIndex) return false;
-    const expected = Number(chosen.expectedDamage) || 0;
-    const muzzleBlocked = Number(tr?.rejected?.muzzle_blocked) || 0;
+  private shouldSuppressShot(presenter: any, action: { weaponIndex: number }): boolean {
+    const d = this.lastDecisionDebug;
+    if (!d) return false;
+    const tr = d?.trace || null;
+
+    let expected = 0;
+    if (tr?.chosen) {
+      if (typeof tr.chosen.weaponIndex === 'number' && tr.chosen.weaponIndex !== action.weaponIndex) return false;
+      expected = Number(tr.chosen.expectedDamage) || 0;
+    } else {
+      const p = presenter?.state?.getCurrentPlayer?.();
+      const equipmentIds: any[] = Array.isArray(p?.equipmentIds) ? p.equipmentIds : [];
+      const weaponId = typeof equipmentIds[action.weaponIndex] === 'string' ? equipmentIds[action.weaponIndex] : null;
+      const bw: any[] = Array.isArray(d?.bw) ? d.bw : [];
+      const row = weaponId ? bw.find((r: any) => Array.isArray(r) && r[0] === weaponId) : null;
+      if (row && row.length > 6) expected = Number(row[6]) || 0;
+      else if (Array.isArray(d?.ch) && d.ch.length > 6) expected = Number(d.ch[6]) || 0;
+    }
+
+    const muzzleBlocked = tr ? (Number(tr?.rejected?.muzzle_blocked) || 0) : (Number(d?.rj?.muzzle_blocked) || 0);
     if (expected > 0.05) return false;
     if (muzzleBlocked < 250) return false;
     return true;
