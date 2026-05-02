@@ -204,6 +204,9 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
         const path = findWaypointPath(terrain as any, { x: shooter.x, y: shooter.y }, { x: plan.moveTo.x, y: plan.moveTo.y }, shooter.width || 10, shooter.height || 10, 16, msg.ropeRemaining > 0);
         if (path && path.waypoints.length > 0) {
           plan.movePath = { waypoints: path.waypoints, primitive: path.primitive };
+        } else {
+          delete (plan as any).moveTo;
+          delete (plan as any).movePath;
         }
       }
     }

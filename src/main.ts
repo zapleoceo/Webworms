@@ -35,7 +35,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260502_1025';
+  const buildVersion = '20260502_1205';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -65,6 +65,10 @@ const loaderWormImageEl = document.getElementById('loader-worm-image') as HTMLIm
 const enemyDifficultyEl = document.getElementById('enemy-difficulty') as HTMLElement | null;
 const teamNameLeftEl = document.getElementById('team-name-left') as HTMLElement | null;
 const teamNameRightTextEl = document.getElementById('team-name-right-text') as HTMLElement | null;
+const teamGrenadesLeftWrapEl = document.getElementById('team-grenades-left-wrap') as HTMLElement | null;
+const teamGrenadesRightWrapEl = document.getElementById('team-grenades-right-wrap') as HTMLElement | null;
+const teamGrenadesLeftEl = document.getElementById('team-grenades-left') as HTMLElement | null;
+const teamGrenadesRightEl = document.getElementById('team-grenades-right') as HTMLElement | null;
 
 let currentAIDifficultyForMatch: AIDifficulty | null = null;
 let controlsBound = false;
@@ -1396,6 +1400,27 @@ function bindPresenterEvents() {
 
     hpLocalEl.style.width = `${teamHpPct(hud.leftTeam)}%`;
     hpEnemyEl.style.width = `${teamHpPct(hud.rightTeam)}%`;
+
+    const gLeft = state.teamAmmo?.[hud.leftTeam]?.grenade;
+    const gRight = state.teamAmmo?.[hud.rightTeam]?.grenade;
+    const gLeftOk = typeof gLeft === 'number' && Number.isFinite(gLeft);
+    const gRightOk = typeof gRight === 'number' && Number.isFinite(gRight);
+    if (teamGrenadesLeftWrapEl && teamGrenadesLeftEl) {
+      if (gLeftOk) {
+        teamGrenadesLeftWrapEl.style.display = '';
+        teamGrenadesLeftEl.innerText = `${Math.max(0, Math.floor(gLeft))}`;
+      } else {
+        teamGrenadesLeftWrapEl.style.display = 'none';
+      }
+    }
+    if (teamGrenadesRightWrapEl && teamGrenadesRightEl) {
+      if (gRightOk) {
+        teamGrenadesRightWrapEl.style.display = '';
+        teamGrenadesRightEl.innerText = `${Math.max(0, Math.floor(gRight))}`;
+      } else {
+        teamGrenadesRightWrapEl.style.display = 'none';
+      }
+    }
 
     if (teamNameLeftEl) teamNameLeftEl.textContent = hud.leftName;
     if (teamNameRightTextEl) teamNameRightTextEl.textContent = hud.rightName;

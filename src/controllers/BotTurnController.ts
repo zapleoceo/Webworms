@@ -677,7 +677,6 @@ export class BotTurnController {
     const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
     const findIdx = (id: string) => equipmentIds.findIndex(x => x === id);
     const bazookaIdx = findIdx('bazooka');
-    const grenadeIdx = findIdx('grenade');
 
     const enemies: any[] = Array.isArray(presenter?.state?.players)
       ? presenter.state.players.filter((w: any) => w && w.team !== player.team && w.health > 0)
@@ -691,16 +690,8 @@ export class BotTurnController {
     const facingRight = dx >= 0;
     const aimAngle = facingRight ? global : (Math.PI - global);
     const localAim = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle));
-    const dist = Math.hypot(dx, dy);
-
     if (bazookaIdx >= 0) {
       return { weaponIndex: bazookaIdx, facingRight, aimAngle: localAim, power: 60, targetId: String(presenter.state.players.indexOf(e)) };
-    }
-
-    const grenLeftRaw = presenter?.state?.teamAmmo?.[player.team]?.grenade;
-    const grenLeft = typeof grenLeftRaw === 'number' && Number.isFinite(grenLeftRaw) ? Math.max(0, Math.floor(grenLeftRaw)) : Infinity;
-    if (grenadeIdx >= 0 && grenLeft > 0 && dist > 240 && Math.abs(localAim) < 1.2) {
-      return { weaponIndex: grenadeIdx, facingRight, aimAngle: localAim, power: 60, targetId: String(presenter.state.players.indexOf(e)) };
     }
 
     return null;
@@ -998,6 +989,7 @@ export class BotTurnController {
     dir: 'left' | 'right',
     ropeRemaining: number
   ): MoveStrategy {
+    const dxTo = moveTo.x - player.x;
     const dy = moveTo.y - player.y;
     const needUp = dy < -30;
     const needDown = dy > 30;
@@ -1009,7 +1001,7 @@ export class BotTurnController {
 
     const candidates: MoveStrategy[] = [];
     if (hasRope && needUp) candidates.push('rope_climb');
-    if (hasRope && gap) candidates.push('rope_swing');
+    if (hasRope && gap && Math.abs(dxTo) >= 120) candidates.push('rope_swing');
     if (hasRope && needDown && !cliff.isDeepVoid) candidates.push('rope_descend');
     if (obstacle && !ceilingLow) candidates.push('jump');
     candidates.push('walk');
@@ -1192,8 +1184,9 @@ export class BotTurnController {
     const isSwing = strategy === 'rope_swing';
     const isDescend = strategy === 'rope_descend';
     const allowNearDx = (isClimb || isDescend) && Math.abs(dy) >= 80;
-    const minDx = isSwing ? 110 : 60;
+    const minDx = isSwing ? 70 : 60;
     if (Math.abs(dx) < minDx && !allowNearDx) {
+      this.lastRopeAttemptAt = now;
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'dx_small', anglesTried: 0, bestScore: null, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining });
       return 'soft';
     }

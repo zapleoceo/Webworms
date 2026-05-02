@@ -239,6 +239,8 @@ function chooseBotActionScored(
   const grenadeScarcityWeight = (botCfg as any).scoring?.grenadeScarcityWeight ?? 48;
   const grenadeCloseRangePx = (botCfg as any).scoring?.grenadeCloseRangePx ?? 170;
   const grenadeCloseAbsAngleMax = (botCfg as any).scoring?.grenadeCloseAbsAngleMax ?? 1.2;
+  const grenadeMinExpectedDamage = (botCfg as any).scoring?.grenadeMinExpectedDamage ?? 10;
+  const grenadeExtraSelfMargin = (botCfg as any).scoring?.grenadeExtraSelfMargin ?? 50;
 
   let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot; trace?: BotDecisionTrace } | null = null;
 
@@ -370,6 +372,10 @@ function chooseBotActionScored(
               bump('grenade_close_vertical');
               continue;
             }
+            if (!isKill && expectedDamage < grenadeMinExpectedDamage) {
+              bump('grenade_low_expected');
+              continue;
+            }
             if (grenLimited) {
               score -= grenadeScarcityWeight / (grenLeft + 1);
             }
@@ -380,6 +386,10 @@ function chooseBotActionScored(
           const selfDist = Math.hypot(res.end.x - shooter.x, res.end.y - shooter.y);
           if (selfDist < selfSafe) {
             bump('self_unsafe');
+            continue;
+          }
+          if (weapon.id === 'grenade' && selfDist < (selfSafe + grenadeExtraSelfMargin)) {
+            bump('grenade_self_margin');
             continue;
           }
           let expectedFriendlyDamage = 0;

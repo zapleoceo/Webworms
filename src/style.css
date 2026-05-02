@@ -785,10 +785,10 @@ button:hover {
 
 .team-status {
   background: var(--color-hud-bg);
-  padding: 10px 15px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.2);
-  width: 220px;
+  width: 176px;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -839,8 +839,8 @@ button:hover {
 
 .team-name {
   font-family: var(--font-comic);
-  font-size: 1.2rem;
-  margin-bottom: 5px;
+  font-size: 1.0rem;
+  margin-bottom: 4px;
   letter-spacing: 1px;
 }
 
@@ -896,12 +896,32 @@ button:hover {
 }
 
 .hp-bar-container {
-  width: 180px;
-  height: 12px;
+  width: 144px;
+  height: 10px;
   background: #222;
   border-radius: 6px;
   border: 2px solid #000;
   overflow: hidden;
+}
+
+.team-grenades {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-comic);
+  font-size: 0.95rem;
+  letter-spacing: 0.5px;
+  color: rgba(255,255,255,0.92);
+  pointer-events: none;
+}
+
+.team-grenades-icon {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 1px 0 rgba(0,0,0,0.8));
 }
 
 .hp-bar {
@@ -1446,14 +1466,14 @@ button:hover {
   }
 
   .hud-top { padding: 10px; }
-  .team-status { width: 170px; padding: 8px; }
+  .team-status { width: 136px; padding: 7px; }
   .team-name { font-size: 1rem; }
   .team-turn { font-size: 0.75rem; padding: 3px 8px; margin-bottom: 6px; }
   /* Compact HUD elements for mobile */
   .timer-bubble { width: 40px; height: 40px; font-size: 1.2rem; }
   .wind-bubble { font-size: 0.8rem; padding: 4px 8px; }
   .match-info { gap: 5px; }
-  .hp-bar-container { width: 130px; }
+  .hp-bar-container { width: 112px; }
   .timer-bubble-stack { padding: 6px 0 4px 0; }
   .timer-bubble-stack #turn-timer-value { font-size: 1.05rem; transform: translateY(-1px); }
   .timer-bubble-stack #match-timer { font-size: 0.8rem; }
@@ -1497,9 +1517,9 @@ button:hover {
   .huge-text { font-size: 2.5rem; }
   .menu-actions { max-width: 100%; padding: 0 10px; }
   .menu-footer { max-width: 100%; padding: 10px; }
-  .team-status { width: 150px; padding: 5px; }
+  .team-status { width: 120px; padding: 5px; }
   .timer-bubble { width: 40px; height: 40px; font-size: 1.2rem; }
-  .hp-bar-container { width: 115px; }
+  .hp-bar-container { width: 98px; }
 }
 
 .admin-table {
