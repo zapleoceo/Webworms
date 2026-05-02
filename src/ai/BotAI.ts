@@ -37,6 +37,7 @@ export interface BotAction {
 
 export interface BotPlan {
   moveTo?: { x: number; y: number };
+  movePath?: { waypoints: Array<{ x: number; y: number }>; primitive: 'walk' | 'jump' | 'rope' };
   action: BotAction;
   intent?: 'attack' | 'approach';
   intentReason?: Record<string, any>;

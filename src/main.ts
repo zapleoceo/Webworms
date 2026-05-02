@@ -35,7 +35,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260501_2200';
+  const buildVersion = '20260502_0810';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -1324,6 +1324,56 @@ function bindPresenterEvents() {
   const enemyTeamStatus = document.querySelector('.team-status.right-team') as HTMLElement | null;
   const rewardText = document.getElementById('game-over-reward') || document.getElementById('game-over-stats')!;
   const statsText = document.getElementById('game-over-stats')!;
+  const ensureAivaiMatchBox = (): { box: HTMLElement; line: HTMLElement; btnCopy: HTMLButtonElement; btnStats: HTMLButtonElement } => {
+    let box = document.getElementById('aivai-match-box') as HTMLElement | null;
+    let line = document.getElementById('aivai-match-line') as HTMLElement | null;
+    let btnCopy = document.getElementById('btn-copy-aivai-match') as HTMLButtonElement | null;
+    let btnStats = document.getElementById('btn-open-aivai-stats') as HTMLButtonElement | null;
+
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'aivai-match-box';
+      box.style.marginTop = '12px';
+      box.style.display = 'none';
+
+      line = document.createElement('div');
+      line.id = 'aivai-match-line';
+      line.className = 'stats-text';
+      box.appendChild(line);
+
+      const actions = document.createElement('div');
+      actions.style.display = 'flex';
+      actions.style.gap = '10px';
+      actions.style.marginTop = '10px';
+
+      btnCopy = document.createElement('button');
+      btnCopy.id = 'btn-copy-aivai-match';
+      btnCopy.className = 'secondary-btn w-full';
+      btnCopy.textContent = 'COPY MATCH ID';
+
+      btnStats = document.createElement('button');
+      btnStats.id = 'btn-open-aivai-stats';
+      btnStats.className = 'primary-btn w-full';
+      btnStats.textContent = 'OPEN STATS';
+
+      actions.appendChild(btnCopy);
+      actions.appendChild(btnStats);
+      box.appendChild(actions);
+
+      const modal = gameOverScreen.querySelector('.modal-box') as HTMLElement | null;
+      const actionsRoot = modal?.querySelector('.game-over-actions') as HTMLElement | null;
+      if (actionsRoot && modal) {
+        modal.insertBefore(box, actionsRoot);
+      } else {
+        statsText.insertAdjacentElement('afterend', box);
+      }
+    }
+
+    line = (line || document.getElementById('aivai-match-line')) as HTMLElement;
+    btnCopy = (btnCopy || document.getElementById('btn-copy-aivai-match')) as HTMLButtonElement;
+    btnStats = (btnStats || document.getElementById('btn-open-aivai-stats')) as HTMLButtonElement;
+    return { box, line, btnCopy, btnStats };
+  };
 
   let lastTurnPlayerIndex = -1;
   let lastTurnActiveTeam: string | null = null;
@@ -1490,6 +1540,40 @@ function bindPresenterEvents() {
         <p>Damage Dealt: ${Math.round(stats.damageDealt || stats.p1Dmg || 0)}</p>
         <p>Match Time: ${Math.round(stats.matchDuration || stats.matchTime || 0)}s</p>
       `;
+    }
+
+    const { box, line, btnCopy, btnStats } = ensureAivaiMatchBox();
+    if (currentMode === 'aivai') {
+      const matchId = (aivaiLog?.matchId || (window as any).__aivaiMatchId || '').toString();
+      if (matchId) {
+        box.style.display = '';
+        (box as any).dataset.matchId = matchId;
+        line.textContent = `AIVAI Match ID: ${matchId}`;
+        btnCopy.onclick = async () => {
+          const id = ((box as any).dataset.matchId || matchId).toString();
+          try {
+            if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(id);
+              return;
+            }
+          } catch {}
+          const input = document.createElement('input');
+          input.value = id;
+          document.body.appendChild(input);
+          input.select();
+          try { document.execCommand('copy'); } catch {}
+          document.body.removeChild(input);
+        };
+        btnStats.onclick = () => {
+          const id = ((box as any).dataset.matchId || matchId).toString();
+          const url = `/api/aivai/log/stats?matchId=${encodeURIComponent(id)}`;
+          window.open(url, '_blank');
+        };
+      } else {
+        box.style.display = 'none';
+      }
+    } else {
+      box.style.display = 'none';
     }
 
     if (currentMode === 'aivai' && aivaiLog) {

@@ -14,7 +14,7 @@ export class BotTurnController {
   private lastTurnIndex: number = -1;
   private firedThisTurn: boolean = false;
   private plannedThisTurn: boolean = false;
-  private plan: { moveTo?: { x: number; y: number }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string }; intent?: 'attack' | 'approach'; intentReason?: any } | null = null;
+  private plan: { moveTo?: { x: number; y: number }; movePath?: { waypoints: Array<{ x: number; y: number }>; primitive: 'walk' | 'jump' | 'rope' }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string }; intent?: 'attack' | 'approach'; intentReason?: any } | null = null;
   private moveStartedAt: number = 0;
 
   private ropeAttachUsed: number = 0;
@@ -74,6 +74,8 @@ export class BotTurnController {
   private shotMemory: Map<string, { stateKey: string; shotKey: string; noRes: number; ff: number; lastT: number; targetId: string }> = new Map();
   private pendingShotEval: { stateKey: string; shotKey: string; team: 'team1' | 'team2'; health0: number[]; targetId: string } | null = null;
   private replanCountThisTurn: number = 0;
+  private movePathWaypoints: Array<{ x: number; y: number }> | null = null;
+  private movePathIndex: number = 0;
 
   constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
     if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
@@ -259,6 +261,8 @@ export class BotTurnController {
       this.firedThisTurn = false;
       this.plannedThisTurn = false;
       this.plan = null;
+      this.movePathWaypoints = null;
+      this.movePathIndex = 0;
       this.moveStartedAt = presenter.matchDuration || 0;
       this.ropeAttachUsed = 0;
       this.ropeStartedAt = 0;
@@ -421,7 +425,16 @@ export class BotTurnController {
         this.lastWorkerUsed = 1;
         this.lastThinkSrc = 'worker';
         this.lastDecisionDebug = wr.debug || null;
-        this.plan = { moveTo: wr.plan.moveTo, action: { weaponIndex: wr.plan.action.weaponIndex, facingRight: wr.plan.action.facingRight, aimAngle: wr.plan.action.aimAngle, power: wr.plan.action.power, targetId: wr.plan.action.targetId }, intent: wr.plan.intent, intentReason: wr.plan.intentReason };
+        const wp = (wr.plan as any).movePath?.waypoints;
+        this.movePathWaypoints = Array.isArray(wp) ? wp.map((p: any) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 })) : null;
+        this.movePathIndex = 0;
+        this.plan = {
+          moveTo: wr.plan.moveTo,
+          movePath: (wr.plan as any).movePath || undefined,
+          action: { weaponIndex: wr.plan.action.weaponIndex, facingRight: wr.plan.action.facingRight, aimAngle: wr.plan.action.aimAngle, power: wr.plan.action.power, targetId: wr.plan.action.targetId },
+          intent: wr.plan.intent,
+          intentReason: wr.plan.intentReason
+        };
         this.moveStartedAt = now;
         this.plannedThisTurn = true;
         this.planningInProgress = false;
@@ -439,6 +452,8 @@ export class BotTurnController {
         const moveTo = this.fallbackMoveTo(presenter);
         if (fallback || moveTo) {
           const placeholder = { weaponIndex: -1, facingRight: !!player.facingRight, aimAngle: player.aimAngle || 0, power: 60, targetId: 'none' };
+          this.movePathWaypoints = null;
+          this.movePathIndex = 0;
           this.plan = { moveTo: moveTo || undefined, action: fallback || placeholder };
           this.moveStartedAt = now;
           this.plannedThisTurn = true;
@@ -452,7 +467,21 @@ export class BotTurnController {
 
     if (!this.plan) return;
 
-    const moveTo = this.plan.moveTo;
+    let moveTo = this.plan.moveTo;
+    if (this.movePathWaypoints && this.movePathWaypoints.length > 0) {
+      while (this.movePathIndex < this.movePathWaypoints.length) {
+        const p = this.movePathWaypoints[this.movePathIndex];
+        if (!p) break;
+        const dx = Math.abs(p.x - player.x);
+        const dy = Math.abs(p.y - player.y);
+        if (dx < 24 && dy < 28) {
+          this.movePathIndex += 1;
+          continue;
+        }
+        moveTo = p;
+        break;
+      }
+    }
     const moveElapsed = Math.max(0, now - this.moveStartedAt);
 
     const maxReplans = this.lastMovementCfg.maxReplansPerTurn ?? 4;
@@ -533,6 +562,8 @@ export class BotTurnController {
             this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, remaining, ropeRemaining, rngSeed, difficulty);
             this.planningInProgress = true;
             this.plan = null;
+            this.movePathWaypoints = null;
+            this.movePathIndex = 0;
           }
           return;
         }
@@ -712,6 +743,8 @@ export class BotTurnController {
       this.strategy = null;
       this.plannedThisTurn = false;
       this.plan = null;
+      this.movePathWaypoints = null;
+      this.movePathIndex = 0;
       this.didReplanThisTurn = true;
       this.debug('replan', { reason: 'dir_flip', banned: Array.from(this.bannedTurn) });
       return true;
@@ -728,6 +761,8 @@ export class BotTurnController {
         this.lastReplanAt = now;
         this.plannedThisTurn = false;
         this.plan = null;
+        this.movePathWaypoints = null;
+        this.movePathIndex = 0;
         this.didReplanThisTurn = true;
         this.debug('replan', { reason: 'box_stuck', banned: Array.from(this.bannedTurn) });
       }
@@ -741,6 +776,8 @@ export class BotTurnController {
         this.lastReplanAt = now;
         this.plannedThisTurn = false;
         this.plan = null;
+        this.movePathWaypoints = null;
+        this.movePathIndex = 0;
         this.didReplanThisTurn = true;
         this.debug('replan', { reason: 'walk_stuck', banned: Array.from(this.bannedTurn) });
       }
@@ -834,6 +871,8 @@ export class BotTurnController {
       this.lastReplanAt = now;
       this.plannedThisTurn = false;
       this.plan = null;
+      this.movePathWaypoints = null;
+      this.movePathIndex = 0;
       this.didReplanThisTurn = true;
       this.debug('replan', { reason: 'banned_threshold', banned: Array.from(this.bannedTurn) });
     }
