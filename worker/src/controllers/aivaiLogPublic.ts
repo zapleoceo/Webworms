@@ -1,5 +1,6 @@
 function isAllowedOrigin(request: Request): boolean {
   const origin = request.headers.get('Origin') || '';
+  if (!origin) return true;
   return origin === 'https://webworms.pages.dev' || origin.startsWith('http://localhost');
 }
 
@@ -106,4 +107,3 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
     typesTop: Object.entries(types).sort((a, b) => b[1] - a[1]).slice(0, 12)
   }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }
-
