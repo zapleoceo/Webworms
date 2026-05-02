@@ -785,8 +785,8 @@ export class GamePresenter {
       this.onLocalAction(action, isActive, payload);
     }
 
-    // Cancel camera delay immediately if any action is pressed (move, fire, switch)
-    if (isActive) {
+    // Cancel camera delay immediately only for local input
+    if (isActive && !isRemote) {
       this.cameraDelayTimer = 0;
     }
 
