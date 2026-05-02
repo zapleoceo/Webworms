@@ -901,9 +901,9 @@ export class BotTurnController {
     this.ensureStrategy(strategy, presenter, player, moveTo, now);
 
     if (this.strategy === 'rope_climb' || this.strategy === 'rope_swing' || this.strategy === 'rope_descend') {
-      const ok = this.tryAttachRope(presenter, player, moveTo, dir, ropeBudget, now, this.strategy);
-      if (ok) return true;
-      this.recordStrategyFailure(this.strategy, now);
+      const res = this.tryAttachRope(presenter, player, moveTo, dir, ropeBudget, now, this.strategy);
+      if (res === 'ok' || res === 'cooldown') return true;
+      if (res === 'hard') this.recordStrategyFailure(this.strategy, now);
       this.strategy = null;
       return true;
     }
@@ -1168,22 +1168,22 @@ export class BotTurnController {
     ropeBudget: number,
     now: number,
     strategy: MoveStrategy
-  ): boolean {
+  ): 'ok' | 'cooldown' | 'soft' | 'hard' {
     const equipmentIds: string[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
     const ropeIndex = equipmentIds.findIndex((id: string) => id === 'ninja_rope');
     const ropeRemaining = Math.max(0, ropeBudget - this.ropeAttachUsed);
     if (ropeIndex < 0) {
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'no_rope', anglesTried: 0, bestScore: null, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs });
-      return false;
+      return 'hard';
     }
     if (this.ropeAttachUsed >= ropeBudget) {
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'budget', anglesTried: 0, bestScore: null, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs });
-      return false;
+      return 'hard';
     }
-    if (player.ropeActive) return true;
+    if (player.ropeActive) return 'ok';
     if (now - this.lastRopeAttemptAt < 0.55) {
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'cooldown', anglesTried: 0, bestScore: null, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs });
-      return false;
+      return 'cooldown';
     }
 
     const dx = moveTo.x - player.x;
@@ -1192,9 +1192,10 @@ export class BotTurnController {
     const isSwing = strategy === 'rope_swing';
     const isDescend = strategy === 'rope_descend';
     const allowNearDx = (isClimb || isDescend) && Math.abs(dy) >= 80;
-    if (Math.abs(dx) < 110 && !allowNearDx) {
+    const minDx = isSwing ? 110 : 60;
+    if (Math.abs(dx) < minDx && !allowNearDx) {
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'dx_small', anglesTried: 0, bestScore: null, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining });
-      return false;
+      return 'soft';
     }
 
     presenter.handleInput?.('switch', true, true, ropeIndex);
@@ -1242,7 +1243,7 @@ export class BotTurnController {
     if (!best) {
       this.lastRopeAttemptAt = now;
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'no_anchor', anglesTried: globalAngles.length, bestScore: null, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining });
-      return false;
+      return 'hard';
     }
 
     player.aimAngle = best.aimAngle;
@@ -1257,10 +1258,10 @@ export class BotTurnController {
       this.strategyEvalAt = now + 0.65;
       this.ropeStallCount = 0;
       this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'attached', anglesTried: globalAngles.length, bestScore: best.score, anchor: null, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining: Math.max(0, ropeRemaining - 1) });
-      return true;
+      return 'ok';
     }
 
-    return false;
+    return 'soft';
   }
 
   private executeRope(

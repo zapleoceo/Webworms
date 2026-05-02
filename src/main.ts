@@ -35,7 +35,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260502_0912';
+  const buildVersion = '20260502_1025';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
