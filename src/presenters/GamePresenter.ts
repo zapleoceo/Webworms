@@ -59,6 +59,7 @@ export class GamePresenter {
   public maxTurnTime: number = 30;
   public matchDuration: number = 0;
   public hasFiredThisTurn: boolean = false;
+  private turnOvertimeAfterTimeoutSec: number = 0;
   public isPaused: boolean = false;
   public isHost: boolean = true; // Is this client computing physics?
   public brandAssets: string[] = ['apple', 'android', 'windows'];
@@ -190,6 +191,22 @@ export class GamePresenter {
         });
       }
     };
+  }
+
+  private forceExplodeActiveProjectiles(): void {
+    const projs: any[] = Array.isArray(this.state.projectiles) ? this.state.projectiles : [];
+    for (const p of projs) {
+      if (!p || p.active === false) continue;
+      const owner = (p as any).owner || null;
+      const weaponId = typeof p.weaponId === 'string' ? p.weaponId : 'bazooka';
+      const damage = Number(p.damage) || 0;
+      const explosionRadius = Number(p.explosionRadius) || 0;
+      const knockback = Number(p.knockback) || 0;
+      const crater = (p as any).crater !== false;
+      this.physics.explodeAt(this.state, Number(p.x) || 0, Number(p.y) || 0, { weaponId, damage, explosionRadius, knockback, crater, owner }, 1.0);
+      p.active = false;
+    }
+    this.state.projectiles = this.state.projectiles.filter((p: any) => p && p.active);
   }
 
   public updateScreenSize(width: number, height: number): void {
@@ -458,6 +475,15 @@ export class GamePresenter {
       const hasProjectiles = this.state.projectiles.length > 0;
       if (this.botTurnController) {
         this.botTurnController.update(this, hasProjectiles);
+      }
+      const hasProjectilesNow = this.state.projectiles.length > 0;
+      if (this.turnTimeLeft <= 0 && this.state.mode !== 'training' && this.hasFiredThisTurn && hasProjectilesNow) {
+        this.turnOvertimeAfterTimeoutSec += dtTimer;
+        if (this.turnOvertimeAfterTimeoutSec >= 10) {
+          this.forceExplodeActiveProjectiles();
+        }
+      } else {
+        this.turnOvertimeAfterTimeoutSec = 0;
       }
       const isStable = this.state.projectiles.length === 0;
       const turnStep = stepTurn({
@@ -1234,6 +1260,7 @@ export class GamePresenter {
 
     this.hasFiredThisTurn = false;
     this.state.hasFiredThisTurn = false;
+    this.turnOvertimeAfterTimeoutSec = 0;
 
     // Keep track of which team went last
     const currentPlayer = this.state.getCurrentPlayer();
