@@ -58,6 +58,12 @@ export class CanvasRenderer {
       const src = `/sprites/Misc/grave${i}.png`;
       this.wormImages[src] = this.loadImg(src);
     }
+
+    for (let row = 1; row <= 11; row++) {
+      for (let col = 0; col <= 7; col++) {
+        this.getCustomFrame(this.framePath(row, col));
+      }
+    }
   }
 
   private customFrameCache: { [key: string]: HTMLImageElement } = {};
@@ -89,6 +95,10 @@ export class CanvasRenderer {
 
   private framePath(row: number, col: number): string {
     return `/sprites/custom_weapons/frames/row${row}_col${col}.png`;
+  }
+
+  private isImgReady(img: HTMLImageElement): boolean {
+    return img.complete && img.naturalWidth !== 0;
   }
 
   private projectileSpriteForWeaponId(weaponId: string): string | null {
@@ -844,15 +854,22 @@ export class CanvasRenderer {
     if (!row) return;
     const src = this.framePath(row, 1);
     const img = this.getCustomFrame(src);
-    const maxDim = Math.max(1, Math.max(img.width || 0, img.height || 0));
-    const base = (equipmentId === 'ninja_rope' ? 46 : 44) * 0.7;
-    const k = base / maxDim;
+    const base = (equipmentId === 'ninja_rope' ? 46 : 44) * 0.7
 
     this.ctx.save();
     this.ctx.translate(0, -player.height / 2 + 8);
     this.ctx.scale(player.facingRight ? 1 : -1, 1);
     this.ctx.rotate(player.aimAngle || 0);
-    this.ctx.drawImage(img, -img.width * k / 2, -img.height * k / 2, img.width * k, img.height * k);
+    if (this.isImgReady(img)) {
+      const maxDim = Math.max(1, Math.max(img.width || 0, img.height || 0));
+      const k = base / maxDim;
+      this.ctx.drawImage(img, -img.width * k / 2, -img.height * k / 2, img.width * k, img.height * k);
+    } else {
+      const w = base * 0.95;
+      const h = base * 0.28;
+      this.ctx.fillStyle = '#2b2b2b';
+      this.ctx.fillRect(-w * 0.45, -h * 0.5, w, h);
+    }
     this.ctx.restore();
   }
 
@@ -951,24 +968,33 @@ export class CanvasRenderer {
       if (trail.length > 0) {
         const idx = Math.floor(((proj as any).age || 0) * 18) % trail.length;
         const img = this.getCustomFrame(trail[idx]);
-        const s = Math.max(6, proj.radius * 2.2);
-        const off = Math.max(10, proj.radius * 3);
-        this.ctx.save();
-        this.ctx.rotate(angle + Math.PI);
-        this.ctx.globalAlpha = 0.85;
-        this.ctx.drawImage(img, -s * 0.5 - off, -s * 0.5, s, s);
-        this.ctx.restore();
-        this.ctx.globalAlpha = 1.0;
+        if (this.isImgReady(img) && Number.isFinite(proj.radius)) {
+          const s = Math.max(6, proj.radius * 2.2);
+          const off = Math.max(10, proj.radius * 3);
+          this.ctx.save();
+          this.ctx.rotate(angle + Math.PI);
+          this.ctx.globalAlpha = 0.85;
+          this.ctx.drawImage(img, -s * 0.5 - off, -s * 0.5, s, s);
+          this.ctx.restore();
+          this.ctx.globalAlpha = 1.0;
+        }
       }
 
       const sprite = this.projectileSpriteForWeaponId(proj.weaponId);
       if (sprite) {
         const img = this.getCustomFrame(sprite);
-        const s = Math.max(10, proj.radius * 4.2);
-        this.ctx.save();
-        this.ctx.rotate(angle);
-        this.ctx.drawImage(img, -s / 2, -s / 2, s, s);
-        this.ctx.restore();
+        if (this.isImgReady(img) && Number.isFinite(proj.radius)) {
+          const s = Math.max(10, proj.radius * 4.2);
+          this.ctx.save();
+          this.ctx.rotate(angle);
+          this.ctx.drawImage(img, -s / 2, -s / 2, s, s);
+          this.ctx.restore();
+        } else {
+          this.ctx.fillStyle = proj.color || 'yellow';
+          this.ctx.beginPath();
+          this.ctx.arc(0, 0, Number.isFinite(proj.radius) ? proj.radius : 3, 0, Math.PI * 2);
+          this.ctx.fill();
+        }
       } else {
         this.ctx.fillStyle = proj.color || 'yellow';
         this.ctx.beginPath();
@@ -1022,9 +1048,16 @@ export class CanvasRenderer {
       const sprite = wid ? this.explosionSpriteForWeaponId(String(wid), exp.maxRadius) : null;
       if (sprite) {
         const img = this.getCustomFrame(sprite);
-        const s = Math.max(18, exp.maxRadius * 1.75);
-        const pulse = 0.85 + 0.25 * Math.sin(progress * Math.PI);
-        this.ctx.drawImage(img, -s * pulse / 2, -s * pulse / 2, s * pulse, s * pulse);
+        if (this.isImgReady(img)) {
+          const s = Math.max(18, exp.maxRadius * 1.75);
+          const pulse = 0.85 + 0.25 * Math.sin(progress * Math.PI);
+          this.ctx.drawImage(img, -s * pulse / 2, -s * pulse / 2, s * pulse, s * pulse);
+        } else {
+          this.ctx.fillStyle = '#FF4500';
+          this.ctx.beginPath();
+          this.ctx.arc(0, 0, exp.radius, 0, Math.PI * 2);
+          this.ctx.fill();
+        }
       } else {
         this.ctx.fillStyle = '#FF4500';
         this.ctx.beginPath();
