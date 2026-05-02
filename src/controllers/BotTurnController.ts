@@ -90,6 +90,19 @@ export class BotTurnController {
   private workerTerrainDimKey: string = '';
   private workerTerrainDfEventIndex: number = 0;
 
+  private bgWorker: Worker | null = null;
+  private bgWorkerJobId: string | null = null;
+  private bgWorkerResult: any | null = null;
+  private bgPlanningInProgress: boolean = false;
+  private bgPlanKey: string | null = null;
+  private bgWorkerTerrainReady: boolean = false;
+  private bgWorkerTerrainDimKey: string = '';
+  private bgWorkerTerrainDfEventIndex: number = 0;
+
+  private planCache: Map<string, { key: string; createdAt: number; shooterId: string; rev: number; df: number; plan: any; debug: any; score: number }> = new Map();
+  private lastCacheRev: number = -1;
+  private lastCacheDf: number = -1;
+
   constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
     if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
   }
@@ -235,6 +248,133 @@ export class BotTurnController {
     }
   }
 
+  private ensureBgWorker() {
+    if (this.bgWorker) return;
+    try {
+      this.bgWorker = new ThinkWorker();
+      this.bgWorkerTerrainReady = false;
+      this.bgWorkerTerrainDimKey = '';
+      this.bgWorkerTerrainDfEventIndex = 0;
+      const worker = this.bgWorker;
+      if (!worker) return;
+      worker.onerror = (evt: any) => {
+        void evt;
+      };
+      worker.onmessage = (evt: MessageEvent<any>) => {
+        const msg = evt.data;
+        if (!msg || msg.kind !== 'planResult') return;
+        if (!this.bgWorkerJobId || msg.jobId !== this.bgWorkerJobId) return;
+        this.bgWorkerResult = msg;
+      };
+    } catch {
+      this.bgWorker = null;
+    }
+  }
+
+  private terrainSig(presenter: any): { rev: number; df: number; dimKey: string } {
+    const terrain = presenter?.state?.landscape;
+    const dfEvents: any[] = Array.isArray((terrain as any)?.dfEvents) ? (terrain as any).dfEvents : [];
+    const rev = Number((terrain as any)?.revision) || 0;
+    const df = dfEvents.length;
+    const dimKey = `${terrain?.width || 0}x${terrain?.height || 0}`;
+    return { rev, df, dimKey };
+  }
+
+  private prunePlanCache(presenter: any) {
+    const sig = this.terrainSig(presenter);
+    if (sig.rev !== this.lastCacheRev || sig.df !== this.lastCacheDf) {
+      this.lastCacheRev = sig.rev;
+      this.lastCacheDf = sig.df;
+      for (const [k, v] of this.planCache.entries()) {
+        if (v.rev !== sig.rev || v.df !== sig.df) this.planCache.delete(k);
+      }
+    }
+    if (this.planCache.size > 140) {
+      const entries = Array.from(this.planCache.entries()).sort((a, b) => a[1].createdAt - b[1].createdAt);
+      for (let i = 0; i < Math.max(0, entries.length - 110); i++) this.planCache.delete(entries[i][0]);
+    }
+    const alive = presenter?.state?.players?.map((p: any, idx: number) => (p && p.health > 0) ? String(idx) : null).filter(Boolean) as string[] || [];
+    if (alive.length > 0) {
+      const aliveSet = new Set(alive);
+      for (const [k, v] of this.planCache.entries()) {
+        if (!aliveSet.has(v.shooterId)) this.planCache.delete(k);
+      }
+    }
+  }
+
+  private worldKey(presenter: any, shooterIndex: number, ropeRemaining: number): string {
+    const sig = this.terrainSig(presenter);
+    const wind = Number.isFinite(presenter?.state?.wind) ? Number(presenter.state.wind) : 0;
+    const windBin = Math.round(wind / 10);
+    const g1 = presenter?.state?.teamAmmo?.team1?.grenade;
+    const g2 = presenter?.state?.teamAmmo?.team2?.grenade;
+    const a1 = (typeof g1 === 'number' && Number.isFinite(g1)) ? Math.max(0, Math.floor(g1)) : -1;
+    const a2 = (typeof g2 === 'number' && Number.isFinite(g2)) ? Math.max(0, Math.floor(g2)) : -1;
+    const players: any[] = Array.isArray(presenter?.state?.players) ? presenter.state.players : [];
+    const parts: string[] = [];
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      if (!p || p.health <= 0) continue;
+      const qx = Math.round((Number(p.x) || 0) / 16);
+      const qy = Math.round((Number(p.y) || 0) / 16);
+      const hh = Math.max(0, Math.min(10, Math.round((Number(p.health) || 0) / 10)));
+      parts.push(`${i}${p.team === 'team1' ? 'a' : 'b'}${qx},${qy},${hh}`);
+    }
+    const raw = `${this.matchKey}|rev${sig.rev}|df${sig.df}|w${windBin}|g${a1}:${a2}|r${Math.round(ropeRemaining)}|s${shooterIndex}|${parts.join('|')}`;
+    return String(hashStringToSeed(raw) >>> 0);
+  }
+
+  private buildBotViewForIndex(presenter: any, shooterIndex: number): { world: any; worms: BotWormSnapshot[]; shooter: BotWormSnapshot; enemies: BotWormSnapshot[]; allies: BotWormSnapshot[] } | null {
+    const terrain = terrainFromLandscape(presenter.state.landscape);
+    const world = { gravity: presenter.physics.gravity, wind: presenter.state.wind || 0, terrain, teamAmmo: presenter.state.teamAmmo };
+    const players: any[] = Array.isArray(presenter.state.players) ? presenter.state.players : [];
+    const worms: BotWormSnapshot[] = players.map((p: any, idx: number) => ({
+      id: String(idx),
+      team: p.team,
+      x: p.x,
+      y: p.y,
+      width: p.width || 10,
+      height: p.height || 10,
+      health: p.health || 0,
+      maxHealth: p.maxHealth || p.health || 0,
+      defense: p.defense || 0,
+      mass: p.mass || 1,
+      jumpForce: p.jumpForce || -150,
+      speedMultiplier: p.speedMultiplier || 1,
+      weaponCooldowns: p.weaponCooldowns || {},
+      equipmentIds: Array.isArray(p.equipmentIds) ? p.equipmentIds : []
+    }));
+    const shooter = worms.find((w) => w.id === String(shooterIndex));
+    if (!shooter || shooter.health <= 0) return null;
+    const enemies = worms.filter((w) => w.team !== shooter.team && w.health > 0);
+    const allies = worms.filter((w) => w.team === shooter.team && w.health > 0);
+    return { world, worms, shooter, enemies, allies };
+  }
+
+  private peekNextTurnIndex(presenter: any): number {
+    const state = presenter?.state;
+    const players: any[] = Array.isArray(state?.players) ? state.players : [];
+    if (players.length === 0) return -1;
+    const cur = state.getCurrentPlayer?.();
+    const curTeam = cur?.team || 'team1';
+    const nextTeam = state.mode === 'training' ? 'team1' : (curTeam === 'team1' ? 'team2' : 'team1');
+    if (!state.lastPlayedIndex) state.lastPlayedIndex = { team1: -1, team2: -1 };
+    const lastIdx = Number(state.lastPlayedIndex?.[nextTeam]) || -1;
+    let searchIndex = (lastIdx + 1) % players.length;
+    for (let k = 0; k < players.length; k++) {
+      const p = players[searchIndex];
+      if (p && p.team === nextTeam && p.health > 0) return searchIndex;
+      searchIndex = (searchIndex + 1) % players.length;
+    }
+    searchIndex = (state.currentPlayerIndex + 1) % players.length;
+    for (let k = 0; k < players.length; k++) {
+      const p = players[searchIndex];
+      if (p && p.health > 0) return searchIndex;
+      searchIndex = (searchIndex + 1) % players.length;
+    }
+    return -1;
+  }
+
   private startWorkerPlan(presenter: any, worms: BotWormSnapshot[], shooterId: string, botCfg: BotConfig, executeSeconds: number, ropeRemaining: number, rngSeed: number, difficulty: AIDifficulty): void {
     try {
       this.ensureWorker();
@@ -312,6 +452,98 @@ export class BotTurnController {
     } catch {}
   }
 
+  private startBgWorkerPlan(presenter: any, worms: BotWormSnapshot[], shooterId: string, botCfg: BotConfig, executeSeconds: number, ropeRemaining: number, rngSeed: number, difficulty: AIDifficulty): void {
+    try {
+      this.ensureBgWorker();
+      if (!this.bgWorker) return;
+      const terrain = presenter.state.landscape;
+      const grid = terrain?.grid;
+      if (!(grid instanceof Uint8Array)) return;
+      const dfEvents: any[] = Array.isArray((terrain as any).dfEvents) ? (terrain as any).dfEvents : [];
+      const dimKey = `${terrain.width}x${terrain.height}`;
+      const needInit = !this.bgWorkerTerrainReady || this.bgWorkerTerrainDimKey !== dimKey || !Number.isFinite(this.bgWorkerTerrainDfEventIndex);
+      if (needInit) {
+        const bufInit = grid.slice().buffer;
+        this.bgWorker.postMessage({
+          kind: 'terrainInit',
+          width: terrain.width,
+          height: terrain.height,
+          grid: bufInit,
+          dfEventIndex: dfEvents.length,
+          revision: terrain.revision || 0
+        }, [bufInit]);
+        this.bgWorkerTerrainReady = true;
+        this.bgWorkerTerrainDimKey = dimKey;
+        this.bgWorkerTerrainDfEventIndex = dfEvents.length;
+      } else if (dfEvents.length > this.bgWorkerTerrainDfEventIndex) {
+        const delta = dfEvents.slice(this.bgWorkerTerrainDfEventIndex);
+        const resetSeen = delta.some((e: any) => e && e.kind === 'reset');
+        if (resetSeen) {
+          const bufInit = grid.slice().buffer;
+          this.bgWorker.postMessage({
+            kind: 'terrainInit',
+            width: terrain.width,
+            height: terrain.height,
+            grid: bufInit,
+            dfEventIndex: dfEvents.length,
+            revision: terrain.revision || 0
+          }, [bufInit]);
+          this.bgWorkerTerrainReady = true;
+          this.bgWorkerTerrainDimKey = dimKey;
+          this.bgWorkerTerrainDfEventIndex = dfEvents.length;
+        } else {
+          this.bgWorker.postMessage({
+            kind: 'terrainPatch',
+            fromEventIndex: this.bgWorkerTerrainDfEventIndex,
+            toEventIndex: dfEvents.length,
+            events: delta,
+            revision: terrain.revision || 0
+          });
+          this.bgWorkerTerrainDfEventIndex = dfEvents.length;
+        }
+      }
+      const jobId = `${this.matchKey}:bg:${shooterId}:${(presenter.matchDuration || 0).toFixed(2)}`;
+      this.bgWorkerJobId = jobId;
+      this.bgWorkerResult = null;
+      this.bgPlanKey = this.worldKey(presenter, Number(shooterId) || 0, ropeRemaining);
+      const shotMemory = Array.from(this.shotMemory.values())
+        .sort((a, b) => b.lastT - a.lastT)
+        .slice(0, 160)
+        .map(x => ({ stateKey: x.stateKey, shotKey: x.shotKey, noRes: x.noRes, ff: x.ff, targetId: x.targetId, lastT: x.lastT }));
+      this.bgWorker.postMessage({
+        kind: 'plan',
+        jobId,
+        rngSeed,
+        difficulty,
+        gravity: presenter.physics.gravity,
+        wind: presenter.state.wind || 0,
+        teamAmmo: presenter.state.teamAmmo,
+        worms,
+        shooterId,
+        botCfg,
+        executeSeconds,
+        ropeRemaining,
+        shotMemory
+      });
+    } catch {}
+  }
+
+  private maybeConsumeBgResult(presenter: any, ropeRemaining: number) {
+    if (!this.bgPlanningInProgress) return;
+    const wr = (this.bgWorkerResult && this.bgWorkerJobId && this.bgWorkerResult.jobId === this.bgWorkerJobId) ? this.bgWorkerResult : null;
+    const wrOk = !!(wr && wr.ok === 1 && wr.plan);
+    if (!wrOk) return;
+    this.bgPlanningInProgress = false;
+    const plan = wr.plan;
+    const debug = wr.debug || null;
+    const score = Number(debug?.score) || 0;
+    const shooterId = String((debug?.trace?.shooter?.id ?? ''));
+    const sig = this.terrainSig(presenter);
+    const key = this.bgPlanKey || this.worldKey(presenter, Number(shooterId) || 0, ropeRemaining);
+    this.bgPlanKey = null;
+    this.planCache.set(key, { key, createdAt: performance.now(), shooterId, rev: sig.rev, df: sig.df, plan, debug, score });
+  }
+
   private debugEnabled(): boolean {
     try {
       const loc = (globalThis as any)?.location?.search || '';
@@ -377,6 +609,16 @@ export class BotTurnController {
       this.workerTerrainReady = false;
       this.workerTerrainDimKey = '';
       this.workerTerrainDfEventIndex = 0;
+      this.bgWorkerTerrainReady = false;
+      this.bgWorkerTerrainDimKey = '';
+      this.bgWorkerTerrainDfEventIndex = 0;
+      this.bgWorkerJobId = null;
+      this.bgWorkerResult = null;
+      this.bgPlanningInProgress = false;
+      this.bgPlanKey = null;
+      this.planCache.clear();
+      this.lastCacheRev = -1;
+      this.lastCacheDf = -1;
     }
 
     const isBotTurn = presenter.state.mode === 'aivai' ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
@@ -431,6 +673,10 @@ export class BotTurnController {
       this.workerResult = null;
       this.workerArrivedAt = 0;
       this.workerStartedAt = 0;
+      this.bgWorkerJobId = null;
+      this.bgWorkerResult = null;
+      this.bgPlanningInProgress = false;
+      this.bgPlanKey = null;
       this.debug('turn_start', { idx: curIdx, name: player.name, x: Math.round(player.x), y: Math.round(player.y) });
       presenter.handleInput?.('left', false, true);
       presenter.handleInput?.('right', false, true);
@@ -440,7 +686,49 @@ export class BotTurnController {
       presenter.handleInput?.('fire', false, true);
     }
 
-    if (!isBotTurn) return;
+    const botCfg0: BotConfig = presenter.state.botConfig || DEFAULT_BOT_CONFIG;
+    const activeTeam0: 'team1' | 'team2' = player.team === 'team1' ? 'team1' : 'team2';
+    const difficulty0 = (presenter.state.mode === 'aivai'
+      ? (this.difficultyByTeam[activeTeam0] as AIDifficulty | undefined)
+      : ((getAIDifficulty() as AIDifficulty) || undefined)) || 'medium';
+    const ropeBudget0 = botCfg0.ropeAttachLimit[difficulty0] ?? 0;
+    const ropeRemaining0 = Math.max(0, ropeBudget0 - this.ropeAttachUsed);
+    this.prunePlanCache(presenter);
+    this.maybeConsumeBgResult(presenter, ropeRemaining0);
+
+    if (!isBotTurn) {
+      const hasProjectiles0 = (presenter.state.projectiles?.length || 0) > 0;
+      if (!hasProjectiles0 && !isWorldBusy && !this.bgPlanningInProgress) {
+        const nextIdx = this.peekNextTurnIndex(presenter);
+        if (nextIdx >= 0) {
+          const nextPlayer = presenter.state.players?.[nextIdx];
+          const nextIsBot = presenter.state.mode === 'aivai'
+            ? !!nextPlayer
+            : (nextPlayer?.team === 'team2');
+          if (nextIsBot) {
+            const view = this.buildBotViewForIndex(presenter, nextIdx);
+            if (view) {
+              const teamKey: 'team1' | 'team2' = view.shooter.team === 'team1' ? 'team1' : 'team2';
+              const diff = (presenter.state.mode === 'aivai'
+                ? ((this.difficultyByTeam[teamKey] as AIDifficulty | undefined) || 'hard')
+                : (((getAIDifficulty() as AIDifficulty) || undefined) || 'medium'));
+              const maxTurn = Number.isFinite(presenter.maxTurnTime) ? presenter.maxTurnTime : 30;
+              const reserveSeconds = presenter?.state?.mode === 'aivai' ? 2.0 : botCfg0.reserveSeconds;
+              const executeSeconds = Math.max(0, maxTurn - botCfg0.planSeconds - reserveSeconds);
+              const ropeBudget = botCfg0.ropeAttachLimit[diff] ?? 0;
+              const ropeRemaining = Math.max(0, ropeBudget);
+              const key = this.worldKey(presenter, nextIdx, ropeRemaining);
+              if (!this.planCache.has(key)) {
+                const rngSeed = ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`pre:${key}`)) >>> 0;
+                this.startBgWorkerPlan(presenter, view.worms, view.shooter.id, botCfg0, executeSeconds, ropeRemaining, rngSeed, diff);
+                this.bgPlanningInProgress = true;
+              }
+            }
+          }
+        }
+      }
+      return;
+    }
 
     const hasProjectiles = (presenter.state.projectiles?.length || 0) > 0;
     if (this.pendingShotEval && !hasProjectiles && !isWorldBusy) {
@@ -485,19 +773,16 @@ export class BotTurnController {
     if (hasProjectiles) return;
     if (this.firedThisTurn) return;
 
-    const botCfg: BotConfig = presenter.state.botConfig || DEFAULT_BOT_CONFIG;
-    const activeTeam: 'team1' | 'team2' = player.team === 'team1' ? 'team1' : 'team2';
-    const difficulty = (presenter.state.mode === 'aivai'
-      ? (this.difficultyByTeam[activeTeam] as AIDifficulty | undefined)
-      : ((getAIDifficulty() as AIDifficulty) || undefined)) || 'medium';
+    const botCfg: BotConfig = botCfg0;
+    const difficulty = difficulty0;
     const maxTurn = Number.isFinite(presenter.maxTurnTime) ? presenter.maxTurnTime : 30;
     const timeLeft = Number.isFinite(presenter.turnTimeLeft) ? presenter.turnTimeLeft : 0;
     const elapsed = Math.max(0, maxTurn - timeLeft);
     const planSeconds = botCfg.planSeconds;
     const reserveSeconds = presenter?.state?.mode === 'aivai' ? 2.0 : botCfg.reserveSeconds;
     const executeSeconds = Math.max(0, maxTurn - planSeconds - reserveSeconds);
-    const ropeBudget = botCfg.ropeAttachLimit[difficulty] ?? 0;
-    const ropeRemaining = Math.max(0, ropeBudget - this.ropeAttachUsed);
+    const ropeBudget = ropeBudget0;
+    const ropeRemaining = ropeRemaining0;
     const now = presenter.matchDuration || 0;
     const dt = Number.isFinite(presenter.deltaTime) ? presenter.deltaTime : (1 / 60);
     this.lastMovementCfg = botCfg.movement || this.lastMovementCfg;
@@ -505,9 +790,33 @@ export class BotTurnController {
     if ((presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai') && !this.workerJobId && !this.planningInProgress) {
       const view = this.buildBotView(presenter);
       if (!view) return;
-      const rngSeed = this.rngSeedForTurn(presenter);
-      this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, executeSeconds, ropeRemaining, rngSeed, difficulty);
-      this.planningInProgress = true;
+      const key = this.worldKey(presenter, curIdx, ropeRemaining);
+      const cached = this.planCache.get(key) || null;
+      if (cached && cached.plan) {
+        const wp = (cached.plan as any).movePath?.waypoints;
+        this.movePathWaypoints = Array.isArray(wp) ? wp.map((p: any) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 })) : null;
+        this.movePathIndex = 0;
+        this.plan = {
+          moveTo: cached.plan.moveTo,
+          movePath: (cached.plan as any).movePath || undefined,
+          action: { weaponIndex: cached.plan.action.weaponIndex, facingRight: cached.plan.action.facingRight, aimAngle: cached.plan.action.aimAngle, power: cached.plan.action.power, targetId: cached.plan.action.targetId },
+          intent: cached.plan.intent,
+          intentReason: cached.plan.intentReason
+        };
+        this.moveStartedAt = now;
+        this.plannedThisTurn = true;
+        this.planningInProgress = false;
+        this.lastThinkSrc = 'worker';
+        this.lastWorkerUsed = 1;
+        this.lastWorkerMs = 0;
+        this.lastWorkerComputeMs = 0;
+        this.lastWorkerArrivedAfterMain = 0;
+        this.lastDecisionDebug = cached.debug || null;
+      } else {
+        const rngSeed = ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`turn:${key}`)) >>> 0;
+        this.startWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, executeSeconds, ropeRemaining, rngSeed, difficulty);
+        this.planningInProgress = true;
+      }
     }
 
     if (now - this.lastTurnStateAt >= 0.9) {
@@ -536,12 +845,13 @@ export class BotTurnController {
       if (!isWorldBusy) {
         if (presenter?.state?.mode === 'aivai' && this.lastWorkerUsed !== 1) {
           const fb = this.lateFallbackFireAction(presenter);
-          if (!fb) return;
-          const noisy = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
-          this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', fb, noisy);
-          this.fireAction(presenter, noisy);
-          this.firedThisTurn = true;
-          return;
+          if (fb) {
+            const noisy = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
+            this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', fb, noisy);
+            this.fireAction(presenter, noisy);
+            this.firedThisTurn = true;
+            return;
+          }
         }
         const action0 = this.plan?.action && this.plan.action.weaponIndex >= 0 ? this.plan.action : null;
         const action = action0 || this.safeFallbackAction(presenter);
@@ -578,6 +888,10 @@ export class BotTurnController {
         this.moveStartedAt = now;
         this.plannedThisTurn = true;
         this.planningInProgress = false;
+        const key = this.worldKey(presenter, curIdx, ropeRemaining);
+        const score = Number(wr.debug?.score) || 0;
+        const sig = this.terrainSig(presenter);
+        this.planCache.set(key, { key, createdAt: performance.now(), shooterId: String(curIdx), rev: sig.rev, df: sig.df, plan: wr.plan, debug: wr.debug || null, score });
         this.debug('plan', { moveTo: wr.plan.moveTo ? { x: Math.round(wr.plan.moveTo.x), y: Math.round(wr.plan.moveTo.y) } : null, weaponIndex: wr.plan.action.weaponIndex, targetId: wr.plan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
       } else if (!this.plannedThisTurn) {
         const minWait = presenter?.state?.mode === 'aivai'
@@ -603,6 +917,27 @@ export class BotTurnController {
         }
       } else {
         this.lastDecisionDebug = wr?.debug || null;
+      }
+    }
+
+    if (!isWorldBusy && !hasProjectiles && this.plannedThisTurn && !this.bgPlanningInProgress) {
+      const nextIdx = this.peekNextTurnIndex(presenter);
+      if (nextIdx >= 0 && nextIdx !== curIdx) {
+        const view = this.buildBotViewForIndex(presenter, nextIdx);
+        if (view) {
+          const teamKey: 'team1' | 'team2' = view.shooter.team === 'team1' ? 'team1' : 'team2';
+          const diff = (presenter.state.mode === 'aivai'
+            ? ((this.difficultyByTeam[teamKey] as AIDifficulty | undefined) || 'hard')
+            : (((getAIDifficulty() as AIDifficulty) || undefined) || 'medium'));
+          const ropeBudget = botCfg.ropeAttachLimit[diff] ?? 0;
+          const ropeRemainingNext = Math.max(0, ropeBudget);
+          const key = this.worldKey(presenter, nextIdx, ropeRemainingNext);
+          if (!this.planCache.has(key)) {
+            const rngSeed = ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`pre:${key}`)) >>> 0;
+            this.startBgWorkerPlan(presenter, view.worms, view.shooter.id, botCfg, executeSeconds, ropeRemainingNext, rngSeed, diff);
+            this.bgPlanningInProgress = true;
+          }
+        }
       }
     }
 
