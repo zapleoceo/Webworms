@@ -33,6 +33,7 @@ type PlanRequest = {
   jobId: string;
   rngSeed: number;
   difficulty: AIDifficulty;
+  mapSeed?: number;
   gravity: number;
   wind: number;
   teamAmmo?: any;
@@ -43,6 +44,7 @@ type PlanRequest = {
   executeSeconds: number;
   ropeRemaining: number;
   shotMemory?: Array<{ stateKey: string; shotKey: string; noRes: number; ff: number; targetId?: string; lastT?: number }>;
+  bestPractices?: any;
 };
 
 type PlanResponse = {
@@ -175,7 +177,7 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
     const plan = plan0 ? { ...plan0 } : null;
 
     if (plan && enemies.length > 0) {
-      const cur = chooseBotActionDebug(rngPlan, world as any, shooter, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('cur_shot') });
+      const cur = chooseBotActionDebug(rngPlan, world as any, shooter, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('cur_shot'), bestPractices: msg.bestPractices, mapSeed: msg.mapSeed });
       const curExpected = (cur?.trace as any)?.chosen?.expectedDamage || 0;
       if (!(cur && curExpected > 0.15)) {
         const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
@@ -223,7 +225,7 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
           let res = shotCache.get(k);
           if (res === undefined) {
             const movedShooter = { ...shooter, x, y: yy };
-            res = chooseBotActionDebug(rngPlan, world as any, movedShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('move_shot') });
+            res = chooseBotActionDebug(rngPlan, world as any, movedShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('move_shot'), bestPractices: msg.bestPractices, mapSeed: msg.mapSeed });
             shotCache.set(k, res || null);
           }
           if (!res) return;

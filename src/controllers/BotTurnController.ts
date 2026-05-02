@@ -5,6 +5,8 @@ import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
 import { terrainFromLandscape, chooseBotActionDebug, type BotWormSnapshot } from '../ai/BotAI';
 import { getWeaponByEquipmentId } from '../equipment/EquipmentRegistry';
 import { AI_V } from '../ai/AIVersion';
+import { analyzePit } from '../ai/PitAnalyzer';
+import { recordPriorSample, snapshotBestPracticesForWorker } from '../ai/BestPractices';
 import ThinkWorker from '../ai/worker/BotThinkWorker?worker';
 
 type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
@@ -15,7 +17,7 @@ export class BotTurnController {
   private lastTurnIndex: number = -1;
   private firedThisTurn: boolean = false;
   private plannedThisTurn: boolean = false;
-  private plan: { moveTo?: { x: number; y: number }; movePath?: { waypoints: Array<{ x: number; y: number }>; primitive: 'walk' | 'jump' | 'rope' }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string }; intent?: 'attack' | 'approach'; intentReason?: any } | null = null;
+  private plan: { moveTo?: { x: number; y: number }; movePath?: { waypoints: Array<{ x: number; y: number }>; primitive: 'walk' | 'jump' | 'rope' }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string }; intent?: 'attack' | 'approach' | 'escape_pit' | 'reposition_safety'; intentReason?: any } | null = null;
   private moveStartedAt: number = 0;
 
   private ropeAttachUsed: number = 0;
@@ -67,6 +69,12 @@ export class BotTurnController {
   private dirFlipCount: number = 0;
   private lastDx: number = 0;
   private ropeStallCount: number = 0;
+  private pitEscapeMode: 'jump' | 'rope' | 'dig' | null = null;
+  private pitEscapeAttempts: { jump: number; rope: number; dig: number } = { jump: 0, rope: 0, dig: 0 };
+  private lastPitCheckAt: number = -999;
+  private lastPitKey: string = '';
+  private lastPit: any | null = null;
+  private pitDigFlip: 0 | 1 = 0;
   private lastMovementCfg: { maxStrategyAttemptsPerTurn: number; maxStrategyFailuresPerTurn: number; replanWhenBannedAtLeast: number; replanCooldownSeconds: number; maxReplansPerTurn: number } = {
     maxStrategyAttemptsPerTurn: 3,
     maxStrategyFailuresPerTurn: 3,
@@ -93,7 +101,7 @@ export class BotTurnController {
   private workerInitError: string | null = null;
 
   private shotMemory: Map<string, { stateKey: string; shotKey: string; noRes: number; ff: number; lastT: number; targetId: string }> = new Map();
-  private pendingShotEval: { stateKey: string; shotKey: string; team: 'team1' | 'team2'; health0: number[]; targetId: string } | null = null;
+  private pendingShotEval: { stateKey: string; shotKey: string; team: 'team1' | 'team2'; health0: number[]; targetId: string; shooterId: string } | null = null;
   private lastFiredWeaponId: string | null = null;
   private lastFiredTargetId: string | null = null;
   private postShotMoveUntil: number = 0;
@@ -469,6 +477,7 @@ export class BotTurnController {
         jobId,
         rngSeed,
         difficulty,
+        mapSeed: presenter.state.mapSeed || 0,
         gravity: presenter.physics.gravity,
         wind: presenter.state.wind || 0,
         teamAmmo: presenter.state.teamAmmo,
@@ -477,7 +486,8 @@ export class BotTurnController {
         botCfg,
         executeSeconds,
         ropeRemaining,
-        shotMemory
+        shotMemory,
+        bestPractices: snapshotBestPracticesForWorker()
       });
     } catch {}
   }
@@ -796,6 +806,12 @@ export class BotTurnController {
       this.dirFlipCount = 0;
       this.lastDx = 0;
       this.ropeStallCount = 0;
+      this.pitEscapeMode = null;
+      this.pitEscapeAttempts = { jump: 0, rope: 0, dig: 0 };
+      this.lastPitCheckAt = -999;
+      this.lastPitKey = '';
+      this.lastPit = null;
+      this.pitDigFlip = 0;
       this.didReplanThisTurn = false;
       this.replanCountThisTurn = 0;
       this.planningInProgress = false;
@@ -913,6 +929,31 @@ export class BotTurnController {
         const entries = Array.from(this.shotMemory.entries()).sort((a, b) => a[1].lastT - b[1].lastT);
         for (let k = 0; k < Math.max(0, entries.length - 320); k++) this.shotMemory.delete(entries[k][0]);
       }
+      try {
+        if (enemyDelta > 0.01 && allyDelta <= 0.01 && this.pendingShotEval) {
+          const parts = String(this.pendingShotEval.shotKey || '').split(':');
+          const weaponId = parts[0] || '';
+          const angleBin = Number(parts[2]);
+          const powerBin = Number(parts[3]);
+          const sIdx = Number(this.pendingShotEval.shooterId);
+          const tIdx = Number(this.pendingShotEval.targetId);
+          const shooter = Number.isFinite(sIdx) ? presenter.state.players?.[sIdx] : null;
+          const target = Number.isFinite(tIdx) ? presenter.state.players?.[tIdx] : null;
+          if (shooter && target && weaponId && Number.isFinite(angleBin) && Number.isFinite(powerBin)) {
+            const t = { width: presenter.state.width, height: presenter.state.height, isSolid: (x: number, y: number) => presenter.state.landscape.getMaterial(x, y) > 0 };
+            const pitTarget = analyzePit(t as any, { x: target.x, y: target.y, width: target.width || 10, height: target.height || 10, ropeRemaining: 0 });
+            const spawnType = pitTarget?.isTrapped ? 'pit' : 'open';
+            const wind = Number(presenter.state.wind) || 0;
+            const windBin = Math.round(wind / 10);
+            const dist = Math.hypot(target.x - shooter.x, target.y - shooter.y);
+            const distBin = Math.round(dist / 80);
+            const dYBin = Math.round((target.y - shooter.y) / 60);
+            const mapSeed = presenter.state.mapSeed || 0;
+            const key2 = `ai:bp:v1:${mapSeed}:${spawnType}:attack:${weaponId}:w${windBin}:d${distBin}:dy${dYBin}`;
+            recordPriorSample(key2, { angleBin, powerBin, enemyDelta, allyDelta, score: enemyDelta - allyDelta * 4 });
+          }
+        }
+      } catch {}
       this.emitAIVai(presenter, {
         type: 'shot_eval',
         t: presenter.matchDuration || 0,
@@ -1148,6 +1189,25 @@ export class BotTurnController {
     }
     const moveElapsed = Math.max(0, now - this.moveStartedAt);
 
+    if (!isWorldBusy && !this.firedThisTurn && timeLeft > reserveSeconds + 1.4) {
+      const pit = this.getPitInfo(presenter, player, ropeRemaining, now);
+      if (pit && pit.isTrapped) {
+        const hh = (Number(player.height) || 10) / 2;
+        let targetX: number | null = null;
+        if (pit.escapeDir === 'left') targetX = pit.rimLeftX;
+        else if (pit.escapeDir === 'right') targetX = pit.rimRightX;
+        else targetX = pit.rimLeftX ?? pit.rimRightX ?? null;
+        const tx = typeof targetX === 'number' && Number.isFinite(targetX) ? targetX : player.x;
+        const ty = typeof pit.rimY === 'number' && Number.isFinite(pit.rimY) ? (pit.rimY - hh - 6) : (player.y - 120);
+        moveTo = { x: Math.max(36, Math.min(presenter.state.width - 36, tx)), y: Math.max(20, Math.min(presenter.state.height - 80, ty)) };
+        this.movePathWaypoints = null;
+        this.movePathIndex = 0;
+        this.plan.intent = 'escape_pit';
+        this.plan.intentReason = { pit: { depthPx: pit.depthPx, widthPx: pit.widthPx, escapeDir: pit.escapeDir, canJump: pit.canJumpOut ? 1 : 0, canRope: pit.canRopeOut ? 1 : 0, thinWallDir: pit.thinWallDir } };
+        this.plan.action = { weaponIndex: -1, facingRight: !!player.facingRight, aimAngle: player.aimAngle || 0, power: 60, targetId: 'none' };
+      }
+    }
+
     const maxReplans = this.lastMovementCfg.maxReplansPerTurn ?? 4;
     if (presenter?.state?.mode === 'aivai' && this.plannedThisTurn && !this.planningInProgress && this.replanCountThisTurn < maxReplans && timeLeft > reserveSeconds + 0.9) {
       const near =
@@ -1207,6 +1267,7 @@ export class BotTurnController {
         workerMs: this.lastWorkerMs,
         workerComputeMs: this.lastWorkerComputeMs
       });
+      if (this.plan.intent === 'escape_pit') return;
       const planTarget = this.plan.action.targetId;
       let canUsePlanned = true;
       if (planTarget) {
@@ -1492,7 +1553,7 @@ export class BotTurnController {
       const angleBin = Math.round(angleDeg / 2);
       const powerBin = Math.round(action.power / 5);
       const shotKey = `${weaponId || 'none'}:${action.facingRight ? 1 : 0}:${angleBin}:${powerBin}`;
-      if (weaponId) this.pendingShotEval = { stateKey, shotKey, team: player.team, health0, targetId: action.targetId };
+      if (weaponId) this.pendingShotEval = { stateKey, shotKey, team: player.team, health0, targetId: action.targetId, shooterId: String(presenter.state.currentPlayerIndex ?? '') };
       this.emitAIVai(presenter, {
         type: 'weapon_fired',
         t: presenter.matchDuration || 0,
@@ -1530,6 +1591,87 @@ export class BotTurnController {
     }
   }
 
+  private getPitInfo(presenter: any, player: any, ropeRemaining: number, now: number): any | null {
+    const sig = this.terrainSig(presenter);
+    const xBin = Math.floor((Number(player.x) || 0) / 12);
+    const yBin = Math.floor((Number(player.y) || 0) / 12);
+    const key = `${sig.rev}:${sig.df}:${xBin}:${yBin}:${ropeRemaining > 0 ? 1 : 0}`;
+    if (this.lastPit && this.lastPitKey === key && (now - this.lastPitCheckAt) < 0.35) return this.lastPit;
+    if ((now - this.lastPitCheckAt) < 0.18 && this.lastPitKey === key) return this.lastPit;
+    this.lastPitCheckAt = now;
+    this.lastPitKey = key;
+    const t = {
+      width: presenter.state.width,
+      height: presenter.state.height,
+      isSolid: (x: number, y: number) => presenter.state.landscape.getMaterial(x, y) > 0
+    };
+    const pit = analyzePit(t as any, { x: player.x, y: player.y, width: player.width || 10, height: player.height || 10, ropeRemaining });
+    this.lastPit = pit;
+    return pit;
+  }
+
+  private tryDigEscapePit(presenter: any, player: any, pit: any): boolean {
+    if (this.firedThisTurn) return false;
+    const pref = pit?.thinWallDir === 'left' ? 'left' : pit?.thinWallDir === 'right' ? 'right' : null;
+    const order: Array<'left' | 'right'> = pref
+      ? (pref === 'left' ? ['left', 'right'] : ['right', 'left'])
+      : (this.pitDigFlip === 0 ? ['left', 'right'] : ['right', 'left']);
+    for (const dir of order) {
+      if (this.tryDigEscape(presenter, player, dir)) return true;
+    }
+    this.pitDigFlip = this.pitDigFlip === 0 ? 1 : 0;
+    this.pitEscapeAttempts.dig += 1;
+    return false;
+  }
+
+  private executePitEscape(
+    presenter: any,
+    player: any,
+    moveTo: { x: number; y: number },
+    now: number,
+    dt: number,
+    ropeBudget: number,
+    ropeRemaining: number,
+    pit: any
+  ): boolean {
+    const dir0 = pit?.escapeDir === 'left' ? 'left' : pit?.escapeDir === 'right' ? 'right' : (this.pitDigFlip === 0 ? 'left' : 'right');
+    const dir: 'left' | 'right' = dir0 === 'left' ? 'left' : 'right';
+    if (!this.pitEscapeMode) {
+      this.pitEscapeMode = pit?.canJumpOut ? 'jump' : pit?.canRopeOut ? 'rope' : 'dig';
+    }
+    if (this.pitEscapeMode === 'jump') {
+      if (!pit?.canJumpOut || this.pitEscapeAttempts.jump >= 7) this.pitEscapeMode = pit?.canRopeOut ? 'rope' : 'dig';
+      else {
+        presenter.handleInput?.('left', false, true);
+        presenter.handleInput?.('right', false, true);
+        presenter.handleInput?.(dir, true, true);
+        this.tryJump(presenter, player, now);
+        this.trackStuck(player, dt);
+        if (this.stuckTime > 0.9) this.pitEscapeAttempts.jump += 1;
+        return true;
+      }
+    }
+    if (this.pitEscapeMode === 'rope') {
+      if (!pit?.canRopeOut || ropeRemaining <= 0 || this.pitEscapeAttempts.rope >= 5) this.pitEscapeMode = 'dig';
+      else {
+        const res = this.tryAttachRope(presenter, player, moveTo, dir, ropeBudget, now, 'rope_climb');
+        if (res === 'ok') return true;
+        if (res !== 'cooldown') this.pitEscapeAttempts.rope += 1;
+        return true;
+      }
+    }
+    if (this.pitEscapeMode === 'dig') {
+      if (this.tryDigEscapePit(presenter, player, pit)) return true;
+      presenter.handleInput?.('left', false, true);
+      presenter.handleInput?.('right', false, true);
+      presenter.handleInput?.('jump', false, true);
+      presenter.handleInput?.(dir, true, true);
+      this.trackStuck(player, dt);
+      return true;
+    }
+    return false;
+  }
+
   private executeMovement(
     presenter: any,
     player: any,
@@ -1547,6 +1689,13 @@ export class BotTurnController {
     const prevDx = this.lastDx;
     this.lastDx = dx;
     if ((dxAbs < 24 && Math.abs(dy) < 26) || (Math.sign(prevDx) !== 0 && Math.sign(prevDx) !== Math.sign(dx) && dxAbs < 90)) return false;
+
+    if (this.plan?.intent === 'escape_pit') {
+      const pit = this.getPitInfo(presenter, player, ropeRemaining, now);
+      if (pit && pit.isTrapped) {
+        return this.executePitEscape(presenter, player, moveTo, now, dt, ropeBudget, ropeRemaining, pit);
+      }
+    }
 
     if (player.ropeActive) {
       this.executeRope(presenter, player, moveTo, dir, now, dt);
@@ -1827,6 +1976,7 @@ export class BotTurnController {
     if (hasRope && gap && Math.abs(dxTo) >= 120) candidates.push('rope_swing');
     if (hasRope && needDown && !cliff.isDeepVoid) candidates.push('rope_descend');
     if (obstacle && !ceilingLow) candidates.push('jump');
+    if (!obstacle && needUp && !ceilingLow) candidates.push('jump');
     candidates.push('walk');
 
     let best: { s: MoveStrategy; score: number } | null = null;

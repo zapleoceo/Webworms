@@ -19,6 +19,7 @@ import type { AIDifficulty } from './ai/AIDifficulty';
 import { debugSurfacePathMatrix, terrainFromLandscape } from './ai/BotAI';
 import { AI_V } from './ai/AIVersion';
 import { updateAivaiOverlay } from './ui/AiVainOverlay';
+import { loadBestPractices, saveBestPractices } from './ai/BestPractices';
 
 declare global {
   interface Window {
@@ -38,7 +39,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260503_2249';
+  const buildVersion = '20260503_2252';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -279,6 +280,7 @@ let aivaiLogSent = false;
 
 function flushAIVaiLog(reason: string, winner: any = null) {
   if (currentMode !== 'aivai' || !aivaiLog) return;
+  try { saveBestPractices(); } catch {}
   if (aivaiLogSent) return;
   aivaiLogSent = true;
   aivaiLog.abortedAt = Date.now();
@@ -673,6 +675,7 @@ let currentRoomPlayerId: string | null = null;
     setLoaderProgress(0, 'LOADING...');
     setLoaderDifficultyWorm(mode);
     setEnemyDifficultyLabel(mode);
+    if (mode === 'aivai' || mode === 'ai') loadBestPractices();
 
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
   const mapType = (mapTypeSelect?.value || 'islands') as 'islands' | 'cave' | 'flat';

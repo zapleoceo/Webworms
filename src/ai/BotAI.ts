@@ -4,6 +4,7 @@ import type { BotConfig } from './BotConfig';
 import { DEFAULT_BOT_CONFIG } from './BotConfig';
 import { resolveProjectileStart, simulateTrajectory, type TerrainQuery } from './PhysicsHelper';
 import type { AIDifficulty } from './AIDifficulty';
+import { analyzePit as analyzePit2 } from './PitAnalyzer';
 
 export type Rng = () => number;
 
@@ -176,6 +177,8 @@ type ShotSearchOpts = {
   plateauEvalWindow?: number;
   plateauEps?: number;
   onProgress?: (p: { bestScore: number; comboCount: number; evals: number }) => void;
+  bestPractices?: any;
+  mapSeed?: number;
 };
 
 function chooseBotActionScored(
@@ -224,6 +227,8 @@ function chooseBotActionScored(
   const grenadeCloseAbsAngleMax = (botCfg as any).scoring?.grenadeCloseAbsAngleMax ?? 1.2;
   const grenadeMinExpectedDamage = (botCfg as any).scoring?.grenadeMinExpectedDamage ?? 10;
   const grenadeExtraSelfMargin = (botCfg as any).scoring?.grenadeExtraSelfMargin ?? 50;
+  const bpPriors = (opts as any)?.bestPractices?.priors || null;
+  const mapSeed0 = Number((opts as any)?.mapSeed) || 0;
 
   let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot; trace?: BotDecisionTrace } | null = null;
   const deadlineMs = typeof opts?.deadlineMs === 'number' && Number.isFinite(opts.deadlineMs) ? opts.deadlineMs : Infinity;
@@ -245,7 +250,49 @@ function chooseBotActionScored(
     onProgress({ bestScore: best?.score ?? -Infinity, comboCount, evals });
   };
 
+  const seedAngles = (base: number[], angleBin: any): number[] => {
+    const out = base.slice();
+    const b = Number(angleBin);
+    if (Number.isFinite(b)) {
+      const a0 = (b * 2) * (Math.PI / 180);
+      const ds = [-10, -6, -3, 0, 3, 6, 10];
+      for (const d of ds) {
+        const a = a0 + d * (Math.PI / 180);
+        if (a < (-78 * (Math.PI / 180)) || a > (78 * (Math.PI / 180))) continue;
+        out.push(a);
+      }
+    }
+    out.sort((a, b) => a - b);
+    const uniq: number[] = [];
+    for (const a of out) {
+      if (uniq.length === 0 || Math.abs(uniq[uniq.length - 1] - a) > (1.2 * (Math.PI / 180))) uniq.push(a);
+    }
+    return uniq;
+  };
+
+  const seedPowers = (base: number[], powerBin: any): number[] => {
+    const out = base.slice();
+    const b = Number(powerBin);
+    if (Number.isFinite(b)) {
+      const p0 = b * 5;
+      const ds = [-16, -10, -6, 0, 6, 10, 16];
+      for (const d of ds) {
+        const p = Math.max(1, Math.min(100, Math.round(p0 + d)));
+        out.push(p);
+      }
+    }
+    out.sort((a, b) => a - b);
+    const uniq: number[] = [];
+    for (const p of out) {
+      if (uniq.length === 0 || Math.abs(uniq[uniq.length - 1] - p) >= 3) uniq.push(p);
+    }
+    return uniq;
+  };
+
   outer: for (const target of aliveEnemies) {
+    const pitTarget = analyzePit2(world.terrain as any, { x: target.x, y: target.y, width: target.width, height: target.height, ropeRemaining: 0 });
+    const targetTrapped = !!pitTarget?.isTrapped;
+    const trapVuln = typeof pitTarget?.attackVuln === 'number' && Number.isFinite(pitTarget.attackVuln) ? pitTarget.attackVuln : 0;
     const dist = Math.hypot(target.x - shooter.x, target.y - shooter.y);
     const ordered = pickWeaponByRange(weapons, dist);
 
@@ -265,8 +312,16 @@ function chooseBotActionScored(
         continue;
       }
 
-      const angles = weapon.id === 'grenade' ? grenadeAngleList : angleList;
-      const powers = weapon.id === 'grenade' ? grenadePowerList : powerList;
+      const spawnType = targetTrapped ? 'pit' : 'open';
+      const windBin = Math.round((Number(world.wind) || 0) / 10);
+      const distBin = Math.round(dist / 80);
+      const dYBin = Math.round((target.y - shooter.y) / 60);
+      const priorKey = `ai:bp:v1:${mapSeed0}:${spawnType}:attack:${weapon.id}:w${windBin}:d${distBin}:dy${dYBin}`;
+      const prior = bpPriors ? bpPriors[priorKey] : null;
+      const angles0 = weapon.id === 'grenade' ? grenadeAngleList : angleList;
+      const powers0 = weapon.id === 'grenade' ? grenadePowerList : powerList;
+      const angles = prior ? seedAngles(angles0, prior.bestAngleBin) : angles0;
+      const powers = prior ? seedPowers(powers0, prior.bestPowerBin) : powers0;
       const seen = new Set<string>();
       for (const localAngle of angles) {
         const global = (target.x >= shooter.x) ? localAngle : (Math.PI - localAngle);
@@ -322,7 +377,8 @@ function chooseBotActionScored(
           if (weapon.id === 'grenade' && grenLimited) {
             const dyToTarget = target.y - shooter.y;
             const pitK = dyToTarget > 90 ? 1.25 : dyToTarget > 45 ? 1.12 : 1.0;
-            const hitTol = Math.max(6, simWeapon.explosionRadius * 0.55) * pitK;
+            const trapK = targetTrapped ? (1.15 + trapVuln * 0.65) : 1.0;
+            const hitTol = Math.max(6, simWeapon.explosionRadius * 0.55) * pitK * trapK;
             const baseW = Number.isFinite(world.wind) ? world.wind : 0;
             const winds = [baseW - grenadeWindSpan, baseW, baseW + grenadeWindSpan];
             let ok = true;
@@ -380,16 +436,21 @@ function chooseBotActionScored(
 
           if (weapon.id === 'grenade') {
             const local0 = localAimFromGlobal(global);
-            if (travel < grenadeCloseRangePx && Math.abs(local0.aimAngle) > grenadeCloseAbsAngleMax) {
+            if (!targetTrapped && travel < grenadeCloseRangePx && Math.abs(local0.aimAngle) > grenadeCloseAbsAngleMax) {
               bump('grenade_close_vertical');
               continue;
             }
-            if (!isKill && expectedDamage < grenadeMinExpectedDamage) {
+            const minExpected = targetTrapped ? Math.max(2, grenadeMinExpectedDamage * 0.55) : grenadeMinExpectedDamage;
+            if (!isKill && expectedDamage < minExpected && !targetTrapped) {
               bump('grenade_low_expected');
               continue;
             }
             if (grenLimited) {
               score -= grenadeScarcityWeight / (grenLeft + 1);
+            }
+            if (targetTrapped) {
+              const trapBonusBase = (botCfg as any).scoring?.trapBonusBase ?? 26;
+              score += trapBonusBase * (0.35 + trapVuln);
             }
           }
 
