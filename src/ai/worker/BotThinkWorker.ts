@@ -4,11 +4,29 @@ import type { AIDifficulty } from '../AIDifficulty';
 import { mulberry32 } from '../../utils/SeededRng';
 import { planWithMcts } from '../mcts/MctsPlanner';
 import { findWaypointPath } from './PathPlanner';
+import { applyDfEventsToGrid, type TerrainDfEvent } from './TerrainPatches';
 
 type TerrainPayload = { width: number; height: number; grid: ArrayBuffer };
 type WormPayload = BotWormSnapshot;
 
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
+
+type TerrainInitRequest = {
+  kind: 'terrainInit';
+  width: number;
+  height: number;
+  grid: ArrayBuffer;
+  dfEventIndex: number;
+  revision: number;
+};
+
+type TerrainPatchRequest = {
+  kind: 'terrainPatch';
+  fromEventIndex: number;
+  toEventIndex: number;
+  events: TerrainDfEvent[];
+  revision: number;
+};
 
 type PlanRequest = {
   kind: 'plan';
@@ -18,7 +36,7 @@ type PlanRequest = {
   gravity: number;
   wind: number;
   teamAmmo?: any;
-  terrain: TerrainPayload;
+  terrain?: TerrainPayload;
   worms: WormPayload[];
   shooterId: string;
   botCfg: BotConfig;
@@ -38,15 +56,67 @@ type PlanResponse = {
 
 const ctx = self as any;
 
-ctx.onmessage = (evt: MessageEvent<PlanRequest>) => {
-  const msg = evt.data;
-  if (!msg || msg.kind !== 'plan') return;
+let terrainW: number = 0;
+let terrainH: number = 0;
+let terrainGrid: Uint8Array | null = null;
+let terrainDfEventIndex: number = 0;
+let terrainRevision: number = 0;
+
+ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | PlanRequest>) => {
+  const msg = evt.data as any;
+  if (!msg || typeof msg.kind !== 'string') return;
+
+  if (msg.kind === 'terrainInit') {
+    try {
+      terrainW = Number(msg.width) || 0;
+      terrainH = Number(msg.height) || 0;
+      if (!Number.isFinite(terrainW) || !Number.isFinite(terrainH) || terrainW <= 0 || terrainH <= 0) return;
+      terrainGrid = new Uint8Array(msg.grid);
+      terrainDfEventIndex = Number(msg.dfEventIndex) || 0;
+      terrainRevision = Number(msg.revision) || 0;
+    } catch {}
+    return;
+  }
+
+  if (msg.kind === 'terrainPatch') {
+    try {
+      if (!terrainGrid || terrainW <= 0 || terrainH <= 0) return;
+      const events: TerrainDfEvent[] = Array.isArray(msg.events) ? msg.events : [];
+      const res = applyDfEventsToGrid(terrainGrid, terrainW, terrainH, events);
+      terrainDfEventIndex = Number(msg.toEventIndex) || terrainDfEventIndex;
+      terrainRevision = Number(msg.revision) || terrainRevision;
+      if (!res.ok) {
+        terrainGrid = null;
+        terrainW = 0;
+        terrainH = 0;
+        terrainDfEventIndex = 0;
+        terrainRevision = 0;
+      }
+    } catch {}
+    return;
+  }
+
+  if (msg.kind !== 'plan') return;
 
   const t0 = performance.now();
   try {
-    const grid = new Uint8Array(msg.terrain.grid);
-    const w = msg.terrain.width;
-    const h = msg.terrain.height;
+    let grid: Uint8Array | null = null;
+    let w = 0;
+    let h = 0;
+    if (msg.terrain && msg.terrain.grid) {
+      grid = new Uint8Array(msg.terrain.grid);
+      w = msg.terrain.width;
+      h = msg.terrain.height;
+    } else if (terrainGrid) {
+      grid = terrainGrid;
+      w = terrainW;
+      h = terrainH;
+    }
+    if (!grid || !w || !h) {
+      const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: 0, ms: performance.now() - t0, plan: null, debug: null };
+      ctx.postMessage(out);
+      return;
+    }
 
     const terrain = {
       width: w,
@@ -59,15 +129,15 @@ ctx.onmessage = (evt: MessageEvent<PlanRequest>) => {
     };
 
     const world = { gravity: msg.gravity, wind: msg.wind, terrain, teamAmmo: msg.teamAmmo };
-    const worms = Array.isArray(msg.worms) ? msg.worms : [];
-    const shooter = worms.find((x) => x.id === msg.shooterId) || null;
+    const worms: WormPayload[] = Array.isArray(msg.worms) ? msg.worms : [];
+    const shooter = worms.find((x: WormPayload) => x.id === msg.shooterId) || null;
     if (!shooter) {
       const out: PlanResponse = { kind: 'planResult', jobId: msg.jobId, ok: 0, ms: performance.now() - t0, plan: null, debug: null };
       ctx.postMessage(out);
       return;
     }
-    const enemies = worms.filter((w0) => w0.team !== shooter.team && w0.health > 0);
-    const allies = worms.filter((w0) => w0.team === shooter.team && w0.health > 0);
+    const enemies = worms.filter((w0: WormPayload) => w0.team !== shooter.team && w0.health > 0);
+    const allies = worms.filter((w0: WormPayload) => w0.team === shooter.team && w0.health > 0);
 
     const seed = (msg.rngSeed >>> 0) || 1;
     const rngPlan = mulberry32(seed);

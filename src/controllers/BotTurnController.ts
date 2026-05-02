@@ -76,6 +76,9 @@ export class BotTurnController {
   private replanCountThisTurn: number = 0;
   private movePathWaypoints: Array<{ x: number; y: number }> | null = null;
   private movePathIndex: number = 0;
+  private workerTerrainReady: boolean = false;
+  private workerTerrainDimKey: string = '';
+  private workerTerrainDfEventIndex: number = 0;
 
   constructor(difficultyByTeam?: Partial<Record<'team1' | 'team2', AIDifficulty>>) {
     if (difficultyByTeam) this.difficultyByTeam = difficultyByTeam;
@@ -138,6 +141,9 @@ export class BotTurnController {
     try {
       this.workerInitError = null;
       this.thinkWorker = new ThinkWorker();
+      this.workerTerrainReady = false;
+      this.workerTerrainDimKey = '';
+      this.workerTerrainDfEventIndex = 0;
       const worker = this.thinkWorker;
       if (!worker) return;
       worker.onerror = (evt: any) => {
@@ -166,7 +172,49 @@ export class BotTurnController {
       const terrain = presenter.state.landscape;
       const grid = terrain?.grid;
       if (!(grid instanceof Uint8Array)) return;
-      const buf = grid.slice().buffer;
+      const dfEvents: any[] = Array.isArray((terrain as any).dfEvents) ? (terrain as any).dfEvents : [];
+      const dimKey = `${terrain.width}x${terrain.height}`;
+      const needInit = !this.workerTerrainReady || this.workerTerrainDimKey !== dimKey || !Number.isFinite(this.workerTerrainDfEventIndex);
+      if (needInit) {
+        const bufInit = grid.slice().buffer;
+        this.thinkWorker.postMessage({
+          kind: 'terrainInit',
+          width: terrain.width,
+          height: terrain.height,
+          grid: bufInit,
+          dfEventIndex: dfEvents.length,
+          revision: terrain.revision || 0
+        }, [bufInit]);
+        this.workerTerrainReady = true;
+        this.workerTerrainDimKey = dimKey;
+        this.workerTerrainDfEventIndex = dfEvents.length;
+      } else if (dfEvents.length > this.workerTerrainDfEventIndex) {
+        const delta = dfEvents.slice(this.workerTerrainDfEventIndex);
+        const resetSeen = delta.some((e: any) => e && e.kind === 'reset');
+        if (resetSeen) {
+          const bufInit = grid.slice().buffer;
+          this.thinkWorker.postMessage({
+            kind: 'terrainInit',
+            width: terrain.width,
+            height: terrain.height,
+            grid: bufInit,
+            dfEventIndex: dfEvents.length,
+            revision: terrain.revision || 0
+          }, [bufInit]);
+          this.workerTerrainReady = true;
+          this.workerTerrainDimKey = dimKey;
+          this.workerTerrainDfEventIndex = dfEvents.length;
+        } else {
+          this.thinkWorker.postMessage({
+            kind: 'terrainPatch',
+            fromEventIndex: this.workerTerrainDfEventIndex,
+            toEventIndex: dfEvents.length,
+            events: delta,
+            revision: terrain.revision || 0
+          });
+          this.workerTerrainDfEventIndex = dfEvents.length;
+        }
+      }
       const jobId = `${this.matchKey}:${presenter.state.currentPlayerIndex}:${(presenter.matchDuration || 0).toFixed(2)}`;
       this.workerJobId = jobId;
       this.workerStartedAt = performance.now();
@@ -184,14 +232,13 @@ export class BotTurnController {
         gravity: presenter.physics.gravity,
         wind: presenter.state.wind || 0,
         teamAmmo: presenter.state.teamAmmo,
-        terrain: { width: terrain.width, height: terrain.height, grid: buf },
         worms,
         shooterId,
         botCfg,
         executeSeconds,
         ropeRemaining,
         shotMemory
-      }, [buf]);
+      });
     } catch {}
   }
 
@@ -257,6 +304,9 @@ export class BotTurnController {
       this.matchFailStreak = { walk: 0, jump: 0, rope_climb: 0, rope_swing: 0, rope_descend: 0 };
       this.shotMemory.clear();
       this.pendingShotEval = null;
+      this.workerTerrainReady = false;
+      this.workerTerrainDimKey = '';
+      this.workerTerrainDfEventIndex = 0;
     }
 
     const isBotTurn = presenter.state.mode === 'aivai' ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
