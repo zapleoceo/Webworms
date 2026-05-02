@@ -95,6 +95,10 @@ export class BotTurnController {
       if (typeof cb !== 'function') return;
       const p = presenter.state.getCurrentPlayer?.();
       if (!p) return;
+      const equipmentIds: any[] = Array.isArray(p.equipmentIds) ? p.equipmentIds : [];
+      const weaponId = action && action.weaponIndex >= 0 && typeof equipmentIds[action.weaponIndex] === 'string'
+        ? equipmentIds[action.weaponIndex]
+        : null;
       const wormId = String(presenter.state.currentPlayerIndex ?? '');
       cb({
         type: 'bot_decision',
@@ -102,6 +106,7 @@ export class BotTurnController {
         stage,
         team: p.team,
         wormId,
+        weaponId,
         pos: { x: p.x, y: p.y },
         health: p.health,
         difficulty,
