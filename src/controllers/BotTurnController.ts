@@ -1224,12 +1224,64 @@ export class BotTurnController {
     return true;
   }
 
+  private isActionSelfSafe(
+    presenter: any,
+    player: any,
+    action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string },
+    botCfg: BotConfig
+  ): boolean {
+    const equipmentIds: any[] = Array.isArray(player?.equipmentIds) ? player.equipmentIds : [];
+    const weaponId = typeof equipmentIds[action.weaponIndex] === 'string' ? equipmentIds[action.weaponIndex] : null;
+    if (!weaponId) return false;
+    const weapon = getWeaponByEquipmentId(weaponId);
+    const explosionRadius = Math.max(0, Number((weapon as any)?.explosionRadius) || 0);
+    if (explosionRadius <= 0) return true;
+    const safeExtra = Math.max(0, Number((botCfg as any)?.scoring?.safeExtraRadius) || 0);
+    const safeRadius = explosionRadius + safeExtra;
+    const selfSafe = explosionRadius + 18 + safeExtra;
+    const gunLength = 25;
+    const baseAim = action.facingRight ? action.aimAngle : (Math.PI - action.aimAngle);
+    const originX = Number(player.x) || 0;
+    const originY = (Number(player.y) || 0) - (Number(player.height) || 0) / 2;
+    const dirX = Math.cos(baseAim);
+    const dirY = Math.sin(baseAim);
+    const startX = originX + dirX * gunLength;
+    const startY = originY + dirY * gunLength;
+    const maxDist = 260;
+    const step = 4;
+    let hitX = startX + dirX * maxDist;
+    let hitY = startY + dirY * maxDist;
+    for (let d = 0; d <= maxDist; d += step) {
+      const x = startX + dirX * d;
+      const y = startY + dirY * d;
+      if (x < 0 || x >= presenter.state.width || y < 0 || y >= presenter.state.height) break;
+      if (presenter.state.landscape.getMaterial(Math.floor(x), Math.floor(y)) > 0) {
+        hitX = x;
+        hitY = y;
+        break;
+      }
+    }
+    const selfDist = Math.hypot(hitX - originX, hitY - (Number(player.y) || 0));
+    if (selfDist < (selfSafe + 14)) return false;
+    const allies: any[] = Array.isArray(presenter?.state?.players)
+      ? presenter.state.players.filter((w: any) => w && w.team === player.team && w !== player && w.health > 0)
+      : [];
+    for (const a of allies) {
+      const d = Math.hypot((Number(a.x) || 0) - hitX, (Number(a.y) || 0) - hitY);
+      if (d < safeRadius + 10) return false;
+    }
+    return true;
+  }
+
   private safeFallbackAction(presenter: any): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string } | null {
     const player = presenter?.state?.getCurrentPlayer?.();
     if (!player) return null;
     const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
     const findIdx = (id: string) => equipmentIds.findIndex(x => x === id);
     const bazookaIdx = findIdx('bazooka');
+    const handgunIdx = findIdx('handgun');
+    const shotgunIdx = findIdx('shotgun');
+    const minigunIdx = findIdx('minigun');
 
     const enemies: any[] = Array.isArray(presenter?.state?.players)
       ? presenter.state.players.filter((w: any) => w && w.team !== player.team && w.health > 0)
@@ -1243,9 +1295,20 @@ export class BotTurnController {
     const facingRight = dx >= 0;
     const aimAngle = facingRight ? global : (Math.PI - global);
     const localAim = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle));
-    if (bazookaIdx >= 0) {
-      return { weaponIndex: bazookaIdx, facingRight, aimAngle: localAim, power: 60, targetId: String(presenter.state.players.indexOf(e)) };
-    }
+    const targetId = String(presenter.state.players.indexOf(e));
+    const botCfg: BotConfig = presenter.state.botConfig || DEFAULT_BOT_CONFIG;
+    const tryWeapon = (weaponIndex: number, power: number): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string } | null => {
+      if (weaponIndex < 0) return null;
+      const act = { weaponIndex, facingRight, aimAngle: localAim, power, targetId };
+      if (!this.isActionSelfSafe(presenter, player, act, botCfg)) return null;
+      return act;
+    };
+    return (
+      tryWeapon(handgunIdx, 74) ||
+      tryWeapon(minigunIdx, 70) ||
+      tryWeapon(shotgunIdx, 72) ||
+      tryWeapon(bazookaIdx, 60)
+    );
 
     return null;
   }
@@ -1285,7 +1348,13 @@ export class BotTurnController {
     const weaponIndex = Number(cand.weaponIndex) || 0;
     const power = Number(cand.power) || 60;
     const targetId = String(cand.targetId ?? res.action.targetId ?? '');
-    return { weaponIndex, facingRight, aimAngle: localAim, power, targetId };
+    const act = { weaponIndex, facingRight, aimAngle: localAim, power, targetId };
+    const pNow = presenter?.state?.getCurrentPlayer?.();
+    if (pNow) {
+      const botCfg: BotConfig = presenter.state.botConfig || DEFAULT_BOT_CONFIG;
+      if (!this.isActionSelfSafe(presenter, pNow, act, botCfg)) return null;
+    }
+    return act;
   }
 
   private fallbackMoveTo(presenter: any): { x: number; y: number } | null {
@@ -1689,6 +1758,8 @@ export class BotTurnController {
       if (s === 'rope_climb') score += needUp ? 1.8 : 0.3;
       if (s === 'rope_swing') score += gap ? 1.9 : 0.2;
       if (s === 'rope_descend') score += needDown ? 1.3 : 0.2;
+      if (s === 'walk' && obstacle) score -= 2.2;
+      if (s === 'walk' && ceilingLow) score -= 1.4;
       if (cliff.isGapOrCliff && s === 'walk') score -= 3.0;
       if (ceilingLow && s === 'jump') score -= 3.0;
 
