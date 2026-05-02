@@ -286,8 +286,11 @@ function chooseBotActionScored(
           let miss = weapon.id === 'grenade' ? distEnd : res.minDistToTarget;
 
           if (weapon.id === 'grenade' && grenLimited) {
-            const hitTol = Math.max(6, simWeapon.explosionRadius * 0.55);
-            const winds = [-grenadeWindSpan, 0, grenadeWindSpan];
+            const dyToTarget = target.y - shooter.y;
+            const pitK = dyToTarget > 90 ? 1.25 : dyToTarget > 45 ? 1.12 : 1.0;
+            const hitTol = Math.max(6, simWeapon.explosionRadius * 0.55) * pitK;
+            const baseW = Number.isFinite(world.wind) ? world.wind : 0;
+            const winds = [baseW - grenadeWindSpan, baseW, baseW + grenadeWindSpan];
             let ok = true;
             for (const wv of winds) {
               const resW = simulateTrajectory(

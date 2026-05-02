@@ -54,6 +54,12 @@ const sprites = [
   { name: 'blaster_hit', x: 730, y: 616, w: 146, h: 154 },
   { name: 'blaster_explosion', x: 876, y: 616, w: 146, h: 154 },
 
+  { name: 'plasma_projectile', x: 292, y: 616, w: 146, h: 154 },
+  { name: 'plasma_flash', x: 438, y: 616, w: 146, h: 154 },
+  { name: 'plasma_trail', x: 584, y: 616, w: 146, h: 154 },
+  { name: 'plasma_hit', x: 730, y: 616, w: 146, h: 154 },
+  { name: 'plasma_explosion', x: 876, y: 616, w: 146, h: 154 },
+
   { name: 'rope_icon', x: 0, y: 462, w: 146, h: 154 },
   { name: 'rope_device', x: 146, y: 462, w: 146, h: 154 },
   { name: 'rope_hook', x: 292, y: 462, w: 146, h: 154 },

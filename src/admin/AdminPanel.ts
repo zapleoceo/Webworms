@@ -17,23 +17,23 @@ export class AdminPanel {
   private upscaleAllAbort: boolean = false;
 
   private getDefaultWeaponIconSrc(id: string): string {
-    if (id === 'bazooka') return '/sprites/custom_weapons/frames/row1_col0.png';
-    if (id === 'shotgun') return '/sprites/custom_weapons/frames/row2_col0.png';
-    if (id === 'minigun') return '/sprites/custom_weapons/frames/row3_col0.png';
-    if (id === 'homing_missile') return '/sprites/custom_weapons/frames/row4_col0.png';
-    if (id === 'heavy_gun') return '/sprites/custom_weapons/frames/row5_col0.png';
-    if (id === 'handgun') return '/sprites/custom_weapons/frames/row6_col0.png';
-    if (id === 'grenade') return '/sprites/custom_weapons/frames/row7_col0.png';
-    if (id === 'plasma_gun') return '/sprites/custom_weapons/frames/row8_col0.png';
-    if (id === 'flamethrower') return '/sprites/custom_weapons/frames/row9_col0.png';
-    if (id === 'ninja_rope') return '/sprites/custom_weapons/frames/row10_col0.png';
+    if (id === 'bazooka') return '/sprites_v2/custom_weapons/frames/row1_col0.png';
+    if (id === 'shotgun') return '/sprites_v2/custom_weapons/frames/row2_col0.png';
+    if (id === 'minigun') return '/sprites_v2/custom_weapons/frames/row3_col0.png';
+    if (id === 'homing_missile') return '/sprites_v2/custom_weapons/frames/row4_col0.png';
+    if (id === 'heavy_gun') return '/sprites_v2/custom_weapons/frames/row5_col0.png';
+    if (id === 'handgun') return '/sprites_v2/custom_weapons/frames/row6_col0.png';
+    if (id === 'grenade') return '/sprites_v2/custom_weapons/frames/row7_col0.png';
+    if (id === 'plasma_gun') return '/sprites_v2/custom_weapons/frames/row8_col0.png';
+    if (id === 'flamethrower') return '/sprites_v2/custom_weapons/frames/row9_col0.png';
+    if (id === 'ninja_rope') return '/sprites_v2/custom_weapons/frames/row10_col0.png';
     return '';
   }
 
   private getDefaultProjectileSrc(id: string): string {
-    if (id === 'bazooka') return '/sprites/custom_weapons/frames/row4_col3.png';
-    if (id === 'homing_missile') return '/sprites/custom_weapons/frames/row4_col3.png';
-    if (id === 'grenade') return '/sprites/custom_weapons/frames/row7_col3.png';
+    if (id === 'bazooka') return '/sprites_v2/custom_weapons/frames/row4_col3.png';
+    if (id === 'homing_missile') return '/sprites_v2/custom_weapons/frames/row4_col3.png';
+    if (id === 'grenade') return '/sprites_v2/custom_weapons/frames/row7_col3.png';
     return '';
   }
 

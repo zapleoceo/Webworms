@@ -43,11 +43,11 @@ export class CanvasRenderer {
 
     // Init Animations
     this.animCtrl = new AnimationController({
-      'walk': { src: '/sprites/Worms/wwalk.png', frameWidth: 60, frameHeight: 60, frameCount: 15 },
-      'jump': { src: '/sprites/Worms/wjump.png', frameWidth: 60, frameHeight: 60, frameCount: 10 },
-      'backflip': { src: '/sprites/Worms/wkamjmp.png', frameWidth: 60, frameHeight: 60, frameCount: 10 }, // approximation
-      'idle': { src: '/sprites/Worms/wbrth1.png', frameWidth: 60, frameHeight: 60, frameCount: 15 }, // breathing
-      'grave': { src: '/sprites/Misc/grave1.png', frameWidth: 60, frameHeight: 60, frameCount: 20 }, // Grave
+      'walk': { src: '/sprites_v2/worms/wwalk.png', frameWidth: 60, frameHeight: 60, frameCount: 15 },
+      'jump': { src: '/sprites_v2/worms/wjump.png', frameWidth: 60, frameHeight: 60, frameCount: 10 },
+      'backflip': { src: '/sprites_v2/worms/wkamjmp.png', frameWidth: 60, frameHeight: 60, frameCount: 10 },
+      'idle': { src: '/sprites_v2/worms/wbrth1.png', frameWidth: 60, frameHeight: 60, frameCount: 15 },
+      'grave': { src: '/sprites_v2/misc/grave1.png', frameWidth: 60, frameHeight: 60, frameCount: 20 },
     });
 
     // Load brand assets for airdrops
@@ -55,7 +55,7 @@ export class CanvasRenderer {
     this.wormImages['brand_windows'] = this.loadImg('/brand_windows.svg?v=3');
     this.wormImages['brand_android'] = this.loadImg('/brand_android.svg?v=3');
     for (let i = 1; i <= 6; i++) {
-      const src = `/sprites/Misc/grave${i}.png`;
+      const src = `/sprites_v2/misc/grave${i}.png`;
       this.wormImages[src] = this.loadImg(src);
     }
 
@@ -94,7 +94,7 @@ export class CanvasRenderer {
   }
 
   private framePath(row: number, col: number): string {
-    return `/sprites/custom_weapons/frames/row${row}_col${col}.png`;
+    return `/sprites_v2/custom_weapons/frames/row${row}_col${col}.png`;
   }
 
   private isImgReady(img: HTMLImageElement): boolean {
@@ -1139,10 +1139,28 @@ export class CanvasRenderer {
       if (!Number.isFinite(p.life) || !Number.isFinite(p.maxLife) || p.maxLife <= 0) continue;
       const a = Math.max(0, Math.min(1, p.life / p.maxLife));
       this.ctx.globalAlpha = a;
-      this.ctx.fillStyle = p.color;
-      this.ctx.beginPath();
-      this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      this.ctx.fill();
+      const sprite = (p as any).sprite;
+      const spriteSize = Number((p as any).spriteSize) || 0;
+      if (typeof sprite === 'string' && sprite.length > 0 && spriteSize > 0) {
+        let img = this.wormImages[sprite];
+        if (!img) {
+          img = this.loadImg(sprite);
+          this.wormImages[sprite] = img;
+        }
+        if (this.isImgReady(img)) {
+          const angle = Number.isFinite((p as any).angle) ? Number((p as any).angle) : Math.atan2(Number(p.vy) || 0, Number(p.vx) || 0);
+          this.ctx.save();
+          this.ctx.translate(p.x, p.y);
+          if (Number.isFinite(angle)) this.ctx.rotate(angle);
+          this.ctx.drawImage(img, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize);
+          this.ctx.restore();
+        }
+      } else {
+        this.ctx.fillStyle = p.color;
+        this.ctx.beginPath();
+        this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
     }
     this.ctx.globalAlpha = 1.0;
   }

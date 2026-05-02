@@ -3,6 +3,7 @@ import { getAIDifficulty } from '../ai/AIStorage';
 import type { AIDifficulty, BotConfig } from '../ai/BotConfig';
 import { DEFAULT_BOT_CONFIG } from '../ai/BotConfig';
 import { terrainFromLandscape, chooseBotActionDebug, type BotWormSnapshot } from '../ai/BotAI';
+import { getWeaponByEquipmentId } from '../equipment/EquipmentRegistry';
 import { AI_V } from '../ai/AIVersion';
 import ThinkWorker from '../ai/worker/BotThinkWorker?worker';
 
@@ -1373,6 +1374,34 @@ export class BotTurnController {
     if (weaponIndex < 0 || !weaponId) return false;
     const aimAngle = weaponId === 'grenade' ? 0.35 : 0.18;
     const power = weaponId === 'grenade' ? 26 : 34;
+    const weapon = getWeaponByEquipmentId(weaponId);
+    const explosionRadius = Math.max(0, Number(weapon?.explosionRadius) || 0);
+    const safeExtra = Math.max(0, Number(cfg?.scoring?.safeExtraRadius) || 0);
+    const selfSafe = explosionRadius + 18 + safeExtra;
+    const baseAim = dir === 'right' ? aimAngle : (Math.PI - aimAngle);
+    const gunLength = 25;
+    const originX = Number(player.x) || 0;
+    const originY = (Number(player.y) || 0) - (Number(player.height) || 0) / 2;
+    const dirX = Math.cos(baseAim);
+    const dirY = Math.sin(baseAim);
+    const startX = originX + dirX * gunLength;
+    const startY = originY + dirY * gunLength;
+    const maxDist = 220;
+    const step = 4;
+    let hitX = startX + dirX * maxDist;
+    let hitY = startY + dirY * maxDist;
+    for (let d = 0; d <= maxDist; d += step) {
+      const x = startX + dirX * d;
+      const y = startY + dirY * d;
+      if (x < 0 || x >= presenter.state.width || y < 0 || y >= presenter.state.height) break;
+      if (presenter.state.landscape.getMaterial(Math.floor(x), Math.floor(y)) > 0) {
+        hitX = x;
+        hitY = y;
+        break;
+      }
+    }
+    const selfDist = Math.hypot(hitX - originX, hitY - (Number(player.y) || 0));
+    if (selfDist < selfSafe) return false;
     const action = { weaponIndex, facingRight: dir === 'right', aimAngle, power, targetId: 'dig_escape' };
     this.fireAction(presenter, action);
     this.firedThisTurn = true;

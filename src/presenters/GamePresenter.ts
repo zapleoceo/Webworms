@@ -1031,6 +1031,53 @@ export class GamePresenter {
         const rad = baseRad + (spreadRad > 0 ? (Random.next() - 0.5) * spreadRad : 0);
         const hit = this.raycastHitscan(player, rad, hitscanRange);
         if (hit) {
+          if (weapon.id === 'plasma_gun') {
+            const muzzleX = player.x + Math.cos(rad) * gunLength;
+            const muzzleY = (player.y - player.height / 2) + Math.sin(rad) * gunLength;
+            const d = Math.max(1, Math.hypot(hit.x - muzzleX, hit.y - muzzleY));
+            const dur = Math.max(0.08, Math.min(0.16, d / 2200));
+            const vx = (hit.x - muzzleX) / dur;
+            const vy = (hit.y - muzzleY) / dur;
+            this.state.particles.push({
+              x: muzzleX,
+              y: muzzleY,
+              vx: 0,
+              vy: 0,
+              life: 0.09,
+              maxLife: 0.09,
+              color: weapon.color || '#55d7ff',
+              size: 2.2,
+              sprite: '/sprites_v2/allsprites/plasma_flash.png',
+              spriteSize: 22,
+              angle: rad
+            } as any);
+            this.state.particles.push({
+              x: muzzleX,
+              y: muzzleY,
+              vx,
+              vy,
+              life: dur,
+              maxLife: dur,
+              color: weapon.color || '#55d7ff',
+              size: 2.2,
+              sprite: '/sprites_v2/allsprites/plasma_projectile.png',
+              spriteSize: 18,
+              angle: rad
+            } as any);
+            this.state.particles.push({
+              x: hit.x,
+              y: hit.y,
+              vx: 0,
+              vy: 0,
+              life: 0.14,
+              maxLife: 0.14,
+              color: weapon.color || '#55d7ff',
+              size: 2.6,
+              sprite: '/sprites_v2/allsprites/plasma_hit.png',
+              spriteSize: 26,
+              angle: 0
+            } as any);
+          }
           this.physics.explodeAt(
             this.state,
             hit.x,

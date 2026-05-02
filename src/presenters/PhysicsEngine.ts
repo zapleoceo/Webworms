@@ -30,7 +30,7 @@ export class PhysicsEngine {
 
   private spawnGrave(state: GameState, worm: any, wormIndex: number): void {
     const spriteN = (wormIndex % 6) + 1;
-    const sprite = assetUrl(`sprites/Misc/grave${spriteN}.png`);
+    const sprite = assetUrl(`sprites_v2/misc/grave${spriteN}.png`);
     const x = Number(worm.x) || 0;
     const wormH = Math.max(0, Number(worm.height) || 0);
     const bottomY = (Number(worm.y) || 0) + wormH / 2;

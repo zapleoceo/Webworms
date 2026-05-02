@@ -35,7 +35,7 @@ if (isAdminPage) {
 }
 
 if (!isAdminPage) {
-  const buildVersion = '20260502_2315';
+  const buildVersion = '20260503_0105';
   const url = new URL(window.location.href);
   if (url.searchParams.get('v') !== buildVersion && sessionStorage.getItem('buildVersionRedirected') !== buildVersion) {
     sessionStorage.setItem('buildVersionRedirected', buildVersion);
@@ -1253,7 +1253,7 @@ function updateWormSelectionUI(state: any) {
     btn.dataset.index = item.index.toString();
     
     const hpStr = Math.ceil(Math.max(0, item.p.health)).toString();
-    const thumb = (window.renderer as any)?.getWormThumbnail?.(item.p, 160) || '/sprites/Worms/wbrth1.png';
+    const thumb = (window.renderer as any)?.getWormThumbnail?.(item.p, 160) || '/sprites_v2/worms/wbrth1.png';
     const equipmentId = item.p.getCurrentEquipmentId?.() || 'bazooka';
     const def = getEquipmentDefinition(equipmentId);
     const iconUrl = def?.icon ? (def.icon.endsWith('.1.png') ? def.icon.replace('.1.png', '.2.png') : def.icon) : '';
