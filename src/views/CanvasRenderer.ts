@@ -2,6 +2,7 @@ import { GameState } from '../models/GameState';
 import { AnimationController } from './AnimationController';
 import { getEquipmentDefinition } from '../equipment/EquipmentRegistry';
 import { buildPerimeterContactPointsFromAlpha } from '../physics/AirdropContour';
+import { assetUrl } from '../utils/assetUrl';
 
 export class CanvasRenderer {
   private canvas: HTMLCanvasElement;
@@ -43,19 +44,19 @@ export class CanvasRenderer {
 
     // Init Animations
     this.animCtrl = new AnimationController({
-      'walk': { src: '/sprites_v2/worms/wwalk.png', frameWidth: 60, frameHeight: 60, frameCount: 15 },
-      'jump': { src: '/sprites_v2/worms/wjump.png', frameWidth: 60, frameHeight: 60, frameCount: 10 },
-      'backflip': { src: '/sprites_v2/worms/wkamjmp.png', frameWidth: 60, frameHeight: 60, frameCount: 10 },
-      'idle': { src: '/sprites_v2/worms/wbrth1.png', frameWidth: 60, frameHeight: 60, frameCount: 15 },
-      'grave': { src: '/sprites_v2/misc/grave1.png', frameWidth: 60, frameHeight: 60, frameCount: 20 },
+      'walk': { src: assetUrl('sprites_v2/worms/wwalk.png'), frameWidth: 60, frameHeight: 60, frameCount: 15 },
+      'jump': { src: assetUrl('sprites_v2/worms/wjump.png'), frameWidth: 60, frameHeight: 60, frameCount: 10 },
+      'backflip': { src: assetUrl('sprites_v2/worms/wkamjmp.png'), frameWidth: 60, frameHeight: 60, frameCount: 10 },
+      'idle': { src: assetUrl('sprites_v2/worms/wbrth1.png'), frameWidth: 60, frameHeight: 60, frameCount: 15 },
+      'grave': { src: assetUrl('sprites_v2/misc/grave1.png'), frameWidth: 60, frameHeight: 60, frameCount: 20 },
     });
 
     // Load brand assets for airdrops
-    this.wormImages['brand_apple'] = this.loadImg('/brand_apple.svg?v=3');
-    this.wormImages['brand_windows'] = this.loadImg('/brand_windows.svg?v=3');
-    this.wormImages['brand_android'] = this.loadImg('/brand_android.svg?v=3');
+    this.wormImages['brand_apple'] = this.loadImg(assetUrl('brand_apple.svg?v=3'));
+    this.wormImages['brand_windows'] = this.loadImg(assetUrl('brand_windows.svg?v=3'));
+    this.wormImages['brand_android'] = this.loadImg(assetUrl('brand_android.svg?v=3'));
     for (let i = 1; i <= 6; i++) {
-      const src = `/sprites_v2/misc/grave${i}.png`;
+      const src = assetUrl(`sprites_v2/misc/grave${i}.png`);
       this.wormImages[src] = this.loadImg(src);
     }
 
@@ -94,7 +95,7 @@ export class CanvasRenderer {
   }
 
   private framePath(row: number, col: number): string {
-    return `/sprites_v2/custom_weapons/frames/row${row}_col${col}.png`;
+    return assetUrl(`sprites_v2/custom_weapons/frames/row${row}_col${col}.png`);
   }
 
   private isImgReady(img: HTMLImageElement): boolean {

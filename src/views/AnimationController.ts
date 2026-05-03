@@ -28,36 +28,52 @@ export class AnimationController {
     img.crossOrigin = "Anonymous";
     img.src = src;
     img.onload = () => {
-      // Create offscreen canvas to process the image and remove background color
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      ctx.drawImage(img, 0, 0);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imgData.data;
+      try {
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
 
-      // In original Worms sprites, the background is usually rgb(128, 128, 192) or rgb(0, 0, 0)
-      // Let's sample the top-left pixel as the background color key
-      const bgR = data[0];
-      const bgG = data[1];
-      const bgB = data[2];
+        const bgR = data[0];
+        const bgG = data[1];
+        const bgB = data[2];
 
-      // Remove background color
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        
-        // Tolerance for compression artifacts
-        if (Math.abs(r - bgR) < 10 && Math.abs(g - bgG) < 10 && Math.abs(b - bgB) < 10) {
-          data[i + 3] = 0; // Make transparent
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          if (Math.abs(r - bgR) < 10 && Math.abs(g - bgG) < 10 && Math.abs(b - bgB) < 10) {
+            data[i + 3] = 0;
+          }
         }
-      }
 
-      ctx.putImageData(imgData, 0, 0);
+        ctx.putImageData(imgData, 0, 0);
+        this.sprites.set(key, canvas);
+      } catch {
+        try {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          this.sprites.set(key, canvas);
+        } catch {}
+      }
+    };
+    img.onerror = () => {
+      const conf = this.configs.get(key);
+      const w = Math.max(1, conf?.frameWidth || 60);
+      const h = Math.max(1, (conf?.frameHeight || 60) * Math.max(1, conf?.frameCount || 1));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#2a2a2a';
+        ctx.fillRect(0, 0, w, h);
+      }
       this.sprites.set(key, canvas);
     };
   }

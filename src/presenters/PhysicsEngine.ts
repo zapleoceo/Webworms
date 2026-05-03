@@ -29,8 +29,7 @@ export class PhysicsEngine {
   private terrainDf: TerrainDistanceField | null = null;
 
   private spawnGrave(state: GameState, worm: any, wormIndex: number): void {
-    const spriteN = (wormIndex % 6) + 1;
-    const sprite = assetUrl(`sprites_v2/misc/grave${spriteN}.png`);
+    const sprite = assetUrl('sprites_v2/misc/grave1.png');
     const x = Number(worm.x) || 0;
     const wormH = Math.max(0, Number(worm.height) || 0);
     const bottomY = (Number(worm.y) || 0) + wormH / 2;
@@ -48,7 +47,7 @@ export class PhysicsEngine {
     logo.health = 9999;
     (logo as any).airdropPhysics = state.airdropPhysics;
     (logo as any).requireGroundToSleep = true;
-    (logo as any).graveFrame = wormIndex;
+    (logo as any).graveFrame = 0;
     if (!state.brandLogos) state.brandLogos = [];
     state.brandLogos.push(logo);
     (worm as any).graveSpawned = true;
