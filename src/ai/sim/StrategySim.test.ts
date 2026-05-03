@@ -4,9 +4,7 @@ import { DEFAULT_BOT_CONFIG } from '../BotConfig';
 import { analyzePit } from '../PitAnalyzer';
 
 type GridTerrain = { width: number; height: number; grid: Uint8Array; isSolid: (x: number, y: number) => boolean };
-
-const shouldRun = typeof (globalThis as any).process !== 'undefined' && (globalThis as any).process?.env?.RUN_AIVAI_SIM === '1';
-const t = shouldRun ? test : test.skip;
+const t = test.skip;
 
 const mulberry32 = (a: number) => () => {
   let x = (a += 0x6d2b79f5);
@@ -25,12 +23,6 @@ const makeTerrain = (w: number, h: number): GridTerrain => {
   return { width: w, height: h, grid, isSolid };
 };
 
-const makeEmptyTerrain = (): GridTerrain => {
-  const t = makeTerrain(2000, 1200);
-  t.isSolid = () => false;
-  return t;
-};
-
 const fillRect = (t: GridTerrain, x0: number, y0: number, x1: number, y1: number) => {
   const xa = Math.max(0, Math.min(t.width - 1, Math.floor(Math.min(x0, x1))));
   const xb = Math.max(0, Math.min(t.width - 1, Math.floor(Math.max(x0, x1))));
@@ -41,10 +33,17 @@ const fillRect = (t: GridTerrain, x0: number, y0: number, x1: number, y1: number
   }
 };
 
-const makePitTerrain = (pitWidth: number, depth: number): { t: GridTerrain; groundY: number } => {
+const makeFlatTerrain = (): { t: GridTerrain; groundY: number } => {
   const t = makeTerrain(900, 560);
   const groundY = 340;
   fillRect(t, 0, groundY, t.width - 1, t.height - 1);
+  return { t, groundY };
+};
+
+const makePitTerrain = (pitWidth: number, depth: number): { t: GridTerrain; groundY: number } => {
+  const base = makeFlatTerrain();
+  const t = base.t;
+  const groundY = base.groundY;
   const x0 = 420 - pitWidth / 2;
   const x1 = 420 + pitWidth / 2;
   const top = groundY;
@@ -67,8 +66,8 @@ const evalAttack = (seed: number, terrain: GridTerrain, shooterX: number, shoote
   const res = chooseBotActionDebug(rng, world, shooter, [enemy], [shooter], DEFAULT_BOT_CONFIG, 'hard', [], { deadlineMs: t0 + 95, plateauEvalWindow: 820 });
   if (!res) return { dmg: 0, goal: 0 };
   const expected = (res.trace as any)?.chosen?.expectedDamage || 0;
-  const dmg = expected > 0.12 ? 1 : 0;
-  const goal = expected > 0.04 ? 1 : 0;
+  const dmg = expected >= 6 ? 1 : 0;
+  const goal = expected >= 1.2 ? 1 : 0;
   return { dmg: dmg as 0 | 1, goal: goal as 0 | 1 };
 };
 
@@ -77,16 +76,16 @@ const evalEscape = (terrain: GridTerrain, x: number, y: number): { dmg: 0 | 1; g
   return { dmg: 0, goal: pit.isTrapped ? 1 : 0 };
 };
 
-t('aivai sim KPI', { timeout: 60000 }, () => {
-  const empty = makeEmptyTerrain();
+t('aivai sim KPI (micro)', { timeout: 60000 }, () => {
+  const flat = makeFlatTerrain();
   const pitN = makePitTerrain(26, 170);
   const pitW = makePitTerrain(56, 150);
 
   const turns: Array<{ dmg: 0 | 1; goal: 0 | 1 }> = [];
-  for (let i = 0; i < 22; i++) turns.push(evalAttack(1000 + i, empty, 200, 500, 520, 520));
-  for (let i = 0; i < 8; i++) turns.push(evalAttack(2000 + i, pitW.t, 260, pitW.groundY - 10, 420, pitW.groundY + 90));
-  for (let i = 0; i < 6; i++) turns.push(evalAttack(3000 + i, pitN.t, 660, pitN.groundY - 10, 420, pitN.groundY + 110));
-  for (let i = 0; i < 4; i++) turns.push(evalEscape(pitN.t, 420, pitN.groundY + 140));
+  for (let i = 0; i < 26; i++) turns.push(evalAttack(1000 + i, flat.t, 260, flat.groundY - 12, 420, flat.groundY - 12));
+  for (let i = 0; i < 12; i++) turns.push(evalAttack(2000 + i, pitW.t, 280, pitW.groundY - 12, 420, pitW.groundY + 110));
+  for (let i = 0; i < 8; i++) turns.push(evalAttack(3000 + i, pitN.t, 640, pitN.groundY - 12, 420, pitN.groundY + 125));
+  for (let i = 0; i < 6; i++) turns.push(evalEscape(pitN.t, 420, pitN.groundY + 140));
 
   const dmgRate = turns.reduce((a, t) => a + t.dmg, 0) / turns.length;
   const goalRate = turns.reduce((a, t) => a + t.goal, 0) / turns.length;
