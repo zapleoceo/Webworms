@@ -279,6 +279,29 @@ export class APIClient {
     }
   }
 
+  static async ingestAIVaiCases(payload: any): Promise<any> {
+    try {
+      const res = await fetch(`${this.BASE_URL}/aivai/cases/ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Network error' };
+    }
+  }
+
+  static async getAIVaiCasesBootstrap(aiV: string, limit: number = 400): Promise<any> {
+    try {
+      const url = `${this.BASE_URL}/aivai/cases/bootstrap?aiV=${encodeURIComponent(aiV)}&limit=${encodeURIComponent(String(limit))}`;
+      const res = await fetch(url, { method: 'GET' });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Network error' };
+    }
+  }
+
   static async createRoom(hostId: string) {
     try {
       return await this.fetchJsonWithRetry(`${this.BASE_URL}/rooms`, {

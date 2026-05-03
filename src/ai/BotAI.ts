@@ -179,6 +179,7 @@ type ShotSearchOpts = {
   onProgress?: (p: { bestScore: number; comboCount: number; evals: number }) => void;
   bestPractices?: any;
   mapSeed?: number;
+  seedBins?: Array<{ weaponIndex: number; angleBin: number; powerBin: number }>;
 };
 
 function chooseBotActionScored(
@@ -204,12 +205,13 @@ function chooseBotActionScored(
   const weapons = weaponCandidates(shooter);
   if (weapons.length === 0) return null;
 
-  const angleList = sampleAngles(22);
-  const grenadeAngleList = sampleAngles(36);
-  const powerList = samplePowers(12);
-  const grenadePowerList = sampleGrenadePowers();
+  let angleList = sampleAngles(22);
+  let grenadeAngleList = sampleAngles(36);
+  let powerList = samplePowers(12);
+  let grenadePowerList = sampleGrenadePowers();
 
   const targetRadius = 10;
+  const allyNearShooter = allies.some(a => a.health > 0 && a.id !== shooter.id && Math.hypot(a.x - shooter.x, a.y - shooter.y) < 150);
 
   const stateKey = shotStateKey(shooter, aliveEnemies);
   const mem = new Map<string, ShotMemoryEntry>();
@@ -229,6 +231,36 @@ function chooseBotActionScored(
   const grenadeExtraSelfMargin = (botCfg as any).scoring?.grenadeExtraSelfMargin ?? 50;
   const bpPriors = (opts as any)?.bestPractices?.priors || null;
   const mapSeed0 = Number((opts as any)?.mapSeed) || 0;
+  const seedBins: Array<{ weaponIndex: number; angleBin: number; powerBin: number }> = Array.isArray((opts as any)?.seedBins) ? (opts as any).seedBins : [];
+  if (seedBins.length > 0) {
+    const byIndex = new Map<number, string>();
+    for (const w of weapons) byIndex.set(w.index, w.id);
+    const addAngle = (arr: number[], a: number) => {
+      if (a < (-78 * (Math.PI / 180)) || a > (78 * (Math.PI / 180))) return;
+      if (!arr.some(x => Math.abs(x - a) < (1.2 * (Math.PI / 180)))) arr.push(a);
+    };
+    const addPower = (arr: number[], p: number) => {
+      const x = Math.max(1, Math.min(100, Math.round(p)));
+      if (!arr.includes(x)) arr.push(x);
+    };
+    for (const s of seedBins) {
+      const wid = byIndex.get(Number(s.weaponIndex));
+      if (!wid) continue;
+      const a = (Number(s.angleBin) * 2) * (Math.PI / 180);
+      const p = (Number(s.powerBin) * 5);
+      if (wid === 'grenade') {
+        addAngle(grenadeAngleList, a);
+        addPower(grenadePowerList, p);
+      } else {
+        addAngle(angleList, a);
+        addPower(powerList, p);
+      }
+    }
+    angleList.sort((a, b) => a - b);
+    grenadeAngleList.sort((a, b) => a - b);
+    powerList.sort((a, b) => a - b);
+    grenadePowerList.sort((a, b) => a - b);
+  }
 
   let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot; trace?: BotDecisionTrace } | null = null;
   const deadlineMs = typeof opts?.deadlineMs === 'number' && Number.isFinite(opts.deadlineMs) ? opts.deadlineMs : Infinity;
@@ -439,6 +471,38 @@ function chooseBotActionScored(
 
           const falloff = clamp(1 - miss / Math.max(1, simWeapon.explosionRadius), 0, 1);
           const travel = Math.hypot(target.x - muzzle.x, target.y - muzzle.y);
+          if (!targetTrapped && simWeapon.explosionRadius <= 0 && allies.length > 1) {
+            const vx = Math.cos(global) * speed;
+            const vy = Math.sin(global) * speed;
+            const tx = target.x - muzzle.x;
+            const tTarget = Math.abs(vx) > 1e-6 ? (tx / vx) : 0;
+            if (tTarget > 0) {
+              let blocked = false;
+              for (const ally of allies) {
+                if (ally.health <= 0) continue;
+                if (ally.id === shooter.id) continue;
+                const aw = (ally.width || 18) * 0.45;
+                const ay = (ally.y - (ally.height || 0) * 0.35);
+                const tol = (ally.height || 18) * 0.5 + 28;
+                const xs = [ally.x - aw, ally.x, ally.x + aw];
+                for (const xx of xs) {
+                  const ax = xx - muzzle.x;
+                  const t = ax / vx;
+                  if (!Number.isFinite(t) || t <= 0 || t >= tTarget || t > maxTime) continue;
+                  const y = muzzle.y + vy * t + 0.5 * world.gravity * t * t;
+                  if (Math.abs(y - ay) < tol) {
+                    blocked = true;
+                    break;
+                  }
+                }
+                if (blocked) break;
+              }
+              if (blocked) {
+                bump('friendly_line_block');
+                continue;
+              }
+            }
+          }
           const aimSigma = Math.max(0.01, aimPct * 1.15);
           const spreadSigma = (weapon.spread || 0) * (Math.PI / 180) * 0.35;
           const powSigma = Math.max(0, powPct) * 0.12;
@@ -517,6 +581,10 @@ function chooseBotActionScored(
             bump('ally_unsafe');
             continue;
           }
+          if (!targetTrapped && allyNearShooter && simWeapon.explosionRadius > 0) {
+            bump('friendly_near_shooter_explosive');
+            continue;
+          }
           score -= expectedFriendlyDamage * friendlyDamageWeight;
           if (expectedDamage >= 7 && expectedFriendlyDamage <= 0.01 && selfNear >= 26) {
             comboCount += 1;
@@ -589,7 +657,9 @@ function chooseBotActionScored(
       }
     }
 
-    if (targetBest && (!best || targetBest.score > best.score + plateauEps)) {
+    if (targetBest && (!best
+      || (targetBest.expectedDamage > best.expectedDamage + 0.6)
+      || (Math.abs(targetBest.expectedDamage - best.expectedDamage) <= 0.6 && targetBest.score > best.score + plateauEps))) {
       const trace = traceEnabled && bestByWeaponId[targetBest.weaponId]
         ? {
             shooter: { id: shooter.id, team: shooter.team, x: shooter.x, y: shooter.y, health: shooter.health },

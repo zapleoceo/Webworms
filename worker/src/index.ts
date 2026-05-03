@@ -17,6 +17,7 @@ import { handleContactEmail } from './controllers/contact';
 import { uploadAIVaiLog } from './controllers/aivaiLogs';
 import { getAIVaiLog, listAIVaiLogs } from './controllers/adminAivaiLogs';
 import { getAIVaiLogExtract, getAIVaiLogMeta, getAIVaiLogStats } from './controllers/aivaiLogPublic';
+import { getAIVaiCasesBootstrap, getAIVaiCasesTop, ingestAIVaiCases } from './controllers/aivaiCases';
 
 export interface Env {
   DB: D1Database;
@@ -228,6 +229,31 @@ async function ensureDbInitialized(env: Env): Promise<void> {
     `).run();
 
     await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS AIVaiCases (
+        aiV TEXT NOT NULL,
+        stateKey TEXT NOT NULL,
+        caseId TEXT NOT NULL,
+        planJson TEXT NOT NULL,
+        weaponId TEXT,
+        samples INTEGER NOT NULL DEFAULT 1,
+        emaUtility REAL NOT NULL DEFAULT 0,
+        lastUtility REAL NOT NULL DEFAULT 0,
+        lastEnemyDelta REAL NOT NULL DEFAULT 0,
+        lastAllyDelta REAL NOT NULL DEFAULT 0,
+        lastExpectedDamage REAL NOT NULL DEFAULT 0,
+        updatedAt INTEGER NOT NULL,
+        PRIMARY KEY (aiV, stateKey, caseId)
+      )
+    `).run();
+
+    await env.DB.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_aivai_cases_key ON AIVaiCases(aiV, stateKey, emaUtility DESC)
+    `).run();
+    await env.DB.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_aivai_cases_updated ON AIVaiCases(aiV, updatedAt DESC)
+    `).run();
+
+    await env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS Users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE,
@@ -410,6 +436,15 @@ export default {
       }
       else if (url.pathname === '/api/aivai/log/extract' && request.method === 'GET') {
         response = await getAIVaiLogExtract(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/aivai/cases/ingest' && request.method === 'POST') {
+        response = await ingestAIVaiCases(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/aivai/cases/top' && request.method === 'GET') {
+        response = await getAIVaiCasesTop(request, env, corsHeaders);
+      }
+      else if (url.pathname === '/api/aivai/cases/bootstrap' && request.method === 'GET') {
+        response = await getAIVaiCasesBootstrap(request, env, corsHeaders);
       }
       else if (url.pathname === '/api/admin/aivai/logs' && request.method === 'GET') {
         response = await listAIVaiLogs(request, env, corsHeaders);

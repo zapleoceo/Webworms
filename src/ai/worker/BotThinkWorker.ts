@@ -45,6 +45,7 @@ type PlanRequest = {
   ropeRemaining: number;
   shotMemory?: Array<{ stateKey: string; shotKey: string; noRes: number; ff: number; targetId?: string; lastT?: number }>;
   bestPractices?: any;
+  seedBins?: Array<{ weaponIndex: number; angleBin: number; powerBin: number }>;
 };
 
 type PlanResponse = {
@@ -177,7 +178,7 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
     const plan = plan0 ? { ...plan0 } : null;
 
     if (plan && enemies.length > 0) {
-      const cur = chooseBotActionDebug(rngPlan, world as any, shooter, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('cur_shot'), bestPractices: msg.bestPractices, mapSeed: msg.mapSeed });
+      const cur = chooseBotActionDebug(rngPlan, world as any, shooter, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('cur_shot'), bestPractices: msg.bestPractices, mapSeed: msg.mapSeed, seedBins: msg.seedBins });
       const curExpected = (cur?.trace as any)?.chosen?.expectedDamage || 0;
       if (!(cur && curExpected > 0.15)) {
         const maxSpeed = 22.75 * (shooter.speedMultiplier || 1);
@@ -206,15 +207,19 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
         };
 
         const edgePenaltyAt = (x: number, groundY: number): number => {
+          const borderMargin = 72;
+          if (x < borderMargin || x > (w - borderMargin)) return 1200;
           const sampleDx = 38;
           const left = surfaceYAt(x - sampleDx, groundY);
           const right = surfaceYAt(x + sampleDx, groundY);
-          if (left === null || right === null) return 220;
+          if (left === null || right === null) return 1200;
           const dropL = left - groundY;
           const dropR = right - groundY;
           const maxDrop = Math.max(dropL, dropR);
           if (maxDrop <= 60) return 0;
-          return Math.min(420, (maxDrop - 60) * 1.4);
+          if (maxDrop >= 220) return 1200;
+          if (maxDrop >= 120) return Math.min(1200, 240 + (maxDrop - 120) * 4.2);
+          return Math.min(700, 80 + (maxDrop - 60) * 2.2);
         };
 
         const evalX = (x: number) => {
@@ -225,13 +230,22 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
           let res = shotCache.get(k);
           if (res === undefined) {
             const movedShooter = { ...shooter, x, y: yy };
-            res = chooseBotActionDebug(rngPlan, world as any, movedShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('move_shot'), bestPractices: msg.bestPractices, mapSeed: msg.mapSeed });
+            res = chooseBotActionDebug(rngPlan, world as any, movedShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('move_shot'), bestPractices: msg.bestPractices, mapSeed: msg.mapSeed, seedBins: msg.seedBins });
             shotCache.set(k, res || null);
           }
           if (!res) return;
           const expected = (res.trace as any)?.chosen?.expectedDamage || 0;
           const edgePenalty = edgePenaltyAt(x, groundY);
-          const s = res.score - Math.abs(x - shooter.x) * movePenalty - edgePenalty - (expected <= 0.01 ? 120 : 0);
+          let allyPenalty = 0;
+          for (const a of allies) {
+            if (!a || a.health <= 0 || a.id === shooter.id) continue;
+            const dx = Math.abs(a.x - x);
+            const dy = Math.abs(a.y - yy);
+            if (dx < 26 && dy < 34) allyPenalty += 260;
+            else if (dx < 56 && dy < 70) allyPenalty += 70;
+            if (edgePenalty >= 200 && dx < 90 && dy < 90) allyPenalty += 220;
+          }
+          const s = res.score - Math.abs(x - shooter.x) * movePenalty - edgePenalty - allyPenalty - (expected <= 0.01 ? 120 : 0);
           if (!bestFound || s > bestScore) {
             bestFound = true;
             bestX = x;
@@ -279,7 +293,7 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
       if (plan?.moveTo) return { ...shooter, x: plan.moveTo.x, y: plan.moveTo.y };
       return shooter;
     })();
-    const debug = chooseBotActionDebug(rngDbg, world as any, debugShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('final_shot') });
+    const debug = chooseBotActionDebug(rngDbg, world as any, debugShooter as any, enemies, allies, msg.botCfg, msg.difficulty, msg.shotMemory || [], { deadlineMs, plateauEvalWindow, onProgress: progress('final_shot'), seedBins: msg.seedBins });
     if (plan && debug?.action) {
       plan.action = { weaponIndex: debug.action.weaponIndex, facingRight: debug.action.facingRight, aimAngle: debug.action.aimAngle, power: debug.action.power, targetId: debug.action.targetId };
     }

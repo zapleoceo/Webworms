@@ -7,6 +7,7 @@ import { getWeaponByEquipmentId } from '../equipment/EquipmentRegistry';
 import { AI_V } from '../ai/AIVersion';
 import { analyzePit } from '../ai/PitAnalyzer';
 import { recordPriorSample, recordTemplateSample, snapshotBestPracticesForWorker, getTemplate } from '../ai/BestPractices';
+import { buildStateKeyFromPresenter, computeWeaponsMask, getCasesByKey } from '../ai/CaseLibrary';
 import ThinkWorker from '../ai/worker/BotThinkWorker?worker';
 
 type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
@@ -15,6 +16,7 @@ type RopeMode = 'climb' | 'swing' | 'descend';
 export class BotTurnController {
   private difficultyByTeam: Partial<Record<'team1' | 'team2', AIDifficulty>> = {};
   private lastTurnIndex: number = -1;
+  private turnNo: number = 0;
   private firedThisTurn: boolean = false;
   private plannedThisTurn: boolean = false;
   private plan: { moveTo?: { x: number; y: number }; movePath?: { waypoints: Array<{ x: number; y: number }>; primitive: 'walk' | 'jump' | 'rope' }; action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string }; intent?: 'attack' | 'approach' | 'escape_pit' | 'reposition_safety'; intentReason?: any } | null = null;
@@ -48,6 +50,14 @@ export class BotTurnController {
   private lastThinkSrcByTeam: Record<'team1' | 'team2', 'main' | 'worker' | null> = { team1: null, team2: null };
   private lastCacheHitByTeam: Record<'team1' | 'team2', 0 | 1> = { team1: 0, team2: 0 };
 
+  private caseCandidate: { stateKey: string; caseId: string; plan: any; expectedDamage: number } | null = null;
+  private caseUsedThisTurn: 0 | 1 = 0;
+  private caseUsedId: string | null = null;
+  private caseUsedKey: string | null = null;
+  private caseExpectedDamage: number | null = null;
+  private caseSeedBinsThisTurn: Array<{ weaponIndex: number; angleBin: number; powerBin: number }> = [];
+  private caseSeedLookupThisTurn: Map<string, { caseId: string; stateKey: string; expectedDamage: number }> = new Map();
+
   private strategy: MoveStrategy | null = null;
   private ropeMode: RopeMode | null = null;
   private strategyCost0: number = Infinity;
@@ -60,6 +70,10 @@ export class BotTurnController {
   private jumpHoldUntil: number = 0;
   private lastX: number = 0;
   private stuckTime: number = 0;
+  private wallStallRefX: number = 0;
+  private wallStallTime: number = 0;
+  private wallStallDir: 'left' | 'right' | null = null;
+  private wallStallLastLoggedAt: number = -999;
 
   private lastCostAt: number = -999;
   private lastCost: number = Infinity;
@@ -76,6 +90,187 @@ export class BotTurnController {
   private lastPit: any | null = null;
   private pitDigFlip: 0 | 1 = 0;
   private pendingEscapeEval: { wormIndex: number; startDepthPx: number; startTrapped: 0 | 1; mode: 'jump' | 'rope' | 'dig' | null; dir: 'left' | 'right'; widthPx: number; mapSeed: number } | null = null;
+
+  private clampMoveToByTimeBudget(presenter: any, player: any, moveTo: { x: number; y: number } | null, weaponIndex: number): { x: number; y: number } | null {
+    if (!moveTo) return null;
+    if (weaponIndex >= 0) return null;
+    const maxTurnTime = Number(presenter?.maxTurnTime) || 0;
+    const timeLeft = Number(presenter?.turnTimeLeft) || 0;
+    const mode = presenter?.state?.mode;
+    const reserveSeconds = mode === 'aivai' ? 2.0 : Number(presenter?.state?.botConfig?.reserveSeconds) || 1.0;
+    const budget = Math.max(0, Math.min(maxTurnTime, timeLeft) - reserveSeconds);
+    const maxDist0 = 50 + 85 * budget;
+    const maxDist = weaponIndex >= 0 ? Math.min(maxDist0, 72) : maxDist0;
+    const dx = moveTo.x - player.x;
+    const dy = moveTo.y - player.y;
+    const dist = Math.hypot(dx, dy);
+    if (!Number.isFinite(dist)) return null;
+    if (weaponIndex >= 0 && dist > maxDist) return null;
+    if (dist <= maxDist) return moveTo;
+    const s = maxDist / Math.max(1e-6, dist);
+    const x = player.x + dx * s;
+    const y = player.y + dy * s;
+    const x1 = Math.max(24, Math.min((presenter?.state?.width || 0) - 24, x));
+    const y1 = Math.max(24, Math.min((presenter?.state?.height || 0) - 24, y));
+    return { x: x1, y: y1 };
+  }
+
+  private ensureClearLineMove(presenter: any, curIdx: number) {
+    const plan = this.plan;
+    if (!plan || !plan.action || plan.action.weaponIndex < 0) return;
+    if (plan.moveTo) return;
+    const player = presenter?.state?.players?.[curIdx];
+    if (!player) return;
+    const tIdx = Number(plan.action.targetId);
+    const target = Number.isFinite(tIdx) ? presenter?.state?.players?.[tIdx] : null;
+    if (!target) return;
+    const dir = target.x >= player.x ? 1 : -1;
+    const ally = presenter?.state?.players?.find((w: any, i: number) => i !== curIdx && w && w.team === player.team && ((dir > 0 && w.x > player.x && w.x < target.x) || (dir < 0 && w.x < player.x && w.x > target.x)) && Math.abs((w.y || 0) - (player.y || 0)) < 28 && Math.hypot((w.x || 0) - (player.x || 0), (w.y || 0) - (player.y || 0)) < 140);
+    if (!ally) return;
+    const step = 64 * dir;
+    const x = Math.max(24, Math.min((presenter?.state?.width || 0) - 24, (player.x || 0) + step));
+    const y = Math.max(24, Math.min((presenter?.state?.height || 0) - 24, (player.y || 0)));
+    plan.moveTo = { x, y };
+  }
+
+  private emitPlanStart(presenter: any, now: number, curIdx: number) {
+    try {
+      if (presenter?.state?.mode !== 'aivai') return;
+      const p = presenter.state.getCurrentPlayer?.();
+      if (!p) return;
+      const plan = this.plan;
+      if (!plan) return;
+      const ch = (this.lastDecisionDebug as any)?.trace?.chosen || null;
+      const expected0 = ch && typeof ch.expectedDamage === 'number' && Number.isFinite(ch.expectedDamage) ? ch.expectedDamage : null;
+      const expected = this.caseUsedThisTurn === 1 && typeof this.caseExpectedDamage === 'number' && Number.isFinite(this.caseExpectedDamage)
+        ? this.caseExpectedDamage
+        : expected0;
+      const st = presenter.state;
+      const players: any[] = Array.isArray(st?.players) ? st.players : [];
+      const enemies = players.filter(x => x && x.team !== p.team && (x.health || 0) > 0);
+      enemies.sort((a, b) => Math.hypot((a.x || 0) - p.x, (a.y || 0) - p.y) - Math.hypot((b.x || 0) - p.x, (b.y || 0) - p.y));
+      const e = enemies[0] || null;
+      const eq: string[] = Array.isArray(p.equipmentIds) ? p.equipmentIds.filter((x: any) => typeof x === 'string') : [];
+      const weaponsMask = computeWeaponsMask(eq);
+      this.emitAIVai(presenter, {
+        type: 'bot_plan_start',
+        t: now,
+        team: p.team,
+        wormId: String(curIdx),
+        turnNo: this.turnNo,
+        plan: {
+          moveTo: plan.moveTo || null,
+          action: plan.action || null,
+          intent: plan.intent || null,
+          intentReason: plan.intentReason || null
+        },
+        expectedDamage: expected,
+        mapSeed: Number(st?.mapSeed) || 0,
+        sx: Number(p.x) || 0,
+        sy: Number(p.y) || 0,
+        ex: e ? (Number(e.x) || 0) : null,
+        ey: e ? (Number(e.y) || 0) : null,
+        weaponsMask,
+        caseUsed: this.caseUsedThisTurn,
+        caseId: this.caseUsedId,
+        caseKey: this.caseUsedKey,
+        thinkSrc: this.lastThinkSrc,
+        workerUsed: this.lastWorkerUsed,
+        aiV: AI_V
+      });
+    } catch {}
+  }
+
+  private planShotKey(player: any, action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number }): string | null {
+    const equipmentIds: any[] = Array.isArray(player?.equipmentIds) ? player.equipmentIds : [];
+    const weaponId = typeof equipmentIds[action.weaponIndex] === 'string' ? equipmentIds[action.weaponIndex] : null;
+    if (!weaponId) return null;
+    const angleDeg = (Number(action.aimAngle) || 0) * (180 / Math.PI);
+    const angleBin = Math.round(angleDeg / 2);
+    const powerBin = Math.round((Number(action.power) || 0) / 5);
+    return `${weaponId}:${action.facingRight ? 1 : 0}:${angleBin}:${powerBin}`;
+  }
+
+  private isMuzzleClear(presenter: any, player: any, action: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string }): boolean {
+    try {
+      const baseAim = action.facingRight ? action.aimAngle : (Math.PI - action.aimAngle);
+      const originX = Number(player.x) || 0;
+      const originY = (Number(player.y) || 0) - (Number(player.height) || 0) / 2;
+      const dirX = Math.cos(baseAim);
+      const dirY = Math.sin(baseAim);
+      const gunLength = 25;
+      const step = 2;
+      for (let d = 0; d <= gunLength; d += step) {
+        const x = originX + dirX * d;
+        const y = originY + dirY * d;
+        if (x < 0 || x >= presenter.state.width || y < 0 || y >= presenter.state.height) return false;
+        if (presenter.state.landscape.getMaterial(Math.floor(x), Math.floor(y)) > 0) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private refreshCaseCandidate(presenter: any, curIdx: number, botCfg: BotConfig) {
+    try {
+      this.caseCandidate = null;
+      this.caseSeedBinsThisTurn = [];
+      this.caseSeedLookupThisTurn = new Map();
+      const player = presenter?.state?.players?.[curIdx];
+      if (!player) return;
+      const k = buildStateKeyFromPresenter(AI_V, presenter, curIdx);
+      if (!k) return;
+      const stateKey = k.stateKey;
+      const all = getCasesByKey(stateKey);
+      if (!Array.isArray(all) || all.length === 0) return;
+      const max = 20;
+      for (let i = 0; i < all.length && this.caseSeedBinsThisTurn.length < max; i++) {
+        const c: any = all[i];
+        const plan = c?.plan;
+        const act = plan?.action;
+        if (!plan || !act) continue;
+        const action = { weaponIndex: Number(act.weaponIndex) || 0, facingRight: !!act.facingRight, aimAngle: Number(act.aimAngle) || 0, power: Number(act.power) || 0, targetId: String(act.targetId ?? '') };
+        if (!Number.isFinite(action.weaponIndex) || action.weaponIndex < 0) continue;
+        const equipmentIds: any[] = Array.isArray(player?.equipmentIds) ? player.equipmentIds : [];
+        if (action.weaponIndex >= equipmentIds.length) continue;
+        if (!this.isMuzzleClear(presenter, player, action)) continue;
+        if (!this.isActionSelfSafe(presenter, player, action, botCfg)) continue;
+        const angleDeg = action.aimAngle * (180 / Math.PI);
+        const angleBin = Math.round(angleDeg / 2);
+        const powerBin = Math.round(action.power / 5);
+        this.caseSeedBinsThisTurn.push({ weaponIndex: action.weaponIndex, angleBin, powerBin });
+        const key = this.planShotKey(player, action);
+        if (key) {
+          this.caseSeedLookupThisTurn.set(`${stateKey}|${key}`, { caseId: String(c.caseId || ''), stateKey, expectedDamage: Number(c.expectedDamage) || 0 });
+        }
+        if (!this.caseCandidate) {
+          this.caseCandidate = { stateKey, caseId: String(c.caseId || ''), plan, expectedDamage: Number(c.expectedDamage) || 0 };
+        }
+      }
+    } catch {}
+  }
+
+  private applyCaseUsage(presenter: any, curIdx: number) {
+    try {
+      if (presenter?.state?.mode !== 'aivai') return;
+      const player = presenter?.state?.players?.[curIdx];
+      const plan = this.plan;
+      if (!player || !plan?.action) return;
+      if (this.caseSeedLookupThisTurn.size === 0) return;
+      const shotKey = this.planShotKey(player, plan.action);
+      if (!shotKey) return;
+      const k = buildStateKeyFromPresenter(AI_V, presenter, curIdx);
+      const stateKey = k?.stateKey;
+      if (!stateKey) return;
+      const hit = this.caseSeedLookupThisTurn.get(`${stateKey}|${shotKey}`) || null;
+      if (!hit) return;
+      this.caseUsedThisTurn = 1;
+      this.caseUsedId = hit.caseId || null;
+      this.caseUsedKey = hit.stateKey || null;
+      this.caseExpectedDamage = hit.expectedDamage;
+    } catch {}
+  }
   private lastMovementCfg: { maxStrategyAttemptsPerTurn: number; maxStrategyFailuresPerTurn: number; replanWhenBannedAtLeast: number; replanCooldownSeconds: number; maxReplansPerTurn: number } = {
     maxStrategyAttemptsPerTurn: 3,
     maxStrategyFailuresPerTurn: 3,
@@ -102,7 +297,7 @@ export class BotTurnController {
   private workerInitError: string | null = null;
 
   private shotMemory: Map<string, { stateKey: string; shotKey: string; noRes: number; ff: number; lastT: number; targetId: string }> = new Map();
-  private pendingShotEval: { stateKey: string; shotKey: string; team: 'team1' | 'team2'; health0: number[]; targetId: string; shooterId: string } | null = null;
+  private pendingShotEval: { stateKey: string; shotKey: string; team: 'team1' | 'team2'; health0: number[]; targetId: string; shooterId: string; turnNo: number } | null = null;
   private lastFiredWeaponId: string | null = null;
   private lastFiredTargetId: string | null = null;
   private postShotMoveUntil: number = 0;
@@ -245,6 +440,7 @@ export class BotTurnController {
   }
 
   private ensureWorker() {
+    if ((globalThis as any).__AIVAI_DISABLE_WORKERS) return;
     if (this.thinkWorker) return;
     try {
       this.workerInitError = null;
@@ -282,6 +478,7 @@ export class BotTurnController {
   }
 
   private ensureBgWorker() {
+    if ((globalThis as any).__AIVAI_DISABLE_WORKERS) return;
     if (this.bgWorker) return;
     try {
       this.bgWorker = new ThinkWorker();
@@ -488,7 +685,8 @@ export class BotTurnController {
         executeSeconds,
         ropeRemaining,
         shotMemory,
-        bestPractices: snapshotBestPracticesForWorker()
+        bestPractices: snapshotBestPracticesForWorker(),
+        seedBins: this.caseSeedBinsThisTurn
       });
     } catch {}
   }
@@ -768,6 +966,7 @@ export class BotTurnController {
     const isBotTurn = presenter.state.mode === 'aivai' ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
 
     if (curIdx !== this.lastTurnIndex) {
+      this.turnNo += 1;
       if (this.pendingEscapeEval && Number.isFinite(this.lastTurnIndex) && this.lastTurnIndex >= 0) {
         try {
           const prevIdx = this.pendingEscapeEval.wormIndex;
@@ -792,6 +991,11 @@ export class BotTurnController {
       this.firedThisTurn = false;
       this.plannedThisTurn = false;
       this.plan = null;
+      this.caseCandidate = null;
+      this.caseUsedThisTurn = 0;
+      this.caseUsedId = null;
+      this.caseUsedKey = null;
+      this.caseExpectedDamage = null;
       this.lastFiredWeaponId = null;
       this.lastFiredTargetId = null;
       this.postShotMoveUntil = 0;
@@ -819,6 +1023,10 @@ export class BotTurnController {
       this.jumpHoldUntil = 0;
       this.lastX = player.x;
       this.stuckTime = 0;
+      this.wallStallRefX = player.x;
+      this.wallStallTime = 0;
+      this.wallStallDir = null;
+      this.wallStallLastLoggedAt = -999;
       this.lastCostAt = -999;
       this.lastCost = Infinity;
       this.lastReplanAt = -999;
@@ -980,7 +1188,8 @@ export class BotTurnController {
         type: 'shot_eval',
         t: presenter.matchDuration || 0,
         team: this.pendingShotEval.team,
-        wormId: String(presenter.state.currentPlayerIndex ?? ''),
+        wormId: String(this.pendingShotEval.shooterId ?? ''),
+        turnNo: this.pendingShotEval.turnNo,
         targetId: this.pendingShotEval.targetId,
         stateKey: this.pendingShotEval.stateKey,
         shotKey: this.pendingShotEval.shotKey,
@@ -1020,6 +1229,7 @@ export class BotTurnController {
     this.lastMovementCfg = botCfg.movement || this.lastMovementCfg;
 
     if ((presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai') && !this.workerJobId && !this.planningInProgress) {
+      if (presenter?.state?.mode === 'aivai') this.refreshCaseCandidate(presenter, curIdx, botCfg);
       const view = this.buildBotView(presenter);
       if (!view) return;
       const key = this.worldKey(presenter, curIdx, ropeRemaining);
@@ -1028,13 +1238,15 @@ export class BotTurnController {
         const wp = (cached.plan as any).movePath?.waypoints;
         this.movePathWaypoints = Array.isArray(wp) ? wp.map((p: any) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 })) : null;
         this.movePathIndex = 0;
+        const mt0 = this.clampMoveToByTimeBudget(presenter, player, cached.plan.moveTo || null, cached.plan.action.weaponIndex);
         this.plan = {
-          moveTo: cached.plan.moveTo,
+          moveTo: mt0 || undefined,
           movePath: (cached.plan as any).movePath || undefined,
           action: { weaponIndex: cached.plan.action.weaponIndex, facingRight: cached.plan.action.facingRight, aimAngle: cached.plan.action.aimAngle, power: cached.plan.action.power, targetId: cached.plan.action.targetId },
           intent: cached.plan.intent,
           intentReason: cached.plan.intentReason
         };
+        this.ensureClearLineMove(presenter, curIdx);
         this.moveStartedAt = now;
         this.plannedThisTurn = true;
         this.planningInProgress = false;
@@ -1048,6 +1260,8 @@ export class BotTurnController {
         this.lastWorkerMsByTeam[activeTeam0] = 0;
         this.lastWorkerComputeMsByTeam[activeTeam0] = 0;
         this.lastCacheHitByTeam[activeTeam0] = 1;
+        this.applyCaseUsage(presenter, curIdx);
+        this.emitPlanStart(presenter, now, curIdx);
       } else {
         const rngSeed = ((presenter.state.mapSeed || 1) ^ hashStringToSeed(`turn:${key}`)) >>> 0;
         this.lastPlannedTeam = activeTeam0;
@@ -1089,6 +1303,7 @@ export class BotTurnController {
           const fb = this.lateFallbackFireAction(presenter);
           if (fb) {
             const noisy = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
+            if (presenter?.state?.mode === 'aivai' && this.plan) this.emitMovementSummary(presenter, player, curIdx, this.plan.moveTo || null, now);
             this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', fb, noisy);
             this.fireAction(presenter, noisy);
             this.firedThisTurn = true;
@@ -1099,6 +1314,7 @@ export class BotTurnController {
         const action = action0 || this.safeFallbackAction(presenter);
         if (action) {
           const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
+          if (presenter?.state?.mode === 'aivai' && this.plan) this.emitMovementSummary(presenter, player, curIdx, this.plan.moveTo || null, now);
           this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', action, noisy);
           this.fireAction(presenter, noisy);
           this.firedThisTurn = true;
@@ -1120,13 +1336,15 @@ export class BotTurnController {
         const wp = (wr.plan as any).movePath?.waypoints;
         this.movePathWaypoints = Array.isArray(wp) ? wp.map((p: any) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 })) : null;
         this.movePathIndex = 0;
+        const mt0 = this.clampMoveToByTimeBudget(presenter, player, wr.plan.moveTo || null, wr.plan.action.weaponIndex);
         this.plan = {
-          moveTo: wr.plan.moveTo,
+          moveTo: mt0 || undefined,
           movePath: (wr.plan as any).movePath || undefined,
           action: { weaponIndex: wr.plan.action.weaponIndex, facingRight: wr.plan.action.facingRight, aimAngle: wr.plan.action.aimAngle, power: wr.plan.action.power, targetId: wr.plan.action.targetId },
           intent: wr.plan.intent,
           intentReason: wr.plan.intentReason
         };
+        this.ensureClearLineMove(presenter, curIdx);
         this.moveStartedAt = now;
         this.plannedThisTurn = true;
         this.planningInProgress = false;
@@ -1138,12 +1356,15 @@ export class BotTurnController {
         const sig = this.terrainSig(presenter);
         this.planCache.set(key, { key, createdAt: performance.now(), shooterId: String(curIdx), rev: sig.rev, df: sig.df, plan: wr.plan, debug: wr.debug || null, score });
         this.debug('plan', { moveTo: wr.plan.moveTo ? { x: Math.round(wr.plan.moveTo.x), y: Math.round(wr.plan.moveTo.y) } : null, weaponIndex: wr.plan.action.weaponIndex, targetId: wr.plan.action.targetId, ropeRemaining, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, arrivedAfterMain: this.lastWorkerArrivedAfterMain });
+        this.applyCaseUsage(presenter, curIdx);
+        this.emitPlanStart(presenter, now, curIdx);
       } else if (!this.plannedThisTurn) {
         const minWait = presenter?.state?.mode === 'aivai'
           ? 1.0
           : Math.min(0.45, Math.max(0.12, planSeconds * 0.25));
         if (elapsed < minWait && timeLeft > reserveSeconds + 0.35) return;
-        if (presenter?.state?.mode === 'aivai' && timeLeft > reserveSeconds + 0.2) return;
+        const waitForWorker = presenter?.state?.mode === 'aivai' && !!this.thinkWorker;
+        if (waitForWorker && timeLeft > reserveSeconds + 0.2) return;
         this.lastWorkerArrivedAfterMain = wr ? 1 : null;
         this.lastWorkerMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
         this.lastWorkerComputeMs = wr ? Number(wr.ms) : null;
@@ -1159,9 +1380,14 @@ export class BotTurnController {
           const placeholder = { weaponIndex: -1, facingRight: !!player.facingRight, aimAngle: player.aimAngle || 0, power: 60, targetId: 'none' };
           this.movePathWaypoints = null;
           this.movePathIndex = 0;
-          this.plan = { moveTo: moveTo || undefined, action: fallback || placeholder };
+          const wi = (fallback || placeholder).weaponIndex;
+          const mt0 = this.clampMoveToByTimeBudget(presenter, player, moveTo || null, wi);
+          this.plan = { moveTo: mt0 || undefined, action: fallback || placeholder };
+          this.ensureClearLineMove(presenter, curIdx);
           this.moveStartedAt = now;
           this.plannedThisTurn = true;
+          this.applyCaseUsage(presenter, curIdx);
+          this.emitPlanStart(presenter, now, curIdx);
         }
       } else {
         this.lastDecisionDebug = wr?.debug || null;
@@ -1261,34 +1487,7 @@ export class BotTurnController {
     this.trackStuck(player, dt);
 
     if (!isWorldBusy) {
-      const summaryDx = moveTo ? moveTo.x - player.x : 0;
-      const summaryDy = moveTo ? moveTo.y - player.y : 0;
-      const dir: 'left' | 'right' = summaryDx < 0 ? 'left' : 'right';
-      const cliff = this.scanCliffAhead(presenter, player, dir);
-      this.emitAIVai(presenter, {
-        type: 'bot_movement_summary',
-        t: now,
-        team: player.team,
-        wormId: String(curIdx),
-        moveElapsed: Math.max(0, now - this.moveStartedAt),
-        stuckTime: this.stuckTime,
-        didReplan: this.didReplanThisTurn ? 1 : 0,
-        strategy: this.strategy,
-        lastMoveDir: this.lastMoveDir,
-        dirFlips: this.dirFlipCount,
-        dx: summaryDx,
-        dy: summaryDy,
-        cliffMaxDrop: cliff.maxDrop,
-        cliffIsGap: cliff.isGapOrCliff ? 1 : 0,
-        cliffIsVoid: cliff.isDeepVoid ? 1 : 0,
-        bannedTurn: Array.from(this.bannedTurn),
-        intent: this.plan.intent || 'attack',
-        intentReason: this.plan.intentReason || null,
-        aiV: AI_V,
-        thinkSrc: this.lastThinkSrc,
-        workerMs: this.lastWorkerMs,
-        workerComputeMs: this.lastWorkerComputeMs
-      });
+      this.emitMovementSummary(presenter, player, curIdx, moveTo || null, now);
       if (this.plan.intent === 'escape_pit') return;
       const planTarget = this.plan.action.targetId;
       let canUsePlanned = true;
@@ -1298,7 +1497,7 @@ export class BotTurnController {
 
       const action = canUsePlanned ? this.plan.action : this.safeFallbackAction(presenter);
       if (!action) return;
-      if (presenter?.state?.mode === 'aivai' && this.lastWorkerUsed !== 1) return;
+      if (presenter?.state?.mode === 'aivai' && this.lastWorkerUsed !== 1 && !!this.thinkWorker) return;
       if (action.weaponIndex < 0) {
         const maxReplans = this.lastMovementCfg.maxReplansPerTurn ?? 4;
         const remaining = Math.max(0, executeSeconds - moveElapsed);
@@ -1431,6 +1630,60 @@ export class BotTurnController {
   }
 
   private safeFallbackAction(presenter: any): { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string } | null {
+    const view0 = this.buildBotView(presenter);
+    if (view0 && view0.enemies.length > 0) {
+      const seed = this.rngSeedForTurn(presenter) ^ 0x51c31f2d;
+      const rng = mulberry32(seed);
+      const teamKey: 'team1' | 'team2' = view0.shooter.team === 'team1' ? 'team1' : 'team2';
+      const diff = presenter.state.mode === 'aivai'
+        ? ((this.difficultyByTeam[teamKey] as AIDifficulty | undefined) || 'hard')
+        : (((getAIDifficulty() as AIDifficulty) || undefined) || 'medium');
+      const t0 = performance.now();
+      const res = chooseBotActionDebug(
+        rng,
+        view0.world as any,
+        view0.shooter as any,
+        view0.enemies as any,
+        view0.allies as any,
+        presenter.state.botConfig || DEFAULT_BOT_CONFIG,
+        diff,
+        Array.from(this.shotMemory.values()),
+        { deadlineMs: t0 + 55, plateauEvalWindow: 980, bestPractices: snapshotBestPracticesForWorker(), mapSeed: presenter.state.mapSeed || 0 }
+      );
+      if (res && (res as any).trace) {
+        this.lastDecisionDebug = (res as any).trace;
+        this.lastThinkSrc = 'main';
+        this.lastWorkerUsed = 0;
+      }
+      const trace: any = (res as any)?.trace || null;
+      const byWeapon = trace?.bestByWeaponId || {};
+      let cand: any = null;
+      for (const k of Object.keys(byWeapon)) {
+        const c = byWeapon[k];
+        if (!c || !Number.isFinite(c.expectedDamage)) continue;
+        if (!cand || c.expectedDamage > cand.expectedDamage) cand = c;
+      }
+      if (!cand) cand = trace?.chosen || null;
+      if (cand && Number.isFinite(cand.globalAngle) && Number.isFinite(cand.power) && Number.isFinite(cand.weaponIndex)) {
+        const TAU = Math.PI * 2;
+        const angleNorm = (a: number): number => {
+          a = (a + Math.PI) % TAU;
+          if (a < 0) a += TAU;
+          return a - Math.PI;
+        };
+        const global = Number(cand.globalAngle) || 0;
+        const facingRight = Math.cos(global) >= 0;
+        const aimAngle = facingRight ? angleNorm(global) : angleNorm(Math.PI - global);
+        const localAim = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, aimAngle));
+        return {
+          weaponIndex: Number(cand.weaponIndex) || 0,
+          facingRight,
+          aimAngle: localAim,
+          power: Number(cand.power) || 60,
+          targetId: String(cand.targetId ?? 'none')
+        };
+      }
+    }
     const player = presenter?.state?.getCurrentPlayer?.();
     if (!player) return null;
     const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
@@ -1575,12 +1828,13 @@ export class BotTurnController {
       const angleBin = Math.round(angleDeg / 2);
       const powerBin = Math.round(action.power / 5);
       const shotKey = `${weaponId || 'none'}:${action.facingRight ? 1 : 0}:${angleBin}:${powerBin}`;
-      if (weaponId) this.pendingShotEval = { stateKey, shotKey, team: player.team, health0, targetId: action.targetId, shooterId: String(presenter.state.currentPlayerIndex ?? '') };
+      if (weaponId) this.pendingShotEval = { stateKey, shotKey, team: player.team, health0, targetId: action.targetId, shooterId: String(presenter.state.currentPlayerIndex ?? ''), turnNo: this.turnNo };
       this.emitAIVai(presenter, {
         type: 'weapon_fired',
         t: presenter.matchDuration || 0,
         team: player.team,
         wormId: String(presenter.state.currentPlayerIndex ?? ''),
+        turnNo: this.turnNo,
         weaponIndex: action.weaponIndex,
         weaponId,
         facingRight: action.facingRight ? 1 : 0,
@@ -1612,6 +1866,88 @@ export class BotTurnController {
       return;
     }
     this.stuckTime = Math.max(0, this.stuckTime - dt * 0.6);
+  }
+
+  private trackWallStall(presenter: any, player: any, dir: 'left' | 'right', moveTo: { x: number; y: number }, dt: number, now: number): boolean {
+    const ref = Number.isFinite(this.wallStallRefX) ? this.wallStallRefX : player.x;
+    if (this.wallStallDir !== dir) {
+      this.wallStallDir = dir;
+      this.wallStallRefX = player.x;
+      this.wallStallTime = 0;
+      return false;
+    }
+    const dx = Math.abs(player.x - ref);
+    if (dx >= 2) {
+      this.wallStallRefX = player.x;
+      this.wallStallTime = 0;
+      return false;
+    }
+
+    this.wallStallTime += dt;
+    if (this.wallStallTime < 0.23) return false;
+    this.wallStallTime = 0;
+    this.wallStallRefX = player.x;
+
+    if ((now - this.wallStallLastLoggedAt) > 0.35) {
+      this.wallStallLastLoggedAt = now;
+      this.emitAIVai(presenter, {
+        type: 'bot_wall_stall',
+        t: now,
+        team: player.team,
+        wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''),
+        turnNo: this.turnNo,
+        dir,
+        pos: { x: player.x, y: player.y },
+        moveTo: { x: moveTo.x, y: moveTo.y },
+        aiV: AI_V
+      });
+    }
+
+    this.bannedTurn.add('walk');
+    this.strategy = null;
+    this.plannedThisTurn = false;
+    this.plan = null;
+    this.movePathWaypoints = null;
+    this.movePathIndex = 0;
+    this.didReplanThisTurn = true;
+    this.lastReplanAt = now;
+    this.replanCountThisTurn += 1;
+    presenter.handleInput?.('left', false, true);
+    presenter.handleInput?.('right', false, true);
+    presenter.handleInput?.('jump', false, true);
+    return true;
+  }
+
+  private emitMovementSummary(presenter: any, player: any, curIdx: number, moveTo: { x: number; y: number } | null, now: number) {
+    const summaryDx = moveTo ? moveTo.x - player.x : 0;
+    const summaryDy = moveTo ? moveTo.y - player.y : 0;
+    const dir: 'left' | 'right' = summaryDx < 0 ? 'left' : 'right';
+    const cliff = this.scanCliffAhead(presenter, player, dir);
+    this.emitAIVai(presenter, {
+      type: 'bot_movement_summary',
+      t: now,
+      team: player.team,
+      wormId: String(curIdx),
+      turnNo: this.turnNo,
+      moveElapsed: Math.max(0, now - this.moveStartedAt),
+      stuckTime: this.stuckTime,
+      didReplan: this.didReplanThisTurn ? 1 : 0,
+      strategy: this.strategy,
+      lastMoveDir: this.lastMoveDir,
+      dirFlips: this.dirFlipCount,
+      dx: summaryDx,
+      dy: summaryDy,
+      cliffMaxDrop: cliff.maxDrop,
+      cliffIsGap: cliff.isGapOrCliff ? 1 : 0,
+      cliffIsVoid: cliff.isDeepVoid ? 1 : 0,
+      bannedTurn: Array.from(this.bannedTurn),
+      intent: this.plan?.intent || 'attack',
+      intentReason: this.plan?.intentReason || null,
+      aiV: AI_V,
+      thinkSrc: this.lastThinkSrc,
+      workerMs: this.lastWorkerMs,
+      workerComputeMs: this.lastWorkerComputeMs
+    });
   }
 
   private getPitInfo(presenter: any, player: any, ropeRemaining: number, now: number): any | null {
@@ -1948,6 +2284,9 @@ export class BotTurnController {
       presenter.handleInput?.(dir, true, true);
     } else {
       presenter.handleInput?.(dir, true, true);
+    }
+    if (this.strategy === 'walk') {
+      if (this.trackWallStall(presenter, player, dir, moveTo, dt, now)) return true;
     }
     this.trackStuck(player, dt);
     this.evaluateStrategyProgress(presenter, player, moveTo, now);

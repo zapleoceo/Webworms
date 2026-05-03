@@ -11,7 +11,8 @@ export class SoundManager {
   public init(): void {
     if (!this.ctx) {
       try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        const w = (globalThis as any)?.window;
+        const AudioContextClass = w?.AudioContext || w?.webkitAudioContext;
         if (AudioContextClass) {
           this.ctx = new AudioContextClass();
         }

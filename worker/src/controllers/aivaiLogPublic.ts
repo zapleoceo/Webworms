@@ -81,10 +81,37 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
   const types: Record<string, number> = {};
   const weaponCounts: Record<string, number> = {};
   const stageWeaponCounts: Record<string, Record<string, number>> = {};
+  const turnAgg: Record<string, any> = {};
+  const expectedLastByWorm: Record<string, number> = {};
+  const perWorm: Record<string, any> = {};
   const lastN: any[] = [];
   for (const e of events) {
     const t = typeof e?.type === 'string' ? e.type : 'event';
     types[t] = (types[t] || 0) + 1;
+    const wormId = typeof e?.wormId === 'string' ? e.wormId : null;
+    const turnNo = typeof e?.turnNo === 'number' ? e.turnNo : null;
+    if (wormId && turnNo !== null) {
+      const k = `${wormId}|${turnNo}`;
+      const a = (turnAgg[k] ||= { wormId, turnNo, planIntent: null as any, expectedDamage: null as any, weaponId: null as any, enemyDelta: 0, allyDelta: 0, wallStall: 0 });
+      if (t === 'bot_plan_start') {
+        a.planIntent = e?.plan?.intent || null;
+        const ex = Number(e?.expectedDamage);
+        a.expectedDamage = Number.isFinite(ex) ? ex : null;
+        const prev = expectedLastByWorm[wormId];
+        if (Number.isFinite(prev) && Number.isFinite(a.expectedDamage)) {
+          const pw = (perWorm[wormId] ||= { turns: 0, goal: 0, enemy: 0, ally: 0, wall: 0, posN: 0, pos: 0, weapons: {} as Record<string, number> });
+          pw.posN += 1;
+          if (a.expectedDamage >= prev - 1) pw.pos += 1;
+        }
+        if (Number.isFinite(a.expectedDamage)) expectedLastByWorm[wormId] = a.expectedDamage;
+      }
+      if (t === 'weapon_fired') a.weaponId = typeof e?.weaponId === 'string' ? e.weaponId : a.weaponId;
+      if (t === 'bot_wall_stall') a.wallStall = 1;
+      if (t === 'shot_eval') {
+        a.enemyDelta += Number(e?.enemyDelta) || 0;
+        a.allyDelta += Number(e?.allyDelta) || 0;
+      }
+    }
     if (t === 'turn_state') {
       const tt = Number(e?.t);
       if (Number.isFinite(tt)) {
@@ -127,6 +154,36 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
       lastN.push(e);
     }
   }
+
+  for (const a of Object.values(turnAgg)) {
+    const wormId = String((a as any).wormId || '');
+    if (!wormId) continue;
+    const pw = (perWorm[wormId] ||= { turns: 0, goal: 0, enemy: 0, ally: 0, wall: 0, posN: 0, pos: 0, weapons: {} as Record<string, number> });
+    if ((a as any).planIntent) pw.turns += 1;
+    if ((a as any).wallStall) pw.wall += 1;
+    const enemyDelta = Number((a as any).enemyDelta) || 0;
+    const allyDelta = Number((a as any).allyDelta) || 0;
+    if (enemyDelta > 0.01) pw.enemy += 1;
+    if (allyDelta > 0.01) pw.ally += 1;
+    if ((a as any).planIntent === 'attack' && enemyDelta > 0.01) pw.goal += 1;
+    const w = (a as any).weaponId;
+    if (typeof w === 'string' && w) pw.weapons[w] = (pw.weapons[w] || 0) + 1;
+  }
+
+  const perWormSummary = Object.fromEntries(Object.entries(perWorm).map(([wormId, pw]) => {
+    const turns = Number(pw.turns) || 0;
+    const posN = Number(pw.posN) || 0;
+    const weaponsTop = Object.entries(pw.weapons || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    return [wormId, {
+      turns,
+      goalRate: turns ? (Number(pw.goal) || 0) / turns : 0,
+      enemyRate: turns ? (Number(pw.enemy) || 0) / turns : 0,
+      allyRate: turns ? (Number(pw.ally) || 0) / turns : 0,
+      wallRate: turns ? (Number(pw.wall) || 0) / turns : 0,
+      posRate: posN ? (Number(pw.pos) || 0) / posN : 0,
+      weaponsTop
+    }];
+  }));
   return new Response(JSON.stringify({
     success: true,
     exists: true,
@@ -144,6 +201,7 @@ export async function getAIVaiLogStats(request: Request, env: any, corsHeaders: 
     good,
     bad,
     maxStreak,
+    perWorm: perWormSummary,
     typesTop: Object.entries(types).sort((a, b) => b[1] - a[1]).slice(0, 12)
   }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 }

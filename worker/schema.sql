@@ -121,3 +121,22 @@ CREATE TABLE IF NOT EXISTS MatchmakingQueue (
   host_id TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS AIVaiCases (
+  aiV TEXT NOT NULL,
+  stateKey TEXT NOT NULL,
+  caseId TEXT NOT NULL,
+  planJson TEXT NOT NULL,
+  weaponId TEXT,
+  samples INTEGER NOT NULL DEFAULT 1,
+  emaUtility REAL NOT NULL DEFAULT 0,
+  lastUtility REAL NOT NULL DEFAULT 0,
+  lastEnemyDelta REAL NOT NULL DEFAULT 0,
+  lastAllyDelta REAL NOT NULL DEFAULT 0,
+  lastExpectedDamage REAL NOT NULL DEFAULT 0,
+  updatedAt INTEGER NOT NULL,
+  PRIMARY KEY (aiV, stateKey, caseId)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aivai_cases_key ON AIVaiCases(aiV, stateKey, emaUtility DESC);
+CREATE INDEX IF NOT EXISTS idx_aivai_cases_updated ON AIVaiCases(aiV, updatedAt DESC);

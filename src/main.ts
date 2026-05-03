@@ -20,6 +20,7 @@ import { debugSurfacePathMatrix, terrainFromLandscape } from './ai/BotAI';
 import { AI_V } from './ai/AIVersion';
 import { updateAivaiOverlay } from './ui/AiVainOverlay';
 import { loadBestPractices, saveBestPractices } from './ai/BestPractices';
+import { extractTopCasesFromEvents, loadCaseLibrary, mergeCases, normalizePlanJsonRow, saveCaseLibrary } from './ai/CaseLibrary';
 
 declare global {
   interface Window {
@@ -281,11 +282,24 @@ let aivaiLogSent = false;
 function flushAIVaiLog(reason: string, winner: any = null) {
   if (currentMode !== 'aivai' || !aivaiLog) return;
   try { saveBestPractices(); } catch {}
+  try {
+    loadCaseLibrary();
+    const top = extractTopCasesFromEvents(AI_V, aivaiLog.events, 10);
+    if (top.length) {
+      mergeCases(top.map((x: any) => ({ ...x, planJson: undefined })));
+      saveCaseLibrary();
+      APIClient.ingestAIVaiCases({ aiV: AI_V, matchId: aivaiLog.matchId, cases: top }).catch(() => {});
+    }
+  } catch {}
   if (aivaiLogSent) return;
   aivaiLogSent = true;
   aivaiLog.abortedAt = Date.now();
   aivaiLog.abortReason = reason;
   aivaiLog.result = { winner, stats: null };
+  try {
+    (window as any).__aivaiLastMatchId = aivaiLog.matchId;
+    (window as any).__aivaiLastStatsUrl = `${window.location.origin}${APIClient.BASE_URL}/aivai/log/stats?matchId=${encodeURIComponent(aivaiLog.matchId)}`;
+  } catch {}
   APIClient.uploadAIVaiLog(aivaiLog).then((res: any) => {
     if (res?.success && res.key) {
       aivaiLog.r2Key = res.key;
@@ -326,6 +340,20 @@ APIClient.getMaps().then(maps => {
       opt.innerText = cleanName;
       mapTypeSelect.appendChild(opt);
     });
+    try {
+      const urlMap = new URLSearchParams(window.location.search).get('map');
+      const preferred = urlMap && maps.some((m: any) => m && m.id === urlMap) ? urlMap : null;
+      if (preferred) {
+        mapTypeSelect.value = preferred;
+      } else {
+        const inPc = maps.find((m: any) => {
+          const id = typeof m?.id === 'string' ? m.id : '';
+          const name = typeof m?.name === 'string' ? m.name.replace(/^custom_/i, '') : '';
+          return id === 'in_pc' || name === 'in_pc' || name.toLowerCase().includes('in_pc');
+        });
+        if (inPc && typeof inPc.id === 'string') mapTypeSelect.value = inPc.id;
+      }
+    } catch {}
   } else if (mapTypeSelect) {
     mapTypeSelect.innerHTML = '<option disabled>No custom maps found</option>';
   }
@@ -872,6 +900,16 @@ let currentRoomPlayerId: string | null = null;
     } else if (mode === 'aivai') {
       window.presenter.localTeam = 'spectator';
       window.presenter.botTurnController = new BotTurnController({ team1: a1d, team2: a2d });
+      try {
+        loadCaseLibrary();
+        APIClient.getAIVaiCasesBootstrap(AI_V, 500).then((r: any) => {
+          if (r && r.success && Array.isArray(r.cases)) {
+            const xs = r.cases.map(normalizePlanJsonRow).filter(Boolean);
+            mergeCases(xs);
+            saveCaseLibrary();
+          }
+        });
+      } catch {}
     } else {
       window.presenter.localTeam = 'training';
       window.presenter.botTurnController = null;
