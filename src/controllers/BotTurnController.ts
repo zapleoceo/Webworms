@@ -8,8 +8,15 @@ import { AI_V } from '../ai/AIVersion';
 import { analyzePit } from '../ai/PitAnalyzer';
 import { recordPriorSample, recordTemplateSample, snapshotBestPracticesForWorker, getTemplate } from '../ai/BestPractices';
 import { buildStateKeyFromPresenter, computeWeaponsMask, getCasesByKey } from '../ai/CaseLibrary';
-import ThinkWorker from '../ai/worker/BotThinkWorker?worker';
-import ThinkWorker2 from '../ai2/worker/AI2ThinkWorker?worker';
+import { emitAivaiTrace } from '../ai/aivai/telemetry';
+import { attachPlanWorkerHandlers, createPlanWorker } from '../ai/worker/thinkWorkerRuntime';
+import { prunePlanCache as prunePlanCache0, terrainSig as terrainSig0, worldKey as worldKey0 } from '../ai/bot/planningKeys';
+import { syncTerrainForPlanning } from '../ai/worker/terrainSync';
+import { snapshotShotMemory } from '../ai/bot/shotMemory';
+import { buildPlanMessage } from '../ai/bot/planningRequest';
+import { applyPostShotMove } from '../ai/bot/movement/postShotMove';
+import { detectCeilingLow as detectCeilingLow0, detectObstacle as detectObstacle0, scanCliffAhead as scanCliffAhead0 } from '../ai/bot/movement/sensors';
+import { checkVoidAheadSafety } from '../ai/bot/safety/voidAhead';
 
 type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
 type RopeMode = 'climb' | 'swing' | 'descend';
@@ -434,12 +441,7 @@ export class BotTurnController {
   }
 
   private emitAIVai(presenter: any, payload: any) {
-    try {
-      if (presenter?.state?.mode !== 'aivai2') return;
-      const cb = presenter?.onAIVaiTrace;
-      if (typeof cb !== 'function') return;
-      cb(payload);
-    } catch {}
+    emitAivaiTrace(presenter, payload);
   }
 
   private ensureWorker(mode: string) {
@@ -447,33 +449,27 @@ export class BotTurnController {
     if (this.thinkWorker) return;
     try {
       this.workerInitError = null;
-      this.thinkWorker = (mode === 'aivai2') ? new ThinkWorker2() : new ThinkWorker();
+      this.thinkWorker = createPlanWorker(mode);
       this.workerTerrainReady = false;
       this.workerTerrainDimKey = '';
       this.workerTerrainDfEventIndex = 0;
       const worker = this.thinkWorker;
       if (!worker) return;
-      worker.onerror = (evt: any) => {
-        try {
-          const msg = typeof evt?.message === 'string' ? evt.message : 'worker_error';
-          this.workerInitError = msg;
-        } catch {}
-      };
-      worker.onmessage = (evt: MessageEvent<any>) => {
-        const msg = evt.data;
-        if (!msg) return;
-        if (msg.kind === 'planProgress') {
-          if (!this.workerJobId || msg.jobId !== this.workerJobId) return;
+      attachPlanWorkerHandlers(worker, {
+        getJobId: () => this.workerJobId,
+        onProgress: (msg) => {
           this.lastPlanningProgress = msg;
           const team = this.lastPlannedTeam || 'team1';
           this.lastPlanningProgressByTeam[team] = msg;
-          return;
+        },
+        onResult: (msg) => {
+          this.workerResult = msg;
+          this.workerArrivedAt = performance.now();
+        },
+        onError: (message) => {
+          this.workerInitError = message;
         }
-        if (msg.kind !== 'planResult') return;
-        if (!this.workerJobId || msg.jobId !== this.workerJobId) return;
-        this.workerResult = msg;
-        this.workerArrivedAt = performance.now();
-      };
+      });
     } catch {
       this.thinkWorker = null;
       this.workerInitError = 'worker_init_failed';
@@ -484,83 +480,38 @@ export class BotTurnController {
     if ((globalThis as any).__AIVAI_DISABLE_WORKERS) return;
     if (this.bgWorker) return;
     try {
-      this.bgWorker = (mode === 'aivai2') ? new ThinkWorker2() : new ThinkWorker();
+      this.bgWorker = createPlanWorker(mode);
       this.bgWorkerTerrainReady = false;
       this.bgWorkerTerrainDimKey = '';
       this.bgWorkerTerrainDfEventIndex = 0;
       const worker = this.bgWorker;
       if (!worker) return;
-      worker.onerror = (evt: any) => {
-        void evt;
-      };
-      worker.onmessage = (evt: MessageEvent<any>) => {
-        const msg = evt.data;
-        if (!msg) return;
-        if (msg.kind === 'planProgress') {
-          if (!this.bgWorkerJobId || msg.jobId !== this.bgWorkerJobId) return;
+      attachPlanWorkerHandlers(worker, {
+        getJobId: () => this.bgWorkerJobId,
+        onProgress: (msg) => {
           this.lastBgPlanningProgress = msg;
-          return;
+        },
+        onResult: (msg) => {
+          this.bgWorkerResult = msg;
         }
-        if (msg.kind !== 'planResult') return;
-        if (!this.bgWorkerJobId || msg.jobId !== this.bgWorkerJobId) return;
-        this.bgWorkerResult = msg;
-      };
+      });
     } catch {
       this.bgWorker = null;
     }
   }
 
   private terrainSig(presenter: any): { rev: number; df: number; dimKey: string } {
-    const terrain = presenter?.state?.landscape;
-    const dfEvents: any[] = Array.isArray((terrain as any)?.dfEvents) ? (terrain as any).dfEvents : [];
-    const rev = Number((terrain as any)?.revision) || 0;
-    const df = dfEvents.length;
-    const dimKey = `${terrain?.width || 0}x${terrain?.height || 0}`;
-    return { rev, df, dimKey };
+    return terrainSig0(presenter);
   }
 
   private prunePlanCache(presenter: any) {
-    const sig = this.terrainSig(presenter);
-    if (sig.rev !== this.lastCacheRev || sig.df !== this.lastCacheDf) {
-      this.lastCacheRev = sig.rev;
-      this.lastCacheDf = sig.df;
-      for (const [k, v] of this.planCache.entries()) {
-        if (v.rev !== sig.rev || v.df !== sig.df) this.planCache.delete(k);
-      }
-    }
-    if (this.planCache.size > 140) {
-      const entries = Array.from(this.planCache.entries()).sort((a, b) => a[1].createdAt - b[1].createdAt);
-      for (let i = 0; i < Math.max(0, entries.length - 110); i++) this.planCache.delete(entries[i][0]);
-    }
-    const alive = presenter?.state?.players?.map((p: any, idx: number) => (p && p.health > 0) ? String(idx) : null).filter(Boolean) as string[] || [];
-    if (alive.length > 0) {
-      const aliveSet = new Set(alive);
-      for (const [k, v] of this.planCache.entries()) {
-        if (!aliveSet.has(v.shooterId)) this.planCache.delete(k);
-      }
-    }
+    const next = prunePlanCache0(presenter, this.planCache as any, this.lastCacheRev, this.lastCacheDf);
+    this.lastCacheRev = next.lastCacheRev;
+    this.lastCacheDf = next.lastCacheDf;
   }
 
   private worldKey(presenter: any, shooterIndex: number, ropeRemaining: number): string {
-    const sig = this.terrainSig(presenter);
-    const wind = Number.isFinite(presenter?.state?.wind) ? Number(presenter.state.wind) : 0;
-    const windBin = Math.round(wind / 10);
-    const g1 = presenter?.state?.teamAmmo?.team1?.grenade;
-    const g2 = presenter?.state?.teamAmmo?.team2?.grenade;
-    const a1 = (typeof g1 === 'number' && Number.isFinite(g1)) ? Math.max(0, Math.floor(g1)) : -1;
-    const a2 = (typeof g2 === 'number' && Number.isFinite(g2)) ? Math.max(0, Math.floor(g2)) : -1;
-    const players: any[] = Array.isArray(presenter?.state?.players) ? presenter.state.players : [];
-    const parts: string[] = [];
-    for (let i = 0; i < players.length; i++) {
-      const p = players[i];
-      if (!p || p.health <= 0) continue;
-      const qx = Math.round((Number(p.x) || 0) / 16);
-      const qy = Math.round((Number(p.y) || 0) / 16);
-      const hh = Math.max(0, Math.min(10, Math.round((Number(p.health) || 0) / 10)));
-      parts.push(`${i}${p.team === 'team1' ? 'a' : 'b'}${qx},${qy},${hh}`);
-    }
-    const raw = `${this.matchKey}|rev${sig.rev}|df${sig.df}|w${windBin}|g${a1}:${a2}|r${Math.round(ropeRemaining)}|s${shooterIndex}|${parts.join('|')}`;
-    return String(hashStringToSeed(raw) >>> 0);
+    return worldKey0({ presenter, matchKey: this.matchKey, shooterIndex, ropeRemaining });
   }
 
   private buildBotViewForIndex(presenter: any, shooterIndex: number): { world: any; worms: BotWormSnapshot[]; shooter: BotWormSnapshot; enemies: BotWormSnapshot[]; allies: BotWormSnapshot[] } | null {
@@ -619,62 +570,21 @@ export class BotTurnController {
       this.ensureWorker(String(presenter?.state?.mode || ''));
       if (!this.thinkWorker) return;
       const terrain = presenter.state.landscape;
-      const grid = terrain?.grid;
-      if (!(grid instanceof Uint8Array)) return;
-      const dfEvents: any[] = Array.isArray((terrain as any).dfEvents) ? (terrain as any).dfEvents : [];
-      const dimKey = `${terrain.width}x${terrain.height}`;
-      const needInit = !this.workerTerrainReady || this.workerTerrainDimKey !== dimKey || !Number.isFinite(this.workerTerrainDfEventIndex);
-      if (needInit) {
-        const bufInit = grid.slice().buffer;
-        this.thinkWorker.postMessage({
-          kind: 'terrainInit',
-          width: terrain.width,
-          height: terrain.height,
-          grid: bufInit,
-          dfEventIndex: dfEvents.length,
-          revision: terrain.revision || 0
-        }, [bufInit]);
-        this.workerTerrainReady = true;
-        this.workerTerrainDimKey = dimKey;
-        this.workerTerrainDfEventIndex = dfEvents.length;
-      } else if (dfEvents.length > this.workerTerrainDfEventIndex) {
-        const delta = dfEvents.slice(this.workerTerrainDfEventIndex);
-        const resetSeen = delta.some((e: any) => e && e.kind === 'reset');
-        if (resetSeen) {
-          const bufInit = grid.slice().buffer;
-          this.thinkWorker.postMessage({
-            kind: 'terrainInit',
-            width: terrain.width,
-            height: terrain.height,
-            grid: bufInit,
-            dfEventIndex: dfEvents.length,
-            revision: terrain.revision || 0
-          }, [bufInit]);
-          this.workerTerrainReady = true;
-          this.workerTerrainDimKey = dimKey;
-          this.workerTerrainDfEventIndex = dfEvents.length;
-        } else {
-          this.thinkWorker.postMessage({
-            kind: 'terrainPatch',
-            fromEventIndex: this.workerTerrainDfEventIndex,
-            toEventIndex: dfEvents.length,
-            events: delta,
-            revision: terrain.revision || 0
-          });
-          this.workerTerrainDfEventIndex = dfEvents.length;
-        }
-      }
+      const next = syncTerrainForPlanning({
+        worker: this.thinkWorker,
+        terrain,
+        state: { ready: this.workerTerrainReady, dimKey: this.workerTerrainDimKey, dfEventIndex: this.workerTerrainDfEventIndex }
+      });
+      this.workerTerrainReady = next.ready;
+      this.workerTerrainDimKey = next.dimKey;
+      this.workerTerrainDfEventIndex = next.dfEventIndex;
       const jobId = `${this.matchKey}:${presenter.state.currentPlayerIndex}:${(presenter.matchDuration || 0).toFixed(2)}`;
       this.workerJobId = jobId;
       this.workerStartedAt = performance.now();
       this.workerResult = null;
       this.workerArrivedAt = 0;
-      const shotMemory = Array.from(this.shotMemory.values())
-        .sort((a, b) => b.lastT - a.lastT)
-        .slice(0, 160)
-        .map(x => ({ stateKey: x.stateKey, shotKey: x.shotKey, noRes: x.noRes, ff: x.ff, targetId: x.targetId, lastT: x.lastT }));
-      this.thinkWorker.postMessage({
-        kind: 'plan',
+      const shotMemory = snapshotShotMemory(this.shotMemory);
+      this.thinkWorker.postMessage(buildPlanMessage({
         jobId,
         rngSeed,
         difficulty,
@@ -690,7 +600,7 @@ export class BotTurnController {
         shotMemory,
         bestPractices: snapshotBestPracticesForWorker(),
         seedBins: this.caseSeedBinsThisTurn
-      });
+      }));
     } catch {}
   }
 
@@ -699,61 +609,20 @@ export class BotTurnController {
       this.ensureBgWorker(String(presenter?.state?.mode || ''));
       if (!this.bgWorker) return;
       const terrain = presenter.state.landscape;
-      const grid = terrain?.grid;
-      if (!(grid instanceof Uint8Array)) return;
-      const dfEvents: any[] = Array.isArray((terrain as any).dfEvents) ? (terrain as any).dfEvents : [];
-      const dimKey = `${terrain.width}x${terrain.height}`;
-      const needInit = !this.bgWorkerTerrainReady || this.bgWorkerTerrainDimKey !== dimKey || !Number.isFinite(this.bgWorkerTerrainDfEventIndex);
-      if (needInit) {
-        const bufInit = grid.slice().buffer;
-        this.bgWorker.postMessage({
-          kind: 'terrainInit',
-          width: terrain.width,
-          height: terrain.height,
-          grid: bufInit,
-          dfEventIndex: dfEvents.length,
-          revision: terrain.revision || 0
-        }, [bufInit]);
-        this.bgWorkerTerrainReady = true;
-        this.bgWorkerTerrainDimKey = dimKey;
-        this.bgWorkerTerrainDfEventIndex = dfEvents.length;
-      } else if (dfEvents.length > this.bgWorkerTerrainDfEventIndex) {
-        const delta = dfEvents.slice(this.bgWorkerTerrainDfEventIndex);
-        const resetSeen = delta.some((e: any) => e && e.kind === 'reset');
-        if (resetSeen) {
-          const bufInit = grid.slice().buffer;
-          this.bgWorker.postMessage({
-            kind: 'terrainInit',
-            width: terrain.width,
-            height: terrain.height,
-            grid: bufInit,
-            dfEventIndex: dfEvents.length,
-            revision: terrain.revision || 0
-          }, [bufInit]);
-          this.bgWorkerTerrainReady = true;
-          this.bgWorkerTerrainDimKey = dimKey;
-          this.bgWorkerTerrainDfEventIndex = dfEvents.length;
-        } else {
-          this.bgWorker.postMessage({
-            kind: 'terrainPatch',
-            fromEventIndex: this.bgWorkerTerrainDfEventIndex,
-            toEventIndex: dfEvents.length,
-            events: delta,
-            revision: terrain.revision || 0
-          });
-          this.bgWorkerTerrainDfEventIndex = dfEvents.length;
-        }
-      }
+      const next = syncTerrainForPlanning({
+        worker: this.bgWorker,
+        terrain,
+        state: { ready: this.bgWorkerTerrainReady, dimKey: this.bgWorkerTerrainDimKey, dfEventIndex: this.bgWorkerTerrainDfEventIndex }
+      });
+      this.bgWorkerTerrainReady = next.ready;
+      this.bgWorkerTerrainDimKey = next.dimKey;
+      this.bgWorkerTerrainDfEventIndex = next.dfEventIndex;
       const jobId = `${this.matchKey}:bg:${shooterId}:${(presenter.matchDuration || 0).toFixed(2)}`;
       this.bgWorkerJobId = jobId;
       this.bgWorkerResult = null;
       this.bgPlanKey = this.worldKey(presenter, Number(shooterId) || 0, ropeRemaining);
-      const shotMemory = Array.from(this.shotMemory.values())
-        .sort((a, b) => b.lastT - a.lastT)
-        .slice(0, 160)
-        .map(x => ({ stateKey: x.stateKey, shotKey: x.shotKey, noRes: x.noRes, ff: x.ff, targetId: x.targetId, lastT: x.lastT }));
-      this.bgWorker.postMessage({
-        kind: 'plan',
+      const shotMemory = snapshotShotMemory(this.shotMemory);
+      this.bgWorker.postMessage(buildPlanMessage({
         jobId,
         rngSeed,
         difficulty,
@@ -766,7 +635,7 @@ export class BotTurnController {
         executeSeconds,
         ropeRemaining,
         shotMemory
-      });
+      }));
     } catch {}
   }
 
@@ -787,70 +656,17 @@ export class BotTurnController {
   }
 
   private tryPostShotMove(presenter: any, player: any, now: number, timeLeft: number, reserveSeconds: number) {
-    if (this.lastFiredWeaponId === 'homing_missile') return;
-    if (timeLeft <= reserveSeconds + 0.35) return;
-    if (now < this.postShotMoveUntil && this.postShotDir) {
-      presenter.handleInput?.(this.postShotDir, true, true);
-      presenter.handleInput?.(this.postShotDir === 'left' ? 'right' : 'left', false, true);
-      return;
-    }
-    const allies: any[] = Array.isArray(presenter?.state?.players)
-      ? presenter.state.players.filter((w: any) => w && w.team === player.team && w !== player && w.health > 0)
-      : [];
-    let dir: 'left' | 'right' | null = null;
-    const clusterR = 78;
-    let bestD = Infinity;
-    let bestDx = 0;
-    for (const a of allies) {
-      const dx = (Number(player.x) || 0) - (Number(a.x) || 0);
-      const dy = (Number(player.y) || 0) - (Number(a.y) || 0);
-      const d = Math.hypot(dx, dy);
-      if (d < bestD) {
-        bestD = d;
-        bestDx = dx;
-      }
-    }
-    if (bestD < clusterR) {
-      dir = bestDx >= 0 ? 'right' : 'left';
-    } else {
-      const land = presenter?.state?.landscape;
-      if (land && typeof land.getMaterial === 'function') {
-        const sampleDx = 38;
-        const x0 = Number(player.x) || 0;
-        const y0 = Number(player.y) || 0;
-        const h = Number(presenter?.state?.height) || 0;
-        const groundYAt = (x: number, yHint: number): number | null => {
-          const px = Math.floor(x);
-          if (px < 0 || px >= (Number(presenter?.state?.width) || 0)) return null;
-          const yStart = Math.max(0, Math.min(h - 1, Math.floor(yHint)));
-          for (let y = yStart; y < h; y++) {
-            if (land.getMaterial(px, y) > 0) return y;
-          }
-          return null;
-        };
-        const g0 = groundYAt(x0, y0);
-        if (g0 !== null) {
-          const gl = groundYAt(x0 - sampleDx, g0) ?? (g0 + 260);
-          const gr = groundYAt(x0 + sampleDx, g0) ?? (g0 + 260);
-          const dropL = gl - g0;
-          const dropR = gr - g0;
-          const maxDrop = Math.max(dropL, dropR);
-          if (maxDrop > 80) {
-            dir = dropL > dropR ? 'right' : 'left';
-          }
-        }
-      }
-    }
-    if (dir) {
-      this.postShotDir = dir;
-      this.postShotMoveUntil = now + 0.35;
-      presenter.handleInput?.(dir, true, true);
-      presenter.handleInput?.(dir === 'left' ? 'right' : 'left', false, true);
-    } else {
-      this.postShotDir = null;
-      presenter.handleInput?.('left', false, true);
-      presenter.handleInput?.('right', false, true);
-    }
+    const next = applyPostShotMove({
+      presenter,
+      player,
+      now,
+      timeLeft,
+      reserveSeconds,
+      lastFiredWeaponId: this.lastFiredWeaponId,
+      state: { dir: this.postShotDir, until: this.postShotMoveUntil }
+    });
+    this.postShotDir = next.dir;
+    this.postShotMoveUntil = next.until;
   }
 
   private steerHoming(presenter: any, player: any) {
@@ -883,6 +699,15 @@ export class BotTurnController {
     } catch {
       return false;
     }
+  }
+
+  private resetPlanStateForReplan(now: number) {
+    this.lastReplanAt = now;
+    this.plannedThisTurn = false;
+    this.plan = null;
+    this.movePathWaypoints = null;
+    this.movePathIndex = 0;
+    this.didReplanThisTurn = true;
   }
 
   private debug(event: string, data: any) {
@@ -2131,20 +1956,35 @@ export class BotTurnController {
     if ((dxAbs < 24 && Math.abs(dy) < 26) || (Math.sign(prevDx) !== 0 && Math.sign(prevDx) !== Math.sign(dx) && dxAbs < 90)) return false;
 
     const cliff0 = this.scanCliffAhead(presenter, player, dir);
-    if (cliff0.isDeepVoid && dxAbs > 38) {
-      if (presenter?.state?.mode === 'aivai2') {
-        this.emitAIVai(presenter, { type: 'bot_safety_reject', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, reason: 'void_ahead', dir, pos: { x: player.x, y: player.y }, moveTo: { x: moveTo.x, y: moveTo.y }, aiV: AI_V });
+    const voidRes = checkVoidAheadSafety({
+      presenter,
+      player,
+      now,
+      turnNo: this.turnNo,
+      moveTo,
+      dir,
+      dxAbs,
+      cliff: cliff0,
+      lastReplanAt: this.lastReplanAt,
+      replanCooldownSeconds: this.lastMovementCfg.replanCooldownSeconds,
+      emitAIVai: (payload) => {
+        if (presenter?.state?.mode === 'aivai2') this.emitAIVai(presenter, payload);
+      },
+      debugReplan: (payload) => {
+        const banned = Array.from(this.bannedTurn);
+        this.debug('replan', { ...payload, banned });
       }
+    });
+    if (voidRes.blocked) {
       this.bannedTurn.add('walk');
       this.strategy = null;
-      if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
-        this.lastReplanAt = now;
+      if (voidRes.didReplan) {
+        this.lastReplanAt = voidRes.nextLastReplanAt;
         this.plannedThisTurn = false;
         this.plan = null;
         this.movePathWaypoints = null;
         this.movePathIndex = 0;
         this.didReplanThisTurn = true;
-        this.debug('replan', { reason: 'void_ahead', banned: Array.from(this.bannedTurn) });
       }
       presenter.handleInput?.('left', false, true);
       presenter.handleInput?.('right', false, true);
@@ -2231,12 +2071,7 @@ export class BotTurnController {
         if (presenter?.state?.mode === 'aivai2') {
           this.emitAIVai(presenter, { type: 'bot_ally_avoid', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, mode: 'replan', dir, pos: { x: player.x, y: player.y }, allyId: String(presenter.state.players.indexOf(ally)), aiV: AI_V });
         }
-        this.lastReplanAt = now;
-        this.plannedThisTurn = false;
-        this.plan = null;
-        this.movePathWaypoints = null;
-        this.movePathIndex = 0;
-        this.didReplanThisTurn = true;
+        this.resetPlanStateForReplan(now);
         presenter.handleInput?.('left', false, true);
         presenter.handleInput?.('right', false, true);
         presenter.handleInput?.('jump', false, true);
@@ -2255,16 +2090,11 @@ export class BotTurnController {
     this.lastMoveDir = dir;
 
     if (this.dirFlipCount >= 4 && (now - this.lastReplanAt) > this.lastMovementCfg.replanCooldownSeconds) {
-      this.lastReplanAt = now;
       this.dirFlipWindowAt = now;
       this.dirFlipCount = 0;
       this.bannedTurn.add('walk');
       this.strategy = null;
-      this.plannedThisTurn = false;
-      this.plan = null;
-      this.movePathWaypoints = null;
-      this.movePathIndex = 0;
-      this.didReplanThisTurn = true;
+      this.resetPlanStateForReplan(now);
       this.debug('replan', { reason: 'dir_flip', banned: Array.from(this.bannedTurn) });
       return true;
     }
@@ -2294,12 +2124,7 @@ export class BotTurnController {
       this.bannedTurn.add('walk');
       this.bannedTurn.add('jump');
       if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
-        this.lastReplanAt = now;
-        this.plannedThisTurn = false;
-        this.plan = null;
-        this.movePathWaypoints = null;
-        this.movePathIndex = 0;
-        this.didReplanThisTurn = true;
+        this.resetPlanStateForReplan(now);
         this.debug('replan', { reason: 'box_stuck', banned: Array.from(this.bannedTurn) });
       }
       return true;
@@ -2312,12 +2137,7 @@ export class BotTurnController {
       this.bannedTurn.add('walk');
       this.strategy = null;
       if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
-        this.lastReplanAt = now;
-        this.plannedThisTurn = false;
-        this.plan = null;
-        this.movePathWaypoints = null;
-        this.movePathIndex = 0;
-        this.didReplanThisTurn = true;
+        this.resetPlanStateForReplan(now);
         this.debug('replan', { reason: 'walk_stuck', banned: Array.from(this.bannedTurn) });
       }
       return true;
@@ -2538,14 +2358,7 @@ export class BotTurnController {
   }
 
   private detectObstacle(presenter: any, player: any, dir: 'left' | 'right'): boolean {
-    const ahead = (player.width || 10) + 10;
-    const x = player.x + (dir === 'right' ? 1 : -1) * ahead;
-    const yTop = player.y - (player.height || 10) / 2;
-    const yMid = player.y;
-    const yHead = yTop - 2;
-    const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
-    const solid = (xx: number, yy: number) => mat(Math.floor(xx), Math.floor(yy)) > 0;
-    return solid(x, yMid) || solid(x, yTop) || solid(x, yHead);
+    return detectObstacle0(presenter, player, dir);
   }
 
   private scanCliffAhead(
@@ -2553,57 +2366,11 @@ export class BotTurnController {
     player: any,
     dir: 'left' | 'right'
   ): { isGapOrCliff: boolean; isDeepVoid: boolean; maxDrop: number } {
-    const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
-    const w = presenter.state.width;
-    const h = presenter.state.height;
-    const sign = dir === 'right' ? 1 : -1;
-
-    const yFoot = player.y + (player.height || 10) / 2 + 2;
-    const yStart = Math.max(0, Math.floor(yFoot));
-    const maxSearch = 220;
-
-    const distances = [16, 28, 40, 52, 64, 80];
-    let maxDrop = 0;
-    let missingCount = 0;
-
-    for (const d of distances) {
-      const x = Math.floor(player.x + sign * ((player.width || 10) + d));
-      if (x < 0 || x >= w) continue;
-      let groundY: number | null = null;
-      for (let y = yStart; y < Math.min(h, yStart + maxSearch); y++) {
-        if (mat(x, y) > 0) {
-          groundY = y;
-          break;
-        }
-      }
-      if (groundY === null) {
-        missingCount += 1;
-        maxDrop = Math.max(maxDrop, maxSearch);
-      } else {
-        maxDrop = Math.max(maxDrop, groundY - yStart);
-      }
-    }
-
-    const isGapOrCliff = missingCount >= 2 || maxDrop >= 90;
-    const isDeepVoid = missingCount >= 4;
-    return { isGapOrCliff, isDeepVoid, maxDrop };
+    return scanCliffAhead0(presenter, player, dir);
   }
 
   private detectCeilingLow(presenter: any, player: any, dir: 'left' | 'right'): boolean {
-    const mat = presenter.state.landscape.getMaterial.bind(presenter.state.landscape);
-    const w = presenter.state.width;
-    const sign = dir === 'right' ? 1 : -1;
-    const headY = player.y - (player.height || 10) / 2;
-    const checksY = [Math.floor(headY - 6), Math.floor(headY - 14), Math.floor(headY - 22)];
-    const checksX = [Math.floor(player.x), Math.floor(player.x + sign * ((player.width || 10) + 10))];
-    for (const x of checksX) {
-      if (x < 0 || x >= w) continue;
-      for (const y of checksY) {
-        if (y < 0) continue;
-        if (mat(x, y) > 0) return true;
-      }
-    }
-    return false;
+    return detectCeilingLow0(presenter, player, dir);
   }
 
   private tryJump(presenter: any, player: any, now: number): boolean {

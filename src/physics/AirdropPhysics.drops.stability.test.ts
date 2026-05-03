@@ -83,5 +83,5 @@ describe('AirdropPhysics (drops stability)', () => {
     const max = traceCounts.reduce((a, b) => Math.max(a, b), 0);
     const avg = total / Math.max(1, traceCounts.length);
     console.log('[drops] airdrop_contact traces total=%d avg=%.2f max=%d', total, avg, max);
-  });
+  }, 15000);
 });

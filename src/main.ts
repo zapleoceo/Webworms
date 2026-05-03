@@ -19,6 +19,8 @@ import type { AIDifficulty } from './ai/AIDifficulty';
 import { debugSurfacePathMatrix, terrainFromLandscape } from './ai/BotAI';
 import { AI_V } from './ai/AIVersion';
 import { updateAivaiOverlay } from './ui/AiVainOverlay';
+import { createWakeLockManager } from './services/wakeLock';
+import { createControlsUi } from './ui/controlsUi';
 import { loadBestPractices, saveBestPractices } from './ai/BestPractices';
 import { extractTopCasesFromEvents, loadCaseLibrary, mergeCases, normalizePlanJsonRow, saveCaseLibrary } from './ai/CaseLibrary';
 
@@ -76,144 +78,12 @@ const teamGrenadesLeftEl = document.getElementById('team-grenades-left') as HTML
 const teamGrenadesRightEl = document.getElementById('team-grenades-right') as HTMLElement | null;
 
 let currentAIDifficultyForMatch: AIDifficulty | null = null;
-let controlsBound = false;
-let controlsAutoCloseTimer: number | null = null;
-let wakeLockSentinel: any = null;
-let wakeLockWanted = false;
-let wakeLockGestureHandler: ((e: Event) => void) | null = null;
-
-async function requestWakeLock(): Promise<void> {
-  try {
-    if (!wakeLockWanted) return;
-    if (wakeLockSentinel) return;
-    if (document.visibilityState !== 'visible') return;
-    const nav: any = navigator as any;
-    if (!nav?.wakeLock?.request) return;
-    wakeLockSentinel = await nav.wakeLock.request('screen');
-    const cur = wakeLockSentinel;
-    if (wakeLockGestureHandler) {
-      document.removeEventListener('pointerdown', wakeLockGestureHandler);
-      document.removeEventListener('touchstart', wakeLockGestureHandler);
-      wakeLockGestureHandler = null;
-    }
-    if (cur?.addEventListener) {
-      cur.addEventListener('release', () => {
-        if (wakeLockSentinel === cur) wakeLockSentinel = null;
-        requestWakeLock().catch(() => {});
-      });
-    }
-  } catch {
-    wakeLockSentinel = null;
-  }
-}
-
-async function releaseWakeLock(): Promise<void> {
-  try {
-    if (wakeLockSentinel?.release) await wakeLockSentinel.release();
-  } catch {}
-  wakeLockSentinel = null;
-}
-
-function setWakeLockWanted(wanted: boolean): void {
-  wakeLockWanted = wanted;
-  if (wanted) {
-    if (!wakeLockGestureHandler) {
-      wakeLockGestureHandler = () => {
-        requestWakeLock().catch(() => {});
-      };
-      document.addEventListener('pointerdown', wakeLockGestureHandler, { passive: true });
-      document.addEventListener('touchstart', wakeLockGestureHandler, { passive: true });
-    }
-    requestWakeLock().catch(() => {});
-  } else {
-    releaseWakeLock().catch(() => {});
-  }
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (wakeLockWanted && document.visibilityState === 'visible') {
-    requestWakeLock().catch(() => {});
-  }
-});
-
-document.addEventListener('fullscreenchange', () => {
-  if (wakeLockWanted) requestWakeLock().catch(() => {});
-});
-
-window.addEventListener('focus', () => {
-  if (wakeLockWanted) requestWakeLock().catch(() => {});
-});
-
-window.addEventListener('pageshow', () => {
-  if (wakeLockWanted) requestWakeLock().catch(() => {});
-});
-
-function setControlsOpen(open: boolean, persist: boolean = true) {
-  if (!controlsUI) return;
-  controlsUI.classList.toggle('is-open', open);
-  if (persist) {
-    try {
-      localStorage.setItem('ww_controls_open', open ? '1' : '0');
-    } catch {}
-  }
-  if (controlsAutoCloseTimer) {
-    clearTimeout(controlsAutoCloseTimer);
-    controlsAutoCloseTimer = null;
-  }
-}
-
-function ensureControlsBoundOnce() {
-  if (controlsBound) return;
-  controlsBound = true;
-  if (!controlsUI) return;
-  if (controlsToggleBtn) {
-    controlsToggleBtn.addEventListener('click', () => {
-      const open = controlsUI.classList.contains('is-open');
-      setControlsOpen(!open, true);
-    });
-  }
-  document.getElementById('controls-toggle-top')?.addEventListener('click', () => {
-    if (!controlsUI) return;
-    const open = controlsUI.classList.contains('is-open');
-    setControlsOpen(!open, true);
-  });
-}
-
-function syncControlsForViewport(inGame: boolean) {
-  if (!controlsUI) return;
-  if (!inGame) {
-    controlsUI.style.display = 'none';
-    controlsUI.classList.remove('is-open');
-    return;
-  }
-  ensureControlsBoundOnce();
-  if (window.innerWidth <= 768) {
-    mobileControls.style.display = 'flex';
-    controlsUI.style.display = 'none';
-    setControlsOpen(false, false);
-  } else {
-    mobileControls.style.display = 'none';
-    controlsUI.style.display = 'flex';
-  }
-}
-
-function autoShowControlsOnce() {
-  if (!controlsUI) return;
-  if (window.innerWidth <= 768) return;
-  let seen = false;
-  try {
-    seen = localStorage.getItem('ww_controls_seen') === '1';
-  } catch {}
-  if (seen) return;
-  try {
-    localStorage.setItem('ww_controls_seen', '1');
-  } catch {}
-  setControlsOpen(true, false);
-  controlsAutoCloseTimer = window.setTimeout(() => {
-    controlsAutoCloseTimer = null;
-    setControlsOpen(false, false);
-  }, 8000);
-}
+const wakeLock = createWakeLockManager();
+const controlsUi = createControlsUi({ controlsUI, mobileControls, controlsToggleBtn });
+const setWakeLockWanted = wakeLock.setWanted;
+const setControlsOpen = controlsUi.setOpen;
+const syncControlsForViewport = controlsUi.syncForViewport;
+const autoShowControlsOnce = controlsUi.autoShowOnce;
 
 function getDifficultyLabel(d: AIDifficulty): string {
   return d.toUpperCase();

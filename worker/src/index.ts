@@ -18,6 +18,7 @@ import { uploadAIVaiLog } from './controllers/aivaiLogs';
 import { getAIVaiLog, listAIVaiLogs } from './controllers/adminAivaiLogs';
 import { getAIVaiLogExtract, getAIVaiLogMeta, getAIVaiLogStats } from './controllers/aivaiLogPublic';
 import { getAIVaiCasesBootstrap, getAIVaiCasesTop, ingestAIVaiCases } from './controllers/aivaiCases';
+import { ensureBootstrapAdmin } from './services/bootstrapAdmin';
 
 export interface Env {
   DB: D1Database;
@@ -29,15 +30,38 @@ export interface Env {
   PAYPAL_SECRET?: string;
   CLOUDFLARE_TURN_KEY_ID?: string;
   CLOUDFLARE_TURN_API_TOKEN?: string;
+  CORS_ORIGINS?: string;
+  BOOTSTRAP_ADMIN_EMAIL?: string;
+  BOOTSTRAP_ADMIN_PASSWORD?: string;
   waitUntil(promise: Promise<any>): void;
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Admin-Email, X-Admin-Password',
-  'Access-Control-Max-Age': '86400',
-};
+function computeCorsHeaders(request: Request, env: Env): Record<string, string> {
+  const reqOrigin = request.headers.get('Origin')?.trim() || '';
+  const selfOrigin = new URL(request.url).origin;
+  const allowedFromEnv = (env.CORS_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const allowLocal =
+    reqOrigin.startsWith('http://localhost:') ||
+    reqOrigin.startsWith('http://127.0.0.1:') ||
+    reqOrigin.startsWith('http://0.0.0.0:');
+  const allowPagesDev = reqOrigin.endsWith('.pages.dev');
+  const allowSame = reqOrigin === selfOrigin;
+  const allowEnv = allowedFromEnv.includes(reqOrigin);
+
+  const allowOrigin = reqOrigin && (allowSame || allowLocal || allowPagesDev || allowEnv) ? reqOrigin : selfOrigin;
+
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Admin-Email, X-Admin-Password',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin'
+  };
+}
 
 function maskId(id: string | null | undefined): string | null {
   if (!id) return null;
@@ -87,9 +111,14 @@ function withDiagHeaders(res: Response, reqId: string, ms: number): Response {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
 }
 
+function jsonOk(body: unknown, status: number = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
 async function diag<T extends Response>(
   request: Request,
   env: Env,
+  corsHeaders: Record<string, string>,
   handler: (reqId: string) => Promise<T>
 ): Promise<Response> {
   const reqId = newReqId();
@@ -258,6 +287,9 @@ async function ensureDbInitialized(env: Env): Promise<void> {
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE,
         username TEXT UNIQUE,
+        password_algo TEXT,
+        password_salt TEXT,
+        password_iters INTEGER,
         password_hash TEXT,
         is_active BOOLEAN DEFAULT FALSE,
         is_admin BOOLEAN DEFAULT FALSE,
@@ -277,6 +309,22 @@ async function ensureDbInitialized(env: Env): Promise<void> {
     `).run();
 
     await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS Sessions (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    `).run();
+
+    await env.DB.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON Sessions(user_id)
+    `).run();
+    await env.DB.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON Sessions(expires_at)
+    `).run();
+
+    await env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS MatchmakingQueue (
         room_id TEXT PRIMARY KEY,
         host_id TEXT NOT NULL,
@@ -289,11 +337,24 @@ async function ensureDbInitialized(env: Env): Promise<void> {
     } catch {}
 
     try {
+      await env.DB.exec(`ALTER TABLE Users ADD COLUMN password_algo TEXT;`);
+    } catch {}
+    try {
+      await env.DB.exec(`ALTER TABLE Users ADD COLUMN password_salt TEXT;`);
+    } catch {}
+    try {
+      await env.DB.exec(`ALTER TABLE Users ADD COLUMN password_iters INTEGER;`);
+    } catch {}
+
+    try {
       await env.DB.exec(`ALTER TABLE Weapons ADD COLUMN maxRange INTEGER DEFAULT 1900;`);
     } catch {}
 
     try {
       await env.DB.exec(`ALTER TABLE Weapons ADD COLUMN fuseSeconds REAL DEFAULT 3.0;`);
+    } catch {}
+    try {
+      await ensureBootstrapAdmin(env);
     } catch {}
     await seedWeapons(env);
     try {
@@ -304,6 +365,144 @@ async function ensureDbInitialized(env: Env): Promise<void> {
   dbInitDb = env.DB;
   dbInitDb = env.DB;
   return dbInitPromise;
+}
+
+type RouteHandler = (request: Request, env: Env, corsHeaders: Record<string, string>) => Promise<Response> | Response;
+
+type RouteDef = {
+  method?: string;
+  match: (url: URL) => boolean;
+  handler: RouteHandler;
+};
+
+async function dispatchRequest(request: Request, url: URL, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  const routes: RouteDef[] = [
+    {
+      method: 'GET',
+      match: (u) => u.pathname === '/api/ping',
+      handler: async () => jsonOk({ status: 'ok', time: Date.now() })
+    },
+    { method: 'POST', match: (u) => u.pathname === '/api/auth/register', handler: (r, e) => handleRegister(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname === '/api/auth/login', handler: (r, e) => handleLogin(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/auth/verify', handler: (r, e) => handleVerify(r, e) },
+    { method: 'GET', match: (u) => u.pathname === '/api/auth/session', handler: (r, e) => handleSession(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname === '/api/auth/daily-reset', handler: (r, e) => handleDailyReset(r, e, corsHeaders) },
+    {
+      match: (u) => u.pathname === '/api/auth/profile',
+      handler: async (r, e) => {
+        if (r.method === 'PUT') return await handleUpdateProfile(r, e, corsHeaders);
+        if (r.method === 'GET') return await diag(r, e, corsHeaders, async () => await getProfile(r, e, corsHeaders));
+        return new Response('Method Not Allowed', { status: 405 });
+      }
+    },
+    { method: 'PUT', match: (u) => u.pathname === '/api/auth/password', handler: (r, e) => handleUpdatePassword(r, e, corsHeaders) },
+
+    { method: 'GET', match: (u) => u.pathname === '/api/settings/turn_time', handler: (r, e) => getTurnTime(r, e, corsHeaders) },
+    { method: 'PUT', match: (u) => u.pathname === '/api/settings/turn_time', handler: (r, e) => updateTurnTime(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/settings/game', handler: (r, e) => getGameSettings(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/settings/airdrop_physics', handler: (r, e) => getAirdropPhysics(r, e, corsHeaders) },
+    { method: 'PUT', match: (u) => u.pathname === '/api/settings/airdrop_physics', handler: (r, e) => updateAirdropPhysics(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/settings/bot', handler: (r, e) => getBotSettings(r, e, corsHeaders) },
+    { method: 'PUT', match: (u) => u.pathname === '/api/settings/bot', handler: (r, e) => updateBotSettings(r, e, corsHeaders) },
+
+    { method: 'GET', match: (u) => u.pathname === '/api/admin/users', handler: (r, e) => getAdminUsers(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname === '/api/admin/users', handler: (r, e) => updateAdminUser(r, e, corsHeaders) },
+    { method: 'DELETE', match: (u) => u.pathname === '/api/admin/users', handler: (r, e) => deleteAdminUser(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname === '/api/admin/users/time', handler: (r, e) => addAdminUserTime(r, e, corsHeaders) },
+
+    { method: 'POST', match: (u) => u.pathname === '/api/contact', handler: (r, e) => handleContactEmail(r, e, corsHeaders) },
+
+    { method: 'POST', match: (u) => u.pathname === '/api/match/start', handler: (r, e) => startMatch(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname === '/api/match/end', handler: (r, e) => reportMatchEnd(r, e, corsHeaders) },
+
+    { method: 'POST', match: (u) => u.pathname === '/api/payment/paypal/create-order', handler: (r, e) => createPayPalOrder(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname === '/api/payment/paypal/capture', handler: (r, e) => capturePayPalOrder(r, e, corsHeaders) },
+
+    { method: 'POST', match: (u) => u.pathname === '/api/aivai/logs', handler: (r, e) => uploadAIVaiLog(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/aivai/log/meta', handler: (r, e) => getAIVaiLogMeta(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/aivai/log/stats', handler: (r, e) => getAIVaiLogStats(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/aivai/log/extract', handler: (r, e) => getAIVaiLogExtract(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname === '/api/aivai/cases/ingest', handler: (r, e) => ingestAIVaiCases(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/aivai/cases/top', handler: (r, e) => getAIVaiCasesTop(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/aivai/cases/bootstrap', handler: (r, e) => getAIVaiCasesBootstrap(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/admin/aivai/logs', handler: (r, e) => listAIVaiLogs(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname === '/api/admin/aivai/log', handler: (r, e) => getAIVaiLog(r, e, corsHeaders) },
+
+    { method: 'GET', match: (u) => u.pathname === '/api/logos', handler: (_r, e) => getLogos(e, corsHeaders) },
+    {
+      match: (u) => u.pathname === '/api/admin/logos',
+      handler: async (r, e) => {
+        if (r.method === 'POST') return await createLogo(r, e, corsHeaders);
+        if (r.method === 'PUT') return await updateLogo(r, e, corsHeaders);
+        if (r.method === 'DELETE') return await deleteLogo(r, e, corsHeaders);
+        return new Response('Method Not Allowed', { status: 405 });
+      }
+    },
+
+    { method: 'GET', match: (u) => u.pathname === '/api/maps', handler: (r, e) => diag(r, e, corsHeaders, async () => await getMaps(r, e, corsHeaders)) },
+    { method: 'GET', match: (u) => u.pathname.startsWith('/api/maps/') && u.pathname.endsWith('/image'), handler: (r, e) => getMapImage(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname.startsWith('/api/maps/'), handler: (r, e) => getMapById(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname === '/api/admin/maps', handler: (r, e) => createMap(r, e, corsHeaders) },
+    { method: 'PUT', match: (u) => u.pathname.startsWith('/api/admin/maps/'), handler: (r, e) => updateMap(r, e, corsHeaders) },
+    { method: 'DELETE', match: (u) => u.pathname.startsWith('/api/admin/maps/'), handler: (r, e) => deleteMap(r, e, corsHeaders) },
+
+    { method: 'GET', match: (u) => u.pathname === '/api/spritesets', handler: (_r, e) => getSpriteSets(e) },
+    {
+      match: (u) => u.pathname === '/api/admin/spritesets',
+      handler: async (r, e) => {
+        if (r.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
+        if (!(await checkAdminAuth(r, e))) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        return await createSpriteSet(r, e);
+      }
+    },
+    {
+      match: (u) => u.pathname.startsWith('/api/admin/spritesets/'),
+      handler: async (r, e) => {
+        if (r.method !== 'PUT' && r.method !== 'DELETE') return new Response('Method Not Allowed', { status: 405 });
+        if (!(await checkAdminAuth(r, e))) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        if (r.method === 'PUT') return await updateSpriteSet(r, e);
+        return await deleteSpriteSet(r, e);
+      }
+    },
+
+    { method: 'GET', match: (u) => u.pathname === '/api/weapons', handler: (r, e) => diag(r, e, corsHeaders, async () => await getWeapons(e, corsHeaders)) },
+    {
+      match: (u) => u.pathname === '/api/admin/weapons',
+      handler: async (r, e) => {
+        if (r.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
+        if (!(await checkAdminAuth(r, e))) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        return await createWeapon(r, e);
+      }
+    },
+    {
+      match: (u) => u.pathname.startsWith('/api/admin/weapons/'),
+      handler: async (r, e) => {
+        if (r.method !== 'PUT' && r.method !== 'DELETE') return new Response('Method Not Allowed', { status: 405 });
+        if (!(await checkAdminAuth(r, e))) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        if (r.method === 'PUT') return await updateWeapon(r, e);
+        return await deleteWeapon(r, e);
+      }
+    },
+
+    { method: 'POST', match: (u) => u.pathname === '/api/rooms', handler: (r, e) => createRoom(r, e, logEvent) },
+    { method: 'POST', match: (u) => u.pathname === '/api/rooms/random', handler: (r, e) => joinRandomRoom(r, e, corsHeaders, logEvent, maskId) },
+    { method: 'GET', match: (u) => u.pathname === '/api/turn/ice-servers', handler: (r, e) => getTurnIceServers(r, e, corsHeaders, logEvent) },
+    { method: 'POST', match: (u) => u.pathname.startsWith('/api/rooms/') && u.pathname.endsWith('/join'), handler: (r, e) => joinRoomState(r, e, corsHeaders, logEvent, maskId) },
+    { method: 'GET', match: (u) => u.pathname.startsWith('/api/rooms/') && u.pathname.endsWith('/ws'), handler: (r, e) => handleSignalingWS(r, e, corsHeaders) },
+    { method: 'GET', match: (u) => u.pathname.startsWith('/api/rooms/') && u.pathname.endsWith('/snapshot'), handler: (r, e) => handleSignalingSnapshot(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname.startsWith('/api/rooms/') && u.pathname.endsWith('/signal'), handler: (r, e) => handleSignalingSignal(r, e, corsHeaders) },
+    { method: 'POST', match: (u) => u.pathname.startsWith('/api/rooms/') && u.pathname.endsWith('/heartbeat'), handler: (r, e) => heartbeatRoom(r, e, corsHeaders, logEvent, maskId) },
+    { method: 'POST', match: (u) => u.pathname.startsWith('/api/rooms/') && u.pathname.endsWith('/leave'), handler: (r, e) => leaveRoom(r, e, corsHeaders, logEvent, maskId) },
+    { method: 'GET', match: (u) => u.pathname.startsWith('/api/rooms/') && u.pathname.endsWith('/state'), handler: (r, e) => getRoomState(r, e, corsHeaders) }
+  ];
+
+  for (const rt of routes) {
+    if (rt.method && rt.method !== request.method) continue;
+    if (!rt.match(url)) continue;
+    return await rt.handler(request, env, corsHeaders);
+  }
+
+  return new Response('Not Found', { status: 404 });
 }
 
 export default {
@@ -325,260 +524,16 @@ export default {
   },
 
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    const corsHeaders = computeCorsHeaders(request, env);
+
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
     }
 
-    const url = new URL(request.url);
-
     try {
       await ensureDbInitialized(env);
-
-      let response: Response;
-
-      // 1. Healthcheck / Ping
-      if (url.pathname === '/api/ping') {
-        response = new Response(JSON.stringify({ status: 'ok', time: Date.now() }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      // 2. Auth Routes
-      else if (url.pathname === '/api/auth/register' && request.method === 'POST') {
-        response = await handleRegister(request, env, corsHeaders);
-      }
-      
-      else if (url.pathname === '/api/auth/login' && request.method === 'POST') {
-        response = await handleLogin(request, env, corsHeaders);
-      }
-      
-      else if (url.pathname === '/api/auth/verify' && request.method === 'GET') {
-        response = await handleVerify(request, env);
-      }
-
-      else if (url.pathname === '/api/auth/session' && request.method === 'GET') {
-        response = await handleSession(request, env, corsHeaders);
-      }
-
-      else if (url.pathname === '/api/auth/daily-reset' && request.method === 'POST') {
-        response = await handleDailyReset(request, env, corsHeaders);
-      }
-      
-      else if (url.pathname === '/api/auth/profile') {
-        if (request.method === 'PUT') {
-          response = await handleUpdateProfile(request, env, corsHeaders);
-        } else if (request.method === 'GET') {
-          response = await diag(request, env, async () => await getProfile(request, env, corsHeaders));
-        }
-      }
-
-      else if (url.pathname === '/api/auth/password' && request.method === 'PUT') {
-        response = await handleUpdatePassword(request, env, corsHeaders);
-      }
-
-      else if (url.pathname === '/api/settings/turn_time' && request.method === 'GET') {
-        response = await getTurnTime(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/settings/turn_time' && request.method === 'PUT') {
-        response = await updateTurnTime(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/settings/game' && request.method === 'GET') {
-        response = await getGameSettings(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/settings/airdrop_physics' && request.method === 'GET') {
-        response = await getAirdropPhysics(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/settings/airdrop_physics' && request.method === 'PUT') {
-        response = await updateAirdropPhysics(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/settings/bot' && request.method === 'GET') {
-        response = await getBotSettings(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/settings/bot' && request.method === 'PUT') {
-        response = await updateBotSettings(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/admin/users' && request.method === 'GET') {
-        response = await getAdminUsers(request, env, corsHeaders);
-      }
-      
-      else if (url.pathname === '/api/admin/users' && request.method === 'POST') {
-        response = await updateAdminUser(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/admin/users' && request.method === 'DELETE') {
-        response = await deleteAdminUser(request, env, corsHeaders);
-      }
-      
-      else if (url.pathname === '/api/contact' && request.method === 'POST') {
-        response = await handleContactEmail(request, env, corsHeaders);
-      }
-      
-      // 6. Match Endpoints
-      else if (url.pathname === '/api/match/start' && request.method === 'POST') {
-        response = await startMatch(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/match/end' && request.method === 'POST') {
-        response = await reportMatchEnd(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/payment/paypal/create-order' && request.method === 'POST') {
-        response = await createPayPalOrder(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/payment/paypal/capture' && request.method === 'POST') {
-        response = await capturePayPalOrder(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/aivai/logs' && request.method === 'POST') {
-        response = await uploadAIVaiLog(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/aivai/log/meta' && request.method === 'GET') {
-        response = await getAIVaiLogMeta(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/aivai/log/stats' && request.method === 'GET') {
-        response = await getAIVaiLogStats(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/aivai/log/extract' && request.method === 'GET') {
-        response = await getAIVaiLogExtract(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/aivai/cases/ingest' && request.method === 'POST') {
-        response = await ingestAIVaiCases(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/aivai/cases/top' && request.method === 'GET') {
-        response = await getAIVaiCasesTop(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/aivai/cases/bootstrap' && request.method === 'GET') {
-        response = await getAIVaiCasesBootstrap(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/admin/aivai/logs' && request.method === 'GET') {
-        response = await listAIVaiLogs(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/admin/aivai/log' && request.method === 'GET') {
-        response = await getAIVaiLog(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/admin/users/time' && request.method === 'POST') {
-        response = await addAdminUserTime(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/logos' && request.method === 'GET') {
-        response = await getLogos(env, corsHeaders);
-      }
-      else if (url.pathname === '/api/admin/logos' && request.method === 'POST') {
-        response = await createLogo(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/admin/logos' && request.method === 'PUT') {
-        response = await updateLogo(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/admin/logos' && request.method === 'DELETE') {
-        response = await deleteLogo(request, env, corsHeaders);
-      }
-
-      // Maps Endpoints
-      else if (url.pathname === '/api/maps' && request.method === 'GET') {
-        response = await diag(request, env, async () => await getMaps(request, env, corsHeaders));
-      }
-      else if (url.pathname.startsWith('/api/maps/') && url.pathname.endsWith('/image') && request.method === 'GET') {
-        response = await getMapImage(request, env, corsHeaders);
-      }
-      else if (url.pathname.startsWith('/api/maps/') && request.method === 'GET') {
-        response = await getMapById(request, env, corsHeaders);
-      }
-      else if (url.pathname === '/api/admin/maps' && request.method === 'POST') {
-        response = await createMap(request, env, corsHeaders);
-      }
-      else if (url.pathname.startsWith('/api/admin/maps/') && request.method === 'PUT') {
-        response = await updateMap(request, env, corsHeaders);
-      }
-      else if (url.pathname.startsWith('/api/admin/maps/') && request.method === 'DELETE') {
-        response = await deleteMap(request, env, corsHeaders);
-      }
-
-      // SpriteSets Endpoints
-      else if (url.pathname === '/api/spritesets' && request.method === 'GET') {
-        response = await getSpriteSets(env);
-      }
-      else if (url.pathname === '/api/admin/spritesets' && request.method === 'POST') {
-        if (!(await checkAdminAuth(request, env))) {
-          response = new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-        } else {
-          response = await createSpriteSet(request, env);
-        }
-      }
-      else if (url.pathname.startsWith('/api/admin/spritesets/') && request.method === 'PUT') {
-        if (!(await checkAdminAuth(request, env))) {
-          response = new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-        } else {
-          response = await updateSpriteSet(request, env);
-        }
-      }
-      else if (url.pathname.startsWith('/api/admin/spritesets/') && request.method === 'DELETE') {
-        if (!(await checkAdminAuth(request, env))) {
-          response = new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-        } else {
-          response = await deleteSpriteSet(request, env);
-        }
-      }
-
-      // Weapons Endpoints
-      else if (url.pathname === '/api/weapons' && request.method === 'GET') {
-        response = await diag(request, env, async () => await getWeapons(env, corsHeaders));
-      }
-      else if (url.pathname === '/api/admin/weapons' && request.method === 'POST') {
-        if (!(await checkAdminAuth(request, env))) {
-          response = new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-        } else {
-          response = await createWeapon(request, env);
-        }
-      }
-      else if (url.pathname.startsWith('/api/admin/weapons/') && request.method === 'PUT') {
-        if (!(await checkAdminAuth(request, env))) {
-          response = new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-        } else {
-          response = await updateWeapon(request, env);
-        }
-      }
-      else if (url.pathname.startsWith('/api/admin/weapons/') && request.method === 'DELETE') {
-        if (!(await checkAdminAuth(request, env))) {
-          response = new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-        } else {
-          response = await deleteWeapon(request, env);
-        }
-      }
-      
-      else if (url.pathname === '/api/rooms' && request.method === 'POST') {
-        response = await createRoom(request, env, logEvent);
-      }
-      
-      // Matchmaking
-      else if (url.pathname === '/api/rooms/random' && request.method === 'POST') {
-        response = await joinRandomRoom(request, env, corsHeaders, logEvent, maskId);
-      }
-
-      else if (url.pathname === '/api/turn/ice-servers' && request.method === 'GET') {
-        response = await getTurnIceServers(request, env, corsHeaders, logEvent);
-      }
-
-      // Signaling endpoints
-      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/join') && request.method === 'POST') {
-        response = await joinRoomState(request, env, corsHeaders, logEvent, maskId);
-      }
-      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/ws') && request.method === 'GET') {
-        response = await handleSignalingWS(request, env, corsHeaders);
-      }
-      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/snapshot') && request.method === 'GET') {
-        response = await handleSignalingSnapshot(request, env, corsHeaders);
-      }
-      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/signal') && request.method === 'POST') {
-        response = await handleSignalingSignal(request, env, corsHeaders);
-      }
-      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/heartbeat') && request.method === 'POST') {
-        response = await heartbeatRoom(request, env, corsHeaders, logEvent, maskId);
-      }
-      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/leave') && request.method === 'POST') {
-        response = await leaveRoom(request, env, corsHeaders, logEvent, maskId);
-      }
-      
-      else if (url.pathname.startsWith('/api/rooms/') && url.pathname.endsWith('/state') && request.method === 'GET') {
-        response = await getRoomState(request, env, corsHeaders);
-      }
-      else {
-        response = new Response('Not Found', { status: 404 });
-      }
+      const response = await dispatchRequest(request, url, env, corsHeaders);
 
       // Append CORS headers to whatever response was generated
       const newHeaders = new Headers(response.headers);

@@ -3,6 +3,9 @@ CREATE TABLE IF NOT EXISTS Users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE,
   username TEXT UNIQUE,
+  password_algo TEXT,
+  password_salt TEXT,
+  password_iters INTEGER,
   password_hash TEXT,
   is_active BOOLEAN DEFAULT FALSE,
   is_admin BOOLEAN DEFAULT FALSE,
@@ -19,6 +22,16 @@ CREATE TABLE IF NOT EXISTS Users (
   premium_until INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS Sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON Sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON Sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS Payments (
   order_id TEXT PRIMARY KEY,

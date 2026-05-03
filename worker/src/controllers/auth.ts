@@ -1,5 +1,6 @@
 import { d1Retry } from '../services/d1';
-import { hashPassword } from '../services/password';
+import { createPasswordHash, verifyUserPassword } from '../services/password';
+import { createSession } from '../services/session';
 import { requireSessionUser } from '../services/userAuth';
 
 async function sendResendEmail(env: any, to: string, token: string, host: string): Promise<string | null> {
@@ -66,19 +67,29 @@ export async function handleRegister(request: Request, env: any, corsHeaders: Re
       return new Response(JSON.stringify({ error: 'User with this email or username already exists' }), { status: 409, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    const id = 'user_' + Math.random().toString(36).substring(2, 10);
+    let id = '';
+    try {
+      id = `user_${crypto.randomUUID().replace(/-/g, '')}`;
+    } catch {
+      id = `user_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    }
     const initialBalance = 3600;
 
-    const hashedPassword = await hashPassword(password);
-    const token = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+    const pw = await createPasswordHash(password);
+    let token = '';
+    try {
+      token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    } catch {
+      token = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+    }
 
     const isAdmin = email.toLowerCase() === 'demoniwwwe@gmail.com' ? 1 : 0;
 
     if (!referred_by) {
       await d1Retry(() =>
         env.DB.prepare(
-          `INSERT INTO Users (id, email, username, password_hash, is_active, is_admin, verification_token, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(id, email, username, hashedPassword, 0, isAdmin, token, initialBalance).run()
+          `INSERT INTO Users (id, email, username, password_algo, password_salt, password_iters, password_hash, is_active, is_admin, verification_token, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(id, email, username, pw.algo, pw.salt, pw.iters, pw.hash, 0, isAdmin, token, initialBalance).run()
       );
 
       const verifyLink = `${new URL(request.url).origin}/api/auth/verify?token=${token}`;
@@ -101,8 +112,8 @@ export async function handleRegister(request: Request, env: any, corsHeaders: Re
     const stmts: any[] = [];
 
     stmts.push(env.DB.prepare(
-      `INSERT INTO Users (id, email, username, password_hash, is_active, is_admin, verification_token, referred_by, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, email, username, hashedPassword, 0, isAdmin, token, parentRow?.id || null, initialBalance));
+      `INSERT INTO Users (id, email, username, password_algo, password_salt, password_iters, password_hash, is_active, is_admin, verification_token, referred_by, play_time_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, email, username, pw.algo, pw.salt, pw.iters, pw.hash, 0, isAdmin, token, parentRow?.id || null, initialBalance));
 
     if (parentRow) {
       stmts.push(env.DB.prepare(
@@ -159,8 +170,8 @@ export async function handleLogin(request: Request, env: any, corsHeaders: Recor
       return new Response(JSON.stringify({ error: 'Account not activated. Please check your email.' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    const hashedPassword = await hashPassword(password);
-    if (user.password_hash !== hashedPassword) {
+    const ok = await verifyUserPassword(env, user, password);
+    if (!ok.ok) {
       return new Response(JSON.stringify({ error: 'Invalid credentials' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
@@ -170,8 +181,11 @@ export async function handleLogin(request: Request, env: any, corsHeaders: Recor
 
     delete user.password_hash;
     delete user.verification_token;
+    delete user.password_algo;
+    delete user.password_salt;
+    delete user.password_iters;
 
-    const token = user.id;
+    const token = await createSession(env, String(user.id), 30 * 24 * 60 * 60 * 1000);
 
     return new Response(JSON.stringify({ success: true, user, token, message: 'Logged in' }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -281,8 +295,12 @@ export async function handleUpdatePassword(request: Request, env: any, corsHeade
       return new Response(JSON.stringify({ error: 'Password is required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
     }
 
-    const hashedPassword = await hashPassword(password);
-    await d1Retry(() => env.DB.prepare('UPDATE Users SET password_hash = ? WHERE id = ?').bind(hashedPassword, user.id).run());
+    const pw = await createPasswordHash(password);
+    await d1Retry(() => env.DB
+      .prepare('UPDATE Users SET password_algo = ?, password_salt = ?, password_iters = ?, password_hash = ? WHERE id = ?')
+      .bind(pw.algo, pw.salt, pw.iters, pw.hash, user.id)
+      .run()
+    );
 
     return new Response(JSON.stringify({ success: true, message: 'Password updated successfully' }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   } catch (e: any) {

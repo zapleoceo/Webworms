@@ -59,13 +59,11 @@ export class APIClient {
 
   static async register(email: string, username: string, password?: string, refCode?: string) {
     try {
-      console.log(`[APIClient] Registering ${email}... at ${this.BASE_URL}/auth/register`);
       const data = await this.fetchJsonWithTimeout(`${this.BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, username, password, referred_by: refCode })
       }, 30000);
-      console.log('[APIClient] Register Response:', data);
       return data;
     } catch (e: any) {
       console.error('[APIClient] Backend connection error during register:', e);
@@ -76,13 +74,11 @@ export class APIClient {
 
   static async login(email: string, password?: string) {
     try {
-      console.log(`[APIClient] Logging in ${email}... at ${this.BASE_URL}/auth/login`);
       const data = await this.fetchJsonWithTimeout(`${this.BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       }, 30000);
-      console.log('[APIClient] Login Response:', data);
       return data;
     } catch (e: any) {
       console.error('[APIClient] Backend connection error during login:', e);

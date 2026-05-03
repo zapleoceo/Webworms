@@ -17,6 +17,7 @@ import { BotTurnController } from '../controllers/BotTurnController';
 import { terrainHitCircle } from '../physics/TrajectorySim';
 import { stepTurn } from '../game/turns/TurnSystem';
 import { BURST_SHOTS_PER_TURN, burstUsed, canFireBurstWeapon, incrementBurst, isBurstWeapon, trySpendGrenade } from '../game/combat/WeaponSystem';
+import { debitLocalPlayTimeForMatch } from '../services/playTime';
 
 export class GamePresenter {
   public state: GameState;
@@ -218,22 +219,7 @@ export class GamePresenter {
   public onAIVaiTrace?: (event: any) => void;
 
   public async startGame(settings: any) {
-    if (settings.mode !== 'training' && settings.mode !== 'aivai') {
-      const premiumStr = localStorage.getItem('premiumUntil');
-      let isPremium = false;
-      if (premiumStr) {
-        const premiumUntil = parseInt(premiumStr);
-        if (premiumUntil > Date.now()) {
-          isPremium = true;
-        }
-      }
-
-      if (!isPremium) {
-        let balance = parseInt(localStorage.getItem('playTimeBalance') || '0');
-        balance = Math.max(0, balance - 1);
-        localStorage.setItem('playTimeBalance', balance.toString());
-      }
-    }
+    debitLocalPlayTimeForMatch(String(settings?.mode || ''));
 
     this.maxTurnTime = settings.mode === 'training' ? Infinity : (settings.turnTime || 30);
     this.turnTimeLeft = this.maxTurnTime;
