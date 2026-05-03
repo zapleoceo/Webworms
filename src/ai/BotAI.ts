@@ -210,6 +210,18 @@ function chooseBotActionScored(
   let powerList = samplePowers(12);
   let grenadePowerList = sampleGrenadePowers();
 
+  const addAngle = (arr: number[], a: number) => {
+    const max = 78 * (Math.PI / 180);
+    const min = -78 * (Math.PI / 180);
+    if (!Number.isFinite(a)) return;
+    if (a < min || a > max) return;
+    if (!arr.some(x => Math.abs(x - a) < (1.2 * (Math.PI / 180)))) arr.push(a);
+  };
+  const addPower = (arr: number[], p: number) => {
+    const x = Math.max(1, Math.min(100, Math.round(p)));
+    if (!arr.includes(x)) arr.push(x);
+  };
+
   const targetRadius = 10;
   const allyNearShooter = allies.some(a => a.health > 0 && a.id !== shooter.id && Math.hypot(a.x - shooter.x, a.y - shooter.y) < 150);
 
@@ -235,14 +247,6 @@ function chooseBotActionScored(
   if (seedBins.length > 0) {
     const byIndex = new Map<number, string>();
     for (const w of weapons) byIndex.set(w.index, w.id);
-    const addAngle = (arr: number[], a: number) => {
-      if (a < (-78 * (Math.PI / 180)) || a > (78 * (Math.PI / 180))) return;
-      if (!arr.some(x => Math.abs(x - a) < (1.2 * (Math.PI / 180)))) arr.push(a);
-    };
-    const addPower = (arr: number[], p: number) => {
-      const x = Math.max(1, Math.min(100, Math.round(p)));
-      if (!arr.includes(x)) arr.push(x);
-    };
     for (const s of seedBins) {
       const wid = byIndex.get(Number(s.weaponIndex));
       if (!wid) continue;
@@ -260,6 +264,33 @@ function chooseBotActionScored(
     grenadeAngleList.sort((a, b) => a - b);
     powerList.sort((a, b) => a - b);
     grenadePowerList.sort((a, b) => a - b);
+  }
+
+  const closestEnemy0 = (() => {
+    let best: BotWormSnapshot | null = null;
+    let bestD = Infinity;
+    for (const e of aliveEnemies) {
+      const d = Math.hypot(e.x - shooter.x, e.y - shooter.y);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    return best ? { e: best, d: bestD } : null;
+  })();
+  if (closestEnemy0 && closestEnemy0.d <= 180) {
+    const dx = closestEnemy0.e.x - shooter.x;
+    const dy = (closestEnemy0.e.y - (closestEnemy0.e.height || 0) * 0.35) - (shooter.y - (shooter.height || 0) * 0.35);
+    const TAU = Math.PI * 2;
+    let g = Math.atan2(dy, dx);
+    if (g < 0) g += TAU;
+    const facingRight = dx >= 0;
+    const baseLocal = facingRight ? Math.atan2(dy, dx) : (Math.PI - g);
+    const offs = [-8, -4, 0, 4, 8].map(d => d * (Math.PI / 180));
+    for (const o of offs) addAngle(angleList, baseLocal + o);
+    for (const p of [52, 60, 70, 74, 80, 86]) addPower(powerList, p);
+    angleList.sort((a, b) => a - b);
+    powerList.sort((a, b) => a - b);
   }
 
   let best: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot; trace?: BotDecisionTrace } | null = null;

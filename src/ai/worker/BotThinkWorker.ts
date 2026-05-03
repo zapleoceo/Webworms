@@ -236,6 +236,7 @@ ctx.onmessage = (evt: MessageEvent<TerrainInitRequest | TerrainPatchRequest | Pl
           if (!res) return;
           const expected = (res.trace as any)?.chosen?.expectedDamage || 0;
           const edgePenalty = edgePenaltyAt(x, groundY);
+          if (edgePenalty >= 900) return;
           let allyPenalty = 0;
           for (const a of allies) {
             if (!a || a.health <= 0 || a.id === shooter.id) continue;

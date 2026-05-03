@@ -9,6 +9,7 @@ import { analyzePit } from '../ai/PitAnalyzer';
 import { recordPriorSample, recordTemplateSample, snapshotBestPracticesForWorker, getTemplate } from '../ai/BestPractices';
 import { buildStateKeyFromPresenter, computeWeaponsMask, getCasesByKey } from '../ai/CaseLibrary';
 import ThinkWorker from '../ai/worker/BotThinkWorker?worker';
+import ThinkWorker2 from '../ai2/worker/AI2ThinkWorker?worker';
 
 type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
 type RopeMode = 'climb' | 'swing' | 'descend';
@@ -69,6 +70,8 @@ export class BotTurnController {
   private lastJumpAt: number = -999;
   private jumpHoldUntil: number = 0;
   private lastX: number = 0;
+  private lastY: number = 0;
+  private lastMoveDist: number = Infinity;
   private stuckTime: number = 0;
   private wallStallRefX: number = 0;
   private wallStallTime: number = 0;
@@ -432,19 +435,19 @@ export class BotTurnController {
 
   private emitAIVai(presenter: any, payload: any) {
     try {
-      if (presenter?.state?.mode !== 'aivai') return;
+      if (presenter?.state?.mode !== 'aivai' && presenter?.state?.mode !== 'aivai2') return;
       const cb = presenter?.onAIVaiTrace;
       if (typeof cb !== 'function') return;
       cb(payload);
     } catch {}
   }
 
-  private ensureWorker() {
+  private ensureWorker(mode: string) {
     if ((globalThis as any).__AIVAI_DISABLE_WORKERS) return;
     if (this.thinkWorker) return;
     try {
       this.workerInitError = null;
-      this.thinkWorker = new ThinkWorker();
+      this.thinkWorker = (mode === 'aivai2') ? new ThinkWorker2() : new ThinkWorker();
       this.workerTerrainReady = false;
       this.workerTerrainDimKey = '';
       this.workerTerrainDfEventIndex = 0;
@@ -477,11 +480,11 @@ export class BotTurnController {
     }
   }
 
-  private ensureBgWorker() {
+  private ensureBgWorker(mode: string) {
     if ((globalThis as any).__AIVAI_DISABLE_WORKERS) return;
     if (this.bgWorker) return;
     try {
-      this.bgWorker = new ThinkWorker();
+      this.bgWorker = (mode === 'aivai2') ? new ThinkWorker2() : new ThinkWorker();
       this.bgWorkerTerrainReady = false;
       this.bgWorkerTerrainDimKey = '';
       this.bgWorkerTerrainDfEventIndex = 0;
@@ -613,7 +616,7 @@ export class BotTurnController {
 
   private startWorkerPlan(presenter: any, worms: BotWormSnapshot[], shooterId: string, botCfg: BotConfig, executeSeconds: number, ropeRemaining: number, rngSeed: number, difficulty: AIDifficulty): void {
     try {
-      this.ensureWorker();
+      this.ensureWorker(String(presenter?.state?.mode || ''));
       if (!this.thinkWorker) return;
       const terrain = presenter.state.landscape;
       const grid = terrain?.grid;
@@ -693,7 +696,7 @@ export class BotTurnController {
 
   private startBgWorkerPlan(presenter: any, worms: BotWormSnapshot[], shooterId: string, botCfg: BotConfig, executeSeconds: number, ropeRemaining: number, rngSeed: number, difficulty: AIDifficulty): void {
     try {
-      this.ensureBgWorker();
+      this.ensureBgWorker(String(presenter?.state?.mode || ''));
       if (!this.bgWorker) return;
       const terrain = presenter.state.landscape;
       const grid = terrain?.grid;
@@ -920,7 +923,7 @@ export class BotTurnController {
     if (!presenter?.isRunning) return;
     if (!presenter?.isHost) return;
     if (!presenter?.state) return;
-    if (presenter.state.mode !== 'ai' && presenter.state.mode !== 'aivai') return;
+    if (presenter.state.mode !== 'ai' && presenter.state.mode !== 'aivai' && presenter.state.mode !== 'aivai2') return;
 
     const curIdx = presenter.state.currentPlayerIndex ?? -1;
     const player = presenter.state.getCurrentPlayer?.();
@@ -963,7 +966,7 @@ export class BotTurnController {
       this.lastCacheDf = -1;
     }
 
-    const isBotTurn = presenter.state.mode === 'aivai' ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
+    const isBotTurn = (presenter.state.mode === 'aivai' || presenter.state.mode === 'aivai2') ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
 
     if (curIdx !== this.lastTurnIndex) {
       this.turnNo += 1;
@@ -1484,7 +1487,7 @@ export class BotTurnController {
     presenter.handleInput?.('up', false, true);
     presenter.handleInput?.('down', false, true);
     presenter.handleInput?.('jump', false, true);
-    this.trackStuck(player, dt);
+    this.trackMoveProgress(player, null, dt);
 
     if (!isWorldBusy) {
       this.emitMovementSummary(presenter, player, curIdx, moveTo || null, now);
@@ -1859,13 +1862,61 @@ export class BotTurnController {
 
   private trackStuck(player: any, dt: number) {
     const dx = Math.abs(player.x - this.lastX);
+    const dy = Math.abs((Number(player.y) || 0) - (Number(this.lastY) || 0));
     this.lastX = player.x;
+    this.lastY = Number(player.y) || 0;
     const vx = Math.abs(Number(player.vx) || 0);
-    if (dx < 0.25 && vx < 2.0) {
+    if (dx < 0.12 && dy < 0.18 && vx < 2.2) {
       this.stuckTime += dt;
       return;
     }
     this.stuckTime = Math.max(0, this.stuckTime - dt * 0.6);
+  }
+
+  private trackMoveProgress(player: any, moveTo: { x: number; y: number } | null, dt: number) {
+    if (!moveTo) {
+      this.lastMoveDist = Infinity;
+      this.trackStuck(player, dt);
+      return;
+    }
+    const d = Math.hypot((Number(moveTo.x) || 0) - (Number(player.x) || 0), (Number(moveTo.y) || 0) - (Number(player.y) || 0));
+    if (!Number.isFinite(d)) {
+      this.lastMoveDist = Infinity;
+      this.trackStuck(player, dt);
+      return;
+    }
+    const improving = Number.isFinite(this.lastMoveDist) && d < (this.lastMoveDist - 0.6);
+    this.lastMoveDist = d;
+    if (improving) {
+      this.stuckTime = 0;
+      return;
+    }
+    this.trackStuck(player, dt);
+  }
+
+  private findBlockingAlly(presenter: any, player: any, dir: 'left' | 'right'): any | null {
+    const allies: any[] = Array.isArray(presenter?.state?.players)
+      ? presenter.state.players.filter((w: any) => w && w.team === player.team && w !== player && w.health > 0)
+      : [];
+    if (allies.length === 0) return null;
+    const sign = dir === 'right' ? 1 : -1;
+    const px = Number(player.x) || 0;
+    const py = Number(player.y) || 0;
+    let best: any | null = null;
+    let bestDx = Infinity;
+    for (const a of allies) {
+      const ax = Number(a.x) || 0;
+      const ay = Number(a.y) || 0;
+      const dx = (ax - px) * sign;
+      const dy = Math.abs(ay - py);
+      if (dx < 8 || dx > 90) continue;
+      if (dy > 34) continue;
+      if (dx < bestDx) {
+        bestDx = dx;
+        best = a;
+      }
+    }
+    return best;
   }
 
   private trackWallStall(presenter: any, player: any, dir: 'left' | 'right', moveTo: { x: number; y: number }, dt: number, now: number): boolean {
@@ -2055,7 +2106,7 @@ export class BotTurnController {
       presenter.handleInput?.('right', false, true);
       presenter.handleInput?.('jump', false, true);
       presenter.handleInput?.(dir, true, true);
-      this.trackStuck(player, dt);
+    this.trackMoveProgress(player, moveTo, dt);
       return true;
     }
     return false;
@@ -2079,6 +2130,29 @@ export class BotTurnController {
     this.lastDx = dx;
     if ((dxAbs < 24 && Math.abs(dy) < 26) || (Math.sign(prevDx) !== 0 && Math.sign(prevDx) !== Math.sign(dx) && dxAbs < 90)) return false;
 
+    const cliff0 = this.scanCliffAhead(presenter, player, dir);
+    if (cliff0.isDeepVoid && dxAbs > 38) {
+      if (presenter?.state?.mode === 'aivai') {
+        this.emitAIVai(presenter, { type: 'bot_safety_reject', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, reason: 'void_ahead', dir, pos: { x: player.x, y: player.y }, moveTo: { x: moveTo.x, y: moveTo.y }, aiV: AI_V });
+      }
+      this.bannedTurn.add('walk');
+      this.strategy = null;
+      if (now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
+        this.lastReplanAt = now;
+        this.plannedThisTurn = false;
+        this.plan = null;
+        this.movePathWaypoints = null;
+        this.movePathIndex = 0;
+        this.didReplanThisTurn = true;
+        this.debug('replan', { reason: 'void_ahead', banned: Array.from(this.bannedTurn) });
+      }
+      presenter.handleInput?.('left', false, true);
+      presenter.handleInput?.('right', false, true);
+      presenter.handleInput?.('jump', false, true);
+      this.trackMoveProgress(player, null, dt);
+      return true;
+    }
+
     if (this.plan?.intent === 'escape_pit') {
       const pit = this.getPitInfo(presenter, player, ropeRemaining, now);
       if (pit && pit.isTrapped) {
@@ -2088,6 +2162,7 @@ export class BotTurnController {
 
     if (player.ropeActive) {
       this.executeRope(presenter, player, moveTo, dir, now, dt);
+      this.trackMoveProgress(player, moveTo, dt);
       return true;
     }
 
@@ -2120,7 +2195,7 @@ export class BotTurnController {
       presenter.handleInput?.('right', false, true);
       presenter.handleInput?.('jump', false, true);
       presenter.handleInput?.(this.backoffJumpDir === 'left' ? 'right' : 'left', true, true);
-      this.trackStuck(player, dt);
+      this.trackMoveProgress(player, moveTo, dt);
       return true;
     }
 
@@ -2129,12 +2204,45 @@ export class BotTurnController {
         presenter.handleInput?.('left', false, true);
         presenter.handleInput?.('right', false, true);
         presenter.handleInput?.(this.backoffJumpDir, true, true);
-        this.trackStuck(player, dt);
+        this.trackMoveProgress(player, moveTo, dt);
         return true;
       }
       this.backoffJumpDir = null;
       this.backoffJumpAt = 0;
       this.backoffJumpUntil = 0;
+    }
+
+    const ally = this.findBlockingAlly(presenter, player, dir);
+    if (ally) {
+      const ceilingLow0 = this.detectCeilingLow(presenter, player, dir);
+      if (!ceilingLow0 && now - this.lastJumpAt > 0.85) {
+        if (this.tryJump(presenter, player, now)) {
+          if (presenter?.state?.mode === 'aivai') {
+            this.emitAIVai(presenter, { type: 'bot_ally_avoid', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, mode: 'jump_over', dir, pos: { x: player.x, y: player.y }, allyId: String(presenter.state.players.indexOf(ally)), aiV: AI_V });
+          }
+          presenter.handleInput?.('left', false, true);
+          presenter.handleInput?.('right', false, true);
+          presenter.handleInput?.(dir, true, true);
+          this.trackMoveProgress(player, moveTo, dt);
+          return true;
+        }
+      }
+      if (this.stuckTime > 0.35 && now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
+        if (presenter?.state?.mode === 'aivai') {
+          this.emitAIVai(presenter, { type: 'bot_ally_avoid', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, mode: 'replan', dir, pos: { x: player.x, y: player.y }, allyId: String(presenter.state.players.indexOf(ally)), aiV: AI_V });
+        }
+        this.lastReplanAt = now;
+        this.plannedThisTurn = false;
+        this.plan = null;
+        this.movePathWaypoints = null;
+        this.movePathIndex = 0;
+        this.didReplanThisTurn = true;
+        presenter.handleInput?.('left', false, true);
+        presenter.handleInput?.('right', false, true);
+        presenter.handleInput?.('jump', false, true);
+        this.trackMoveProgress(player, null, dt);
+        return true;
+      }
     }
 
     if (this.lastMoveDir && this.lastMoveDir !== dir) {
@@ -2161,9 +2269,18 @@ export class BotTurnController {
       return true;
     }
 
-    const cliff = this.scanCliffAhead(presenter, player, dir);
+    const cliff = cliff0;
     const obstacle = this.detectObstacle(presenter, player, dir);
     const ceilingLow = this.detectCeilingLow(presenter, player, dir);
+
+    if ((obstacle || ceilingLow) && this.stuckTime > 0.75) {
+      if (this.tryDigEscape(presenter, player, dir)) {
+        if (presenter?.state?.mode === 'aivai') {
+          this.emitAIVai(presenter, { type: 'bot_escape_mode', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, mode: 'dig', reason: obstacle ? 'obstacle' : 'ceiling', dir, aiV: AI_V });
+        }
+        return true;
+      }
+    }
 
     if (obstacle && !ceilingLow && this.stuckTime > 0.45 && !this.backoffJumpDir && now - this.lastJumpAt > 0.9) {
       this.backoffJumpDir = dir;
@@ -2506,6 +2623,14 @@ export class BotTurnController {
     const timeLeft = Number(presenter?.turnTimeLeft) || 0;
     const reserve = Number(cfg?.reserveSeconds) || 1;
     if (timeLeft <= reserve + 2.2) return false;
+    const enemies0: any[] = Array.isArray(presenter?.state?.players)
+      ? presenter.state.players.filter((w: any) => w && w.team !== player.team && w.health > 0)
+      : [];
+    if (enemies0.length > 0) {
+      enemies0.sort((a, b) => Math.hypot((a.x || 0) - player.x, (a.y || 0) - player.y) - Math.hypot((b.x || 0) - player.x, (b.y || 0) - player.y));
+      const e = enemies0[0];
+      if (e && Math.hypot((e.x || 0) - player.x, (e.y || 0) - player.y) <= 180) return false;
+    }
     const equipmentIds: string[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
     const bazookaIndex = equipmentIds.findIndex((id: string) => id === 'bazooka');
     const grenadeIndex = equipmentIds.findIndex((id: string) => id === 'grenade');
@@ -2554,7 +2679,16 @@ export class BotTurnController {
     }
     const selfDist = Math.hypot(hitX - originX, hitY - (Number(player.y) || 0));
     if (selfDist < selfSafe) return false;
+    const allies: any[] = Array.isArray(presenter?.state?.players)
+      ? presenter.state.players.filter((w: any) => w && w.team === player.team && w !== player && w.health > 0)
+      : [];
+    for (const a of allies) {
+      const d = Math.hypot((Number(a.x) || 0) - hitX, (Number(a.y) || 0) - hitY);
+      if (d < (explosionRadius + safeExtra + 10)) return false;
+    }
     const action = { weaponIndex, facingRight: dir === 'right', aimAngle, power, targetId: 'dig_escape' };
+    const botCfg: BotConfig = presenter?.state?.botConfig || DEFAULT_BOT_CONFIG;
+    if (!this.isActionSelfSafe(presenter, player, action, botCfg)) return false;
     this.fireAction(presenter, action);
     this.firedThisTurn = true;
     return true;

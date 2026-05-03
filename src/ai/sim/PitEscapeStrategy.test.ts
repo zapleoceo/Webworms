@@ -51,7 +51,7 @@ test('PitAnalyzer detects trapped in narrow pit', () => {
   expect(pit.depthPx).toBeGreaterThan(80);
 });
 
-test('BotTurnController issues escape inputs (jump/rope/dig) when trapped', () => {
+test('BotTurnController does not dig-escape when the wall is too close (self-unsafe)', () => {
   const { t, groundY } = makePitTerrain();
   const landscape: any = { width: t.width, height: t.height, revision: 1, dfEvents: [], getMaterial: (x: number, y: number) => (t.isSolid(x, y) ? 1 : 0) };
   const p0: any = { team: 'team1', x: 420, y: groundY + 140, width: 18, height: 18, health: 100, equipmentIds: ['bazooka', 'grenade'], weaponCooldowns: {}, facingRight: true, aimAngle: 0, aimPower: 60, ropeActive: false };
@@ -85,6 +85,6 @@ test('BotTurnController issues escape inputs (jump/rope/dig) when trapped', () =
   };
   const ctrl = new BotTurnController({ team1: 'hard', team2: 'hard' });
   const ok = (ctrl as any).tryDigEscape(presenter, p0, 'left');
-  const didSwitch = inputs.some(x => x[0] === 'switch' && x[1] === true);
-  expect(ok || didSwitch).toBe(true);
+  void inputs;
+  expect(ok).toBe(false);
 });

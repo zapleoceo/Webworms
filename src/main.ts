@@ -219,7 +219,7 @@ function getDifficultyLabel(d: AIDifficulty): string {
   return d.toUpperCase();
 }
 
-function setEnemyDifficultyLabel(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random') {
+function setEnemyDifficultyLabel(mode: 'training' | 'ai' | 'aivai' | 'aivai2' | 'friend' | 'random') {
   if (!enemyDifficultyEl) return;
   if (mode !== 'ai') {
     enemyDifficultyEl.innerText = '';
@@ -229,11 +229,11 @@ function setEnemyDifficultyLabel(mode: 'training' | 'ai' | 'aivai' | 'friend' | 
   enemyDifficultyEl.innerText = getDifficultyLabel(d);
 }
 
-function getHudSides(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random', _state: any): { leftTeam: 'team1' | 'team2'; rightTeam: 'team1' | 'team2'; leftName: string; rightName: string } {
+function getHudSides(mode: 'training' | 'ai' | 'aivai' | 'aivai2' | 'friend' | 'random', _state: any): { leftTeam: 'team1' | 'team2'; rightTeam: 'team1' | 'team2'; leftName: string; rightName: string } {
   const lt = window.presenter.localTeam as any;
   const localTeam = (lt === 'team1' || lt === 'team2') ? lt : null;
 
-  if (mode === 'aivai') {
+  if (mode === 'aivai' || mode === 'aivai2') {
     const a1 = new URLSearchParams(window.location.search).get('a1') || 'hard';
     const a2 = new URLSearchParams(window.location.search).get('a2') || 'hard';
     return { leftTeam: 'team1', rightTeam: 'team2', leftName: `${a1.toUpperCase()}1`, rightName: `${a2.toUpperCase()}2` };
@@ -254,7 +254,7 @@ function getHudSides(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random', _s
 
 (window as any).getHudSides = getHudSides;
 
-function setLoaderDifficultyWorm(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random') {
+function setLoaderDifficultyWorm(mode: 'training' | 'ai' | 'aivai' | 'aivai2' | 'friend' | 'random') {
   if (!loaderWormImageEl) return;
   if (mode !== 'ai') {
     loaderWormImageEl.style.display = 'none';
@@ -280,7 +280,7 @@ if (!isAdminPage) {
 let aivaiLogSent = false;
 
 function flushAIVaiLog(reason: string, winner: any = null) {
-  if (currentMode !== 'aivai' || !aivaiLog) return;
+  if ((currentMode !== 'aivai' && currentMode !== 'aivai2') || !aivaiLog) return;
   try { saveBestPractices(); } catch {}
   try {
     loadCaseLibrary();
@@ -504,7 +504,7 @@ weaponCheckboxes.forEach(cb => {
   });
 });
 
-let currentMode: 'training' | 'ai' | 'aivai' | 'friend' | 'random' = 'training';
+let currentMode: 'training' | 'ai' | 'aivai' | 'aivai2' | 'friend' | 'random' = 'training';
 let aivaiLog: any | null = null;
 
 (window as any).currentMode = currentMode;
@@ -695,7 +695,7 @@ let currentRoomPlayerId: string | null = null;
   }
 
   // Start Game Helpers
-  async function startGame(mode: 'training' | 'ai' | 'aivai' | 'friend' | 'random') {
+  async function startGame(mode: 'training' | 'ai' | 'aivai' | 'aivai2' | 'friend' | 'random') {
     currentMode = mode;
     (window as any).currentMode = mode;
     setWakeLockWanted(true);
@@ -703,7 +703,7 @@ let currentRoomPlayerId: string | null = null;
     setLoaderProgress(0, 'LOADING...');
     setLoaderDifficultyWorm(mode);
     setEnemyDifficultyLabel(mode);
-    if (mode === 'aivai' || mode === 'ai') loadBestPractices();
+    if (mode === 'aivai' || mode === 'aivai2' || mode === 'ai') loadBestPractices();
 
   const mapTypeSelect = document.getElementById('map-type-select') as HTMLSelectElement;
   const mapType = (mapTypeSelect?.value || 'islands') as 'islands' | 'cave' | 'flat';
@@ -712,7 +712,7 @@ let currentRoomPlayerId: string | null = null;
   loaderScreen.classList.add('active');
 
   // Request match token from backend if not training
-  if (mode !== 'training' && mode !== 'aivai') {
+  if (mode !== 'training' && mode !== 'aivai' && mode !== 'aivai2') {
     const sessionId = localStorage.getItem('sessionId');
     currentRoomPlayerId = sessionId;
     if (sessionId) {
@@ -839,10 +839,10 @@ let currentRoomPlayerId: string | null = null;
     const ai2 = new URLSearchParams(window.location.search).get('a2') as any;
     const a1d: AIDifficulty = ai1 === 'easy' || ai1 === 'medium' || ai1 === 'hard' ? ai1 : 'easy';
     const a2d: AIDifficulty = ai2 === 'easy' || ai2 === 'medium' || ai2 === 'hard' ? ai2 : 'medium';
-    if (mode === 'aivai') {
+    if (mode === 'aivai' || mode === 'aivai2') {
       const createdAt = Date.now();
       aivaiLog = {
-        matchId: `aivai_${createdAt}_${a1d}_${a2d}`,
+        matchId: `${mode}_${createdAt}_${a1d}_${a2d}`,
         createdAt,
         url: window.location.href,
         aiV: AI_V,
@@ -881,7 +881,7 @@ let currentRoomPlayerId: string | null = null;
       mapType: mapType,
       mode: mode,
       aiDifficulty: mode === 'ai' ? (currentAIDifficultyForMatch || getAIDifficulty()) : undefined,
-      aiDifficultyByTeam: mode === 'aivai' ? { team1: a1d, team2: a2d } : undefined,
+      aiDifficultyByTeam: (mode === 'aivai' || mode === 'aivai2') ? { team1: a1d, team2: a2d } : undefined,
       turnTime: turnTime,
       logos: logos,
       airdropPhysics: airdropPhysics,
@@ -897,7 +897,7 @@ let currentRoomPlayerId: string | null = null;
     if (mode === 'ai') {
       window.presenter.localTeam = 'team1';
       window.presenter.botTurnController = new BotTurnController();
-    } else if (mode === 'aivai') {
+    } else if (mode === 'aivai' || mode === 'aivai2') {
       window.presenter.localTeam = 'spectator';
       window.presenter.botTurnController = new BotTurnController({ team1: a1d, team2: a2d });
       try {
@@ -1095,7 +1095,7 @@ let currentRoomPlayerId: string | null = null;
 
   // Start time deduction interval ONLY if not training
   if (deductInterval) clearInterval(deductInterval);
-  if (currentMode !== 'training' && currentMode !== 'aivai') {
+  if (currentMode !== 'training' && currentMode !== 'aivai' && currentMode !== 'aivai2') {
     deductInterval = window.setInterval(() => {
       const premiumStr = localStorage.getItem('premiumUntil');
       if (premiumStr) {
@@ -1532,7 +1532,7 @@ function bindPresenterEvents() {
 
     if (lastTurnActiveTeam !== activeTeam) {
       lastTurnActiveTeam = activeTeam;
-      if (currentMode === 'aivai') {
+      if (currentMode === 'aivai' || currentMode === 'aivai2') {
         if (localTurnLabel) localTurnLabel.textContent = leftActive ? 'TURN' : 'WAITING';
         if (enemyTurnLabel) enemyTurnLabel.textContent = rightActive ? 'TURN' : 'WAITING';
         if (localTeamStatus) localTeamStatus.classList.toggle('turn-active', leftActive);
@@ -1618,7 +1618,7 @@ function bindPresenterEvents() {
     }
 
     const { box, line, btnCopy, btnStats } = ensureAivaiMatchBox();
-    if (currentMode === 'aivai') {
+    if (currentMode === 'aivai' || currentMode === 'aivai2') {
       const matchId = (aivaiLog?.matchId || (window as any).__aivaiMatchId || '').toString();
       if (matchId) {
         box.style.display = '';
@@ -1651,7 +1651,7 @@ function bindPresenterEvents() {
       box.style.display = 'none';
     }
 
-    if (currentMode === 'aivai' && aivaiLog) {
+    if ((currentMode === 'aivai' || currentMode === 'aivai2') && aivaiLog) {
       aivaiLog.finishedAt = Date.now();
       aivaiLog.result = { winner, stats };
       if (!aivaiLogSent) {
@@ -1688,6 +1688,13 @@ if (initUrlParams.get('room')) {
       document.getElementById('btn-open-auth')!.click();
     }, 500);
   }
+}
+
+if (initUrlParams.get('mode') === 'aivai2') {
+  setTimeout(() => {
+    AudioManager.isGameStarted = true;
+    startGame('aivai2');
+  }, 200);
 }
 
 if (initUrlParams.get('mode') === 'aivai') {
