@@ -30,7 +30,7 @@ test('avoids holding into wall without progress for >=0.25s', () => {
   };
 
   const state: any = {
-    mode: 'aivai',
+    mode: 'aivai2',
     width,
     height,
     mapSeed: 1,

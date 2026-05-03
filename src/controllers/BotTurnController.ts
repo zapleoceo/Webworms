@@ -100,7 +100,7 @@ export class BotTurnController {
     const maxTurnTime = Number(presenter?.maxTurnTime) || 0;
     const timeLeft = Number(presenter?.turnTimeLeft) || 0;
     const mode = presenter?.state?.mode;
-    const reserveSeconds = mode === 'aivai' ? 2.0 : Number(presenter?.state?.botConfig?.reserveSeconds) || 1.0;
+    const reserveSeconds = mode === 'aivai2' ? 2.0 : Number(presenter?.state?.botConfig?.reserveSeconds) || 1.0;
     const budget = Math.max(0, Math.min(maxTurnTime, timeLeft) - reserveSeconds);
     const maxDist0 = 50 + 85 * budget;
     const maxDist = weaponIndex >= 0 ? Math.min(maxDist0, 72) : maxDist0;
@@ -138,7 +138,7 @@ export class BotTurnController {
 
   private emitPlanStart(presenter: any, now: number, curIdx: number) {
     try {
-      if (presenter?.state?.mode !== 'aivai') return;
+      if (presenter?.state?.mode !== 'aivai2') return;
       const p = presenter.state.getCurrentPlayer?.();
       if (!p) return;
       const plan = this.plan;
@@ -256,7 +256,7 @@ export class BotTurnController {
 
   private applyCaseUsage(presenter: any, curIdx: number) {
     try {
-      if (presenter?.state?.mode !== 'aivai') return;
+      if (presenter?.state?.mode !== 'aivai2') return;
       const player = presenter?.state?.players?.[curIdx];
       const plan = this.plan;
       if (!player || !plan?.action) return;
@@ -339,7 +339,7 @@ export class BotTurnController {
     noisy: { weaponIndex: number; facingRight: boolean; aimAngle: number; power: number; targetId: string } | null
   ) {
     try {
-      if (presenter?.state?.mode !== 'aivai') return;
+      if (presenter?.state?.mode !== 'aivai2') return;
       const cb = presenter?.onAIVaiTrace;
       if (typeof cb !== 'function') return;
       const p = presenter.state.getCurrentPlayer?.();
@@ -435,7 +435,7 @@ export class BotTurnController {
 
   private emitAIVai(presenter: any, payload: any) {
     try {
-      if (presenter?.state?.mode !== 'aivai' && presenter?.state?.mode !== 'aivai2') return;
+      if (presenter?.state?.mode !== 'aivai2') return;
       const cb = presenter?.onAIVaiTrace;
       if (typeof cb !== 'function') return;
       cb(payload);
@@ -923,7 +923,7 @@ export class BotTurnController {
     if (!presenter?.isRunning) return;
     if (!presenter?.isHost) return;
     if (!presenter?.state) return;
-    if (presenter.state.mode !== 'ai' && presenter.state.mode !== 'aivai' && presenter.state.mode !== 'aivai2') return;
+    if (presenter.state.mode !== 'ai' && presenter.state.mode !== 'aivai2') return;
 
     const curIdx = presenter.state.currentPlayerIndex ?? -1;
     const player = presenter.state.getCurrentPlayer?.();
@@ -966,7 +966,7 @@ export class BotTurnController {
       this.lastCacheDf = -1;
     }
 
-    const isBotTurn = (presenter.state.mode === 'aivai' || presenter.state.mode === 'aivai2') ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
+    const isBotTurn = (presenter.state.mode === 'aivai2') ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
 
     if (curIdx !== this.lastTurnIndex) {
       this.turnNo += 1;
@@ -1079,7 +1079,7 @@ export class BotTurnController {
 
     const botCfg0: BotConfig = presenter.state.botConfig || DEFAULT_BOT_CONFIG;
     const activeTeam0: 'team1' | 'team2' = player.team === 'team1' ? 'team1' : 'team2';
-    const difficulty0 = (presenter.state.mode === 'aivai'
+    const difficulty0 = (presenter.state.mode === 'aivai2'
       ? (this.difficultyByTeam[activeTeam0] as AIDifficulty | undefined)
       : ((getAIDifficulty() as AIDifficulty) || undefined)) || 'medium';
     const ropeBudget0 = botCfg0.ropeAttachLimit[difficulty0] ?? 0;
@@ -1087,7 +1087,7 @@ export class BotTurnController {
     this.prunePlanCache(presenter);
     this.maybeConsumeBgResult(presenter, ropeRemaining0);
 
-    if (presenter?.state?.mode === 'aivai') {
+    if (presenter?.state?.mode === 'aivai2') {
       const build = (team: 'team1' | 'team2') => {
         const p = this.lastPlanningProgressByTeam[team];
         return {
@@ -1110,18 +1110,18 @@ export class BotTurnController {
         const nextIdx = this.peekNextTurnIndex(presenter);
         if (nextIdx >= 0) {
           const nextPlayer = presenter.state.players?.[nextIdx];
-          const nextIsBot = presenter.state.mode === 'aivai'
+          const nextIsBot = presenter.state.mode === 'aivai2'
             ? !!nextPlayer
             : (nextPlayer?.team === 'team2');
           if (nextIsBot) {
             const view = this.buildBotViewForIndex(presenter, nextIdx);
             if (view) {
               const teamKey: 'team1' | 'team2' = view.shooter.team === 'team1' ? 'team1' : 'team2';
-              const diff = (presenter.state.mode === 'aivai'
+              const diff = (presenter.state.mode === 'aivai2'
                 ? ((this.difficultyByTeam[teamKey] as AIDifficulty | undefined) || 'hard')
                 : (((getAIDifficulty() as AIDifficulty) || undefined) || 'medium'));
               const maxTurn = Number.isFinite(presenter.maxTurnTime) ? presenter.maxTurnTime : 30;
-              const reserveSeconds = presenter?.state?.mode === 'aivai' ? 2.0 : botCfg0.reserveSeconds;
+              const reserveSeconds = presenter?.state?.mode === 'aivai2' ? 2.0 : botCfg0.reserveSeconds;
               const executeSeconds = Math.max(0, maxTurn - botCfg0.planSeconds - reserveSeconds);
               const ropeBudget = botCfg0.ropeAttachLimit[diff] ?? 0;
               const ropeRemaining = Math.max(0, ropeBudget);
@@ -1208,7 +1208,7 @@ export class BotTurnController {
       const now0 = presenter.matchDuration || 0;
       const botCfgP: BotConfig = presenter.state.botConfig || DEFAULT_BOT_CONFIG;
       const timeLeft0 = Number.isFinite(presenter.turnTimeLeft) ? presenter.turnTimeLeft : 0;
-      const reserveSeconds0 = presenter?.state?.mode === 'aivai' ? 2.0 : botCfgP.reserveSeconds;
+      const reserveSeconds0 = presenter?.state?.mode === 'aivai2' ? 2.0 : botCfgP.reserveSeconds;
       if (this.firedThisTurn) {
         if (this.lastFiredWeaponId === 'homing_missile') this.steerHoming(presenter, player);
         else this.tryPostShotMove(presenter, player, now0, timeLeft0, reserveSeconds0);
@@ -1223,7 +1223,7 @@ export class BotTurnController {
     const timeLeft = Number.isFinite(presenter.turnTimeLeft) ? presenter.turnTimeLeft : 0;
     const elapsed = Math.max(0, maxTurn - timeLeft);
     const planSeconds = botCfg.planSeconds;
-    const reserveSeconds = presenter?.state?.mode === 'aivai' ? 2.0 : botCfg.reserveSeconds;
+    const reserveSeconds = presenter?.state?.mode === 'aivai2' ? 2.0 : botCfg.reserveSeconds;
     const executeSeconds = Math.max(0, maxTurn - planSeconds - reserveSeconds);
     const ropeBudget = ropeBudget0;
     const ropeRemaining = ropeRemaining0;
@@ -1231,8 +1231,8 @@ export class BotTurnController {
     const dt = Number.isFinite(presenter.deltaTime) ? presenter.deltaTime : (1 / 60);
     this.lastMovementCfg = botCfg.movement || this.lastMovementCfg;
 
-    if ((presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai') && !this.workerJobId && !this.planningInProgress) {
-      if (presenter?.state?.mode === 'aivai') this.refreshCaseCandidate(presenter, curIdx, botCfg);
+    if ((presenter?.state?.mode === 'aivai2' || presenter?.state?.mode === 'ai') && !this.workerJobId && !this.planningInProgress) {
+      if (presenter?.state?.mode === 'aivai2') this.refreshCaseCandidate(presenter, curIdx, botCfg);
       const view = this.buildBotView(presenter);
       if (!view) return;
       const key = this.worldKey(presenter, curIdx, ropeRemaining);
@@ -1302,11 +1302,11 @@ export class BotTurnController {
 
     if (timeLeft <= reserveSeconds) {
       if (!isWorldBusy) {
-        if (presenter?.state?.mode === 'aivai' && this.lastWorkerUsed !== 1) {
+        if (presenter?.state?.mode === 'aivai2' && this.lastWorkerUsed !== 1) {
           const fb = this.lateFallbackFireAction(presenter);
           if (fb) {
-            const noisy = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
-            if (presenter?.state?.mode === 'aivai' && this.plan) this.emitMovementSummary(presenter, player, curIdx, this.plan.moveTo || null, now);
+            const noisy = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai2' || presenter?.state?.mode === 'ai');
+            if (presenter?.state?.mode === 'aivai2' && this.plan) this.emitMovementSummary(presenter, player, curIdx, this.plan.moveTo || null, now);
             this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', fb, noisy);
             this.fireAction(presenter, noisy);
             this.firedThisTurn = true;
@@ -1316,8 +1316,8 @@ export class BotTurnController {
         const action0 = this.plan?.action && this.plan.action.weaponIndex >= 0 ? this.plan.action : null;
         const action = action0 || this.safeFallbackAction(presenter);
         if (action) {
-          const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
-          if (presenter?.state?.mode === 'aivai' && this.plan) this.emitMovementSummary(presenter, player, curIdx, this.plan.moveTo || null, now);
+          const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai2' || presenter?.state?.mode === 'ai');
+          if (presenter?.state?.mode === 'aivai2' && this.plan) this.emitMovementSummary(presenter, player, curIdx, this.plan.moveTo || null, now);
           this.recordAIVai(presenter, botCfg, difficulty, 'reserve_fire', action, noisy);
           this.fireAction(presenter, noisy);
           this.firedThisTurn = true;
@@ -1362,11 +1362,11 @@ export class BotTurnController {
         this.applyCaseUsage(presenter, curIdx);
         this.emitPlanStart(presenter, now, curIdx);
       } else if (!this.plannedThisTurn) {
-        const minWait = presenter?.state?.mode === 'aivai'
+        const minWait = presenter?.state?.mode === 'aivai2'
           ? 1.0
           : Math.min(0.45, Math.max(0.12, planSeconds * 0.25));
         if (elapsed < minWait && timeLeft > reserveSeconds + 0.35) return;
-        const waitForWorker = presenter?.state?.mode === 'aivai' && !!this.thinkWorker;
+        const waitForWorker = presenter?.state?.mode === 'aivai2' && !!this.thinkWorker;
         if (waitForWorker && timeLeft > reserveSeconds + 0.2) return;
         this.lastWorkerArrivedAfterMain = wr ? 1 : null;
         this.lastWorkerMs = wr ? Math.max(0, this.workerArrivedAt - this.workerStartedAt) : null;
@@ -1403,7 +1403,7 @@ export class BotTurnController {
         const view = this.buildBotViewForIndex(presenter, nextIdx);
         if (view) {
           const teamKey: 'team1' | 'team2' = view.shooter.team === 'team1' ? 'team1' : 'team2';
-          const diff = (presenter.state.mode === 'aivai'
+          const diff = (presenter.state.mode === 'aivai2'
             ? ((this.difficultyByTeam[teamKey] as AIDifficulty | undefined) || 'hard')
             : (((getAIDifficulty() as AIDifficulty) || undefined) || 'medium'));
           const ropeBudget = botCfg.ropeAttachLimit[diff] ?? 0;
@@ -1460,7 +1460,7 @@ export class BotTurnController {
     }
 
     const maxReplans = this.lastMovementCfg.maxReplansPerTurn ?? 4;
-    if (presenter?.state?.mode === 'aivai' && this.plannedThisTurn && !this.planningInProgress && this.replanCountThisTurn < maxReplans && timeLeft > reserveSeconds + 0.9) {
+    if (presenter?.state?.mode === 'aivai2' && this.plannedThisTurn && !this.planningInProgress && this.replanCountThisTurn < maxReplans && timeLeft > reserveSeconds + 0.9) {
       const near =
         !!moveTo &&
         Math.abs((moveTo?.x || 0) - player.x) < 42 &&
@@ -1500,7 +1500,7 @@ export class BotTurnController {
 
       const action = canUsePlanned ? this.plan.action : this.safeFallbackAction(presenter);
       if (!action) return;
-      if (presenter?.state?.mode === 'aivai' && this.lastWorkerUsed !== 1 && !!this.thinkWorker) return;
+      if (presenter?.state?.mode === 'aivai2' && this.lastWorkerUsed !== 1 && !!this.thinkWorker) return;
       if (action.weaponIndex < 0) {
         const maxReplans = this.lastMovementCfg.maxReplansPerTurn ?? 4;
         const remaining = Math.max(0, executeSeconds - moveElapsed);
@@ -1519,7 +1519,7 @@ export class BotTurnController {
         }
         const fb = this.safeFallbackAction(presenter);
         if (!fb) return;
-        const noisyFb = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
+        const noisyFb = this.applyError(fb, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai2' || presenter?.state?.mode === 'ai');
         this.recordAIVai(presenter, botCfg, difficulty, 'execute_fire', fb, noisyFb);
         this.fireAction(presenter, noisyFb);
         this.firedThisTurn = true;
@@ -1543,7 +1543,7 @@ export class BotTurnController {
         this.didReplanThisTurn = true;
         return;
       }
-      const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai' || presenter?.state?.mode === 'ai');
+      const noisy = this.applyError(action, botCfg, difficulty, this.rngForTurn(presenter), presenter?.state?.mode === 'aivai2' || presenter?.state?.mode === 'ai');
       this.recordAIVai(presenter, botCfg, difficulty, 'execute_fire', action, noisy);
       this.fireAction(presenter, noisy);
       this.firedThisTurn = true;
@@ -1638,7 +1638,7 @@ export class BotTurnController {
       const seed = this.rngSeedForTurn(presenter) ^ 0x51c31f2d;
       const rng = mulberry32(seed);
       const teamKey: 'team1' | 'team2' = view0.shooter.team === 'team1' ? 'team1' : 'team2';
-      const diff = presenter.state.mode === 'aivai'
+      const diff = presenter.state.mode === 'aivai2'
         ? ((this.difficultyByTeam[teamKey] as AIDifficulty | undefined) || 'hard')
         : (((getAIDifficulty() as AIDifficulty) || undefined) || 'medium');
       const t0 = performance.now();
@@ -1733,7 +1733,7 @@ export class BotTurnController {
     const seed = this.rngSeedForTurn(presenter) ^ 0x2a4bcd57;
     const rng = mulberry32(seed);
     const teamKey: 'team1' | 'team2' = view.shooter.team === 'team1' ? 'team1' : 'team2';
-    const diff = presenter.state.mode === 'aivai'
+    const diff = presenter.state.mode === 'aivai2'
       ? ((this.difficultyByTeam[teamKey] as AIDifficulty | undefined) || 'hard')
       : (((getAIDifficulty() as AIDifficulty) || undefined) || 'medium');
     const res = chooseBotActionDebug(rng, view.world as any, view.shooter as any, view.enemies as any, view.allies as any, presenter.state.botConfig || DEFAULT_BOT_CONFIG, diff, Array.from(this.shotMemory.values()));
@@ -1815,7 +1815,7 @@ export class BotTurnController {
     this.lastFiredTargetId = action.targetId || null;
     this.postShotMoveUntil = 0;
     this.postShotDir = null;
-    if (presenter?.state?.mode === 'aivai') {
+    if (presenter?.state?.mode === 'aivai2') {
       const equipmentIds: any[] = Array.isArray(player.equipmentIds) ? player.equipmentIds : [];
       const weaponId = typeof equipmentIds[action.weaponIndex] === 'string' ? equipmentIds[action.weaponIndex] : null;
       const health0 = Array.isArray(presenter.state.players) ? presenter.state.players.map((w: any) => Number(w?.health) || 0) : [];
@@ -2132,7 +2132,7 @@ export class BotTurnController {
 
     const cliff0 = this.scanCliffAhead(presenter, player, dir);
     if (cliff0.isDeepVoid && dxAbs > 38) {
-      if (presenter?.state?.mode === 'aivai') {
+      if (presenter?.state?.mode === 'aivai2') {
         this.emitAIVai(presenter, { type: 'bot_safety_reject', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, reason: 'void_ahead', dir, pos: { x: player.x, y: player.y }, moveTo: { x: moveTo.x, y: moveTo.y }, aiV: AI_V });
       }
       this.bannedTurn.add('walk');
@@ -2217,7 +2217,7 @@ export class BotTurnController {
       const ceilingLow0 = this.detectCeilingLow(presenter, player, dir);
       if (!ceilingLow0 && now - this.lastJumpAt > 0.85) {
         if (this.tryJump(presenter, player, now)) {
-          if (presenter?.state?.mode === 'aivai') {
+          if (presenter?.state?.mode === 'aivai2') {
             this.emitAIVai(presenter, { type: 'bot_ally_avoid', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, mode: 'jump_over', dir, pos: { x: player.x, y: player.y }, allyId: String(presenter.state.players.indexOf(ally)), aiV: AI_V });
           }
           presenter.handleInput?.('left', false, true);
@@ -2228,7 +2228,7 @@ export class BotTurnController {
         }
       }
       if (this.stuckTime > 0.35 && now - this.lastReplanAt > this.lastMovementCfg.replanCooldownSeconds) {
-        if (presenter?.state?.mode === 'aivai') {
+        if (presenter?.state?.mode === 'aivai2') {
           this.emitAIVai(presenter, { type: 'bot_ally_avoid', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, mode: 'replan', dir, pos: { x: player.x, y: player.y }, allyId: String(presenter.state.players.indexOf(ally)), aiV: AI_V });
         }
         this.lastReplanAt = now;
@@ -2275,7 +2275,7 @@ export class BotTurnController {
 
     if ((obstacle || ceilingLow) && this.stuckTime > 0.75) {
       if (this.tryDigEscape(presenter, player, dir)) {
-        if (presenter?.state?.mode === 'aivai') {
+        if (presenter?.state?.mode === 'aivai2') {
           this.emitAIVai(presenter, { type: 'bot_escape_mode', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), turnNo: this.turnNo, mode: 'dig', reason: obstacle ? 'obstacle' : 'ceiling', dir, aiV: AI_V });
         }
         return true;

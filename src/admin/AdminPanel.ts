@@ -452,7 +452,7 @@ export class AdminPanel {
       const a2 = (a2Sel?.value || 'medium').trim();
       const map = (mapSel?.value || '').trim();
       const mapPart = map ? `&map=${encodeURIComponent(map)}` : '';
-      return `${window.location.origin}/?mode=aivai&a1=${encodeURIComponent(a1)}&a2=${encodeURIComponent(a2)}${mapPart}`;
+      return `${window.location.origin}/?mode=aivai2&a1=${encodeURIComponent(a1)}&a2=${encodeURIComponent(a2)}${mapPart}`;
     };
     const syncLink = () => {
       if (linkEl) linkEl.value = buildLink();
