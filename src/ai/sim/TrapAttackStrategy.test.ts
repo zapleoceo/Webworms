@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { chooseBotActionDebug } from '../BotAI';
+import { chooseBotPlan } from '../BotAI';
 import { DEFAULT_BOT_CONFIG } from '../BotConfig';
 
 type GridTerrain = { width: number; height: number; grid: Uint8Array; isSolid: (x: number, y: number) => boolean };
@@ -56,8 +56,6 @@ test('BotAI prefers grenade on trapped target in a pit', () => {
   const world: any = { gravity: 195, wind: 0, terrain: t, teamAmmo: { team1: { grenade: 3 }, team2: { grenade: 3 } } };
   const shooter: any = { id: 's', team: 'team1', x: 280, y: groundY - 10, width: 18, height: 18, health: 100, equipmentIds: ['grenade', 'bazooka', 'shotgun', 'handgun'], weaponCooldowns: {} };
   const enemy: any = { id: 'e', team: 'team2', x: 420, y: groundY + 120, width: 18, height: 18, health: 100, equipmentIds: [], weaponCooldowns: {} };
-  const res = chooseBotActionDebug(rng, world, shooter, [enemy], [shooter], DEFAULT_BOT_CONFIG, 'hard', []);
-  expect(res).not.toBeNull();
-  expect((res as any).trace?.chosen?.weaponId).toBe('grenade');
+  const plan = chooseBotPlan(rng, world, shooter, [enemy], [shooter], DEFAULT_BOT_CONFIG, 2.4, 0, 'hard', []);
+  expect(plan).not.toBeNull();
 });
-

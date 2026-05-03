@@ -204,9 +204,9 @@ function chooseBotActionScored(
   const weapons = weaponCandidates(shooter);
   if (weapons.length === 0) return null;
 
-  const angleList = sampleAngles(18);
-  const grenadeAngleList = sampleAngles(28);
-  const powerList = samplePowers(10);
+  const angleList = sampleAngles(22);
+  const grenadeAngleList = sampleAngles(36);
+  const powerList = samplePowers(12);
   const grenadePowerList = sampleGrenadePowers();
 
   const targetRadius = 10;
@@ -294,7 +294,17 @@ function chooseBotActionScored(
     const targetTrapped = !!pitTarget?.isTrapped;
     const trapVuln = typeof pitTarget?.attackVuln === 'number' && Number.isFinite(pitTarget.attackVuln) ? pitTarget.attackVuln : 0;
     const dist = Math.hypot(target.x - shooter.x, target.y - shooter.y);
-    const ordered = pickWeaponByRange(weapons, dist);
+    const ordered0 = pickWeaponByRange(weapons, dist);
+    const ordered = targetTrapped
+      ? ordered0
+        .map((w, i) => {
+          const id = w.weapon.id;
+          const pri = id === 'grenade' ? 0 : id === 'bazooka' ? 1 : (w.weapon.explosionRadius > 0 ? 2 : 3);
+          return { w, pri, i };
+        })
+        .sort((a, b) => (a.pri - b.pri) || (a.i - b.i))
+        .map(x => x.w)
+      : ordered0;
 
     let targetBest: { score: number; global: number; power: number; weaponIndex: number; impact: { x: number; y: number }; weaponId: string; expectedDamage: number; target: BotWormSnapshot } | null = null;
     let bestBazooka: BotCandidateSummary | null = null;
@@ -318,8 +328,12 @@ function chooseBotActionScored(
       const dYBin = Math.round((target.y - shooter.y) / 60);
       const priorKey = `ai:bp:v1:${mapSeed0}:${spawnType}:attack:${weapon.id}:w${windBin}:d${distBin}:dy${dYBin}`;
       const prior = bpPriors ? bpPriors[priorKey] : null;
-      const angles0 = weapon.id === 'grenade' ? grenadeAngleList : angleList;
-      const powers0 = weapon.id === 'grenade' ? grenadePowerList : powerList;
+      const angles0 = weapon.id === 'grenade'
+        ? (targetTrapped ? sampleAngles(44) : grenadeAngleList)
+        : (targetTrapped && weapon.explosionRadius > 0 ? sampleAngles(26) : angleList);
+      const powers0 = weapon.id === 'grenade'
+        ? grenadePowerList
+        : (targetTrapped && weapon.explosionRadius > 0 ? samplePowers(14) : powerList);
       const angles = prior ? seedAngles(angles0, prior.bestAngleBin) : angles0;
       const powers = prior ? seedPowers(powers0, prior.bestPowerBin) : powers0;
       const seen = new Set<string>();
@@ -375,14 +389,15 @@ function chooseBotActionScored(
           let miss = weapon.id === 'grenade' ? distEnd : res.minDistToTarget;
           let grenadeHitTol: number | null = null;
 
-          if (weapon.id === 'grenade' && grenLimited) {
+          if (weapon.id === 'grenade' && grenLimited && !targetTrapped) {
             const dyToTarget = target.y - shooter.y;
             const pitK = dyToTarget > 90 ? 1.25 : dyToTarget > 45 ? 1.12 : 1.0;
             const trapK = targetTrapped ? (1.15 + trapVuln * 0.65) : 1.0;
             const hitTol = Math.max(6, simWeapon.explosionRadius * 0.55) * pitK * trapK;
             grenadeHitTol = hitTol;
             const baseW = Number.isFinite(world.wind) ? world.wind : 0;
-            const winds = [baseW - grenadeWindSpan, baseW, baseW + grenadeWindSpan];
+            const span = targetTrapped ? (grenadeWindSpan * 0.6) : grenadeWindSpan;
+            const winds = targetTrapped ? [baseW - span, baseW + span] : [baseW - span, baseW, baseW + span];
             let ok = true;
             for (const wv of winds) {
               const resW = simulateTrajectory(
@@ -458,6 +473,12 @@ function chooseBotActionScored(
               }
             }
           }
+          if (targetTrapped && weapon.id !== 'grenade' && simWeapon.explosionRadius > 0) {
+            const trapExplBase = (botCfg as any).scoring?.trapExplosiveBonusBase ?? 18;
+            const hitTol = Math.max(6, simWeapon.explosionRadius * 0.62) * (1.05 + trapVuln * 0.5);
+            score += trapExplBase * (0.25 + trapVuln);
+            if (miss < hitTol) score += (hitTol - miss) * (0.22 + 0.18 * trapVuln);
+          }
 
           const safeRadius = simWeapon.explosionRadius + botCfg.scoring.safeExtraRadius;
           const selfSafe = simWeapon.explosionRadius + 18 + botCfg.scoring.safeExtraRadius;
@@ -470,7 +491,8 @@ function chooseBotActionScored(
           if (selfNear < 90) {
             score -= (90 - selfNear) * 8;
           }
-          if (weapon.id === 'grenade' && selfDist < (selfSafe + grenadeExtraSelfMargin)) {
+          const grenadeMargin = targetTrapped ? (grenadeExtraSelfMargin * 0.45) : grenadeExtraSelfMargin;
+          if (weapon.id === 'grenade' && selfDist < (selfSafe + grenadeMargin)) {
             bump('grenade_self_margin');
             continue;
           }
@@ -480,7 +502,8 @@ function chooseBotActionScored(
           for (const ally of allies) {
             if (ally.health <= 0) continue;
             const d = Math.hypot(res.end.x - ally.x, res.end.y - ally.y);
-            if (d < allySafe) {
+            const allySafe0 = ally.id === shooter.id ? selfSafe : allySafe;
+            if (d < allySafe0) {
               unsafe = true;
               break;
             }
@@ -987,7 +1010,13 @@ export function chooseBotPlan(
   const base = pitGeom
     ? chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, true, difficulty, shotMemory)
     : chooseBotActionScored(rng, world, shooter, enemies, allies, botCfg, false, difficulty, shotMemory);
-  if (!base) return null;
+  if (!base) {
+    const e = enemies.filter(x => x.health > 0).sort((a, b) => Math.hypot(a.x - shooter.x, a.y - shooter.y) - Math.hypot(b.x - shooter.x, b.y - shooter.y))[0] || null;
+    const dir = e ? (e.x >= shooter.x ? 1 : -1) : (rng() < 0.5 ? 1 : -1);
+    const moveTo = { x: clamp(shooter.x + dir * 120, 30, world.terrain.width - 30), y: clamp(shooter.y - 160, 30, world.terrain.height - 30) };
+    const action: BotAction = { weaponIndex: -1, facingRight: dir > 0, aimAngle: 0, power: 60, targetId: e ? String(e.id) : '' };
+    return { moveTo, action, intent: 'approach', intentReason: { noShot: 1 } };
+  }
 
   const baseNoFireAction: BotAction = {
     weaponIndex: -1,
