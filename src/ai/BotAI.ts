@@ -373,12 +373,14 @@ function chooseBotActionScored(
 
           const distEnd = Math.hypot(res.end.x - target.x, res.end.y - target.y);
           let miss = weapon.id === 'grenade' ? distEnd : res.minDistToTarget;
+          let grenadeHitTol: number | null = null;
 
           if (weapon.id === 'grenade' && grenLimited) {
             const dyToTarget = target.y - shooter.y;
             const pitK = dyToTarget > 90 ? 1.25 : dyToTarget > 45 ? 1.12 : 1.0;
             const trapK = targetTrapped ? (1.15 + trapVuln * 0.65) : 1.0;
             const hitTol = Math.max(6, simWeapon.explosionRadius * 0.55) * pitK * trapK;
+            grenadeHitTol = hitTol;
             const baseW = Number.isFinite(world.wind) ? world.wind : 0;
             const winds = [baseW - grenadeWindSpan, baseW, baseW + grenadeWindSpan];
             let ok = true;
@@ -451,6 +453,9 @@ function chooseBotActionScored(
             if (targetTrapped) {
               const trapBonusBase = (botCfg as any).scoring?.trapBonusBase ?? 26;
               score += trapBonusBase * (0.35 + trapVuln);
+              if (grenadeHitTol && Number.isFinite(grenadeHitTol) && miss < grenadeHitTol) {
+                score += (grenadeHitTol - miss) * (0.45 + 0.35 * trapVuln);
+              }
             }
           }
 

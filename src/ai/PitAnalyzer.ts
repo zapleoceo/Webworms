@@ -30,9 +30,14 @@ const findGroundY = (t: TerrainQuery, x: number, yStart: number, maxDown: number
   const xx = Math.floor(x);
   if (xx < 0 || xx >= t.width) return null;
   const y0 = Math.max(0, Math.min(t.height - 1, Math.floor(yStart)));
-  const y1 = Math.min(t.height - 1, y0 + Math.max(1, Math.floor(maxDown)));
-  for (let y = y0; y <= y1; y++) {
-    if (isSolidSafe(t, xx, y)) return y;
+  const down = Math.max(1, Math.floor(maxDown));
+  const up = Math.max(40, Math.min(520, down));
+
+  for (let y = y0; y >= Math.max(1, y0 - up); y--) {
+    if (isSolidSafe(t, xx, y) && !isSolidSafe(t, xx, y - 1)) return y;
+  }
+  for (let y = y0; y <= Math.min(t.height - 1, y0 + down); y++) {
+    if (isSolidSafe(t, xx, y) && !isSolidSafe(t, xx, y - 1)) return y;
   }
   return null;
 };
@@ -189,4 +194,3 @@ export function analyzePit(
     attackVuln
   };
 }
-

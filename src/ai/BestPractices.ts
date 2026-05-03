@@ -24,14 +24,22 @@ export type BestPracticePrior = {
   updatedAt: number;
 };
 
+export type BestPracticeTemplate = {
+  n: number;
+  meanSuccess: number;
+  updatedAt: number;
+  params?: any;
+};
+
 export type BestPracticesStore = {
   v: 1;
   priors: Record<string, BestPracticePrior>;
+  templates: Record<string, BestPracticeTemplate>;
   updatedAt: number;
 };
 
 const KEY = 'ww_ai_bp_v1';
-let store: BestPracticesStore = { v: 1, priors: {}, updatedAt: 0 };
+let store: BestPracticesStore = { v: 1, priors: {}, templates: {}, updatedAt: 0 };
 
 const nowMs = () => Date.now();
 
@@ -44,7 +52,7 @@ export function loadBestPractices(): BestPracticesStore {
   const raw = getStorage().getItem(KEY);
   const parsed = safeParse(raw);
   if (parsed && parsed.v === 1 && parsed.priors && typeof parsed.priors === 'object') {
-    store = { v: 1, priors: parsed.priors || {}, updatedAt: Number(parsed.updatedAt) || 0 };
+    store = { v: 1, priors: parsed.priors || {}, templates: parsed.templates || {}, updatedAt: Number(parsed.updatedAt) || 0 };
   }
   return store;
 }
@@ -92,3 +100,29 @@ export function recordPriorSample(key: string, sample: { angleBin: number; power
   }
 }
 
+export function recordTemplateSample(key: string, sample: { success: 0 | 1; params?: any }): void {
+  if (!key || typeof key !== 'string') return;
+  const templates = store.templates || (store.templates = {});
+  const prev = templates[key];
+  const t = nowMs();
+  if (!prev) {
+    templates[key] = { n: 1, meanSuccess: sample.success ? 1 : 0, updatedAt: t, params: sample.params };
+  } else {
+    const n = Math.min(8000, (prev.n || 0) + 1);
+    const a = 0.08;
+    prev.n = n;
+    prev.meanSuccess = (1 - a) * (prev.meanSuccess || 0) + a * (sample.success ? 1 : 0);
+    prev.updatedAt = t;
+    if (sample.params !== undefined) prev.params = sample.params;
+  }
+  const keys = Object.keys(templates);
+  if (keys.length > 2000) {
+    keys.sort((a, b) => (templates[a]?.updatedAt || 0) - (templates[b]?.updatedAt || 0));
+    for (let i = 0; i < keys.length - 1800; i++) delete templates[keys[i]];
+  }
+}
+
+export function getTemplate(key: string): BestPracticeTemplate | null {
+  const t = store.templates || {};
+  return t[key] || null;
+}

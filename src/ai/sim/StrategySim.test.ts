@@ -94,4 +94,3 @@ t('aivai sim KPI', { timeout: 60000 }, () => {
   expect(dmgRate).toBeGreaterThanOrEqual(0.5);
   expect(goalRate).toBeGreaterThanOrEqual(0.8);
 });
-

@@ -6,7 +6,7 @@ import { terrainFromLandscape, chooseBotActionDebug, type BotWormSnapshot } from
 import { getWeaponByEquipmentId } from '../equipment/EquipmentRegistry';
 import { AI_V } from '../ai/AIVersion';
 import { analyzePit } from '../ai/PitAnalyzer';
-import { recordPriorSample, snapshotBestPracticesForWorker } from '../ai/BestPractices';
+import { recordPriorSample, recordTemplateSample, snapshotBestPracticesForWorker, getTemplate } from '../ai/BestPractices';
 import ThinkWorker from '../ai/worker/BotThinkWorker?worker';
 
 type MoveStrategy = 'walk' | 'jump' | 'rope_climb' | 'rope_swing' | 'rope_descend';
@@ -75,6 +75,7 @@ export class BotTurnController {
   private lastPitKey: string = '';
   private lastPit: any | null = null;
   private pitDigFlip: 0 | 1 = 0;
+  private pendingEscapeEval: { wormIndex: number; startDepthPx: number; startTrapped: 0 | 1; mode: 'jump' | 'rope' | 'dig' | null; dir: 'left' | 'right'; widthPx: number; mapSeed: number } | null = null;
   private lastMovementCfg: { maxStrategyAttemptsPerTurn: number; maxStrategyFailuresPerTurn: number; replanWhenBannedAtLeast: number; replanCooldownSeconds: number; maxReplansPerTurn: number } = {
     maxStrategyAttemptsPerTurn: 3,
     maxStrategyFailuresPerTurn: 3,
@@ -767,6 +768,26 @@ export class BotTurnController {
     const isBotTurn = presenter.state.mode === 'aivai' ? (player.team === 'team1' || player.team === 'team2') : player.team === 'team2';
 
     if (curIdx !== this.lastTurnIndex) {
+      if (this.pendingEscapeEval && Number.isFinite(this.lastTurnIndex) && this.lastTurnIndex >= 0) {
+        try {
+          const prevIdx = this.pendingEscapeEval.wormIndex;
+          const prevW = presenter.state.players?.[prevIdx];
+          if (prevW && prevW.team && (prevW.team === 'team1' || prevW.team === 'team2')) {
+            const t = { width: presenter.state.width, height: presenter.state.height, isSolid: (x: number, y: number) => presenter.state.landscape.getMaterial(x, y) > 0 };
+            const pit1 = analyzePit(t as any, { x: prevW.x, y: prevW.y, width: prevW.width || 10, height: prevW.height || 10, ropeRemaining: 0 });
+            const endTrapped = pit1?.isTrapped ? 1 : 0;
+            const endDepth = typeof pit1?.depthPx === 'number' ? pit1.depthPx : 0;
+            const escaped = this.pendingEscapeEval.startTrapped === 1 && endTrapped === 0;
+            const gained = this.pendingEscapeEval.startTrapped === 1 && endDepth <= Math.max(0, this.pendingEscapeEval.startDepthPx - 28);
+            const success: 0 | 1 = (escaped || gained) ? 1 : 0;
+            const wBin = Math.max(0, Math.min(20, Math.round((this.pendingEscapeEval.widthPx || 0) / 10)));
+            const dBin = Math.max(0, Math.min(20, Math.round((this.pendingEscapeEval.startDepthPx || 0) / 20)));
+            const program = this.pendingEscapeEval.mode ? `pit_escape_${this.pendingEscapeEval.mode}` : 'pit_escape_unknown';
+            const key = `ai:tpl:v1:${this.pendingEscapeEval.mapSeed}:pit:w${wBin}:d${dBin}:dir${this.pendingEscapeEval.dir}:${program}`;
+            recordTemplateSample(key, { success, params: { wBin, dBin, dir: this.pendingEscapeEval.dir } });
+          }
+        } catch {}
+      }
       this.lastTurnIndex = curIdx;
       this.firedThisTurn = false;
       this.plannedThisTurn = false;
@@ -812,6 +833,7 @@ export class BotTurnController {
       this.lastPitKey = '';
       this.lastPit = null;
       this.pitDigFlip = 0;
+      this.pendingEscapeEval = null;
       this.didReplanThisTurn = false;
       this.replanCountThisTurn = 0;
       this.planningInProgress = false;
@@ -1637,7 +1659,37 @@ export class BotTurnController {
     const dir0 = pit?.escapeDir === 'left' ? 'left' : pit?.escapeDir === 'right' ? 'right' : (this.pitDigFlip === 0 ? 'left' : 'right');
     const dir: 'left' | 'right' = dir0 === 'left' ? 'left' : 'right';
     if (!this.pitEscapeMode) {
-      this.pitEscapeMode = pit?.canJumpOut ? 'jump' : pit?.canRopeOut ? 'rope' : 'dig';
+      const mapSeed = presenter?.state?.mapSeed || 0;
+      const wBin = Math.max(0, Math.min(20, Math.round((Number(pit?.widthPx) || 0) / 10)));
+      const dBin = Math.max(0, Math.min(20, Math.round((Number(pit?.depthPx) || 0) / 20)));
+      const keyJump = `ai:tpl:v1:${mapSeed}:pit:w${wBin}:d${dBin}:dir${dir}:pit_escape_jump`;
+      const keyRope = `ai:tpl:v1:${mapSeed}:pit:w${wBin}:d${dBin}:dir${dir}:pit_escape_rope`;
+      const keyDig = `ai:tpl:v1:${mapSeed}:pit:w${wBin}:d${dBin}:dir${dir}:pit_escape_dig`;
+      const sJump = getTemplate(keyJump)?.meanSuccess ?? null;
+      const sRope = getTemplate(keyRope)?.meanSuccess ?? null;
+      const sDig = getTemplate(keyDig)?.meanSuccess ?? null;
+      const canJ = !!pit?.canJumpOut;
+      const canR = !!pit?.canRopeOut && ropeRemaining > 0;
+      const cands: Array<{ mode: 'jump' | 'rope' | 'dig'; s: number }> = [];
+      if (canJ) cands.push({ mode: 'jump', s: typeof sJump === 'number' ? sJump : 0.5 });
+      if (canR) cands.push({ mode: 'rope', s: typeof sRope === 'number' ? sRope : 0.45 });
+      cands.push({ mode: 'dig', s: typeof sDig === 'number' ? sDig : 0.35 });
+      cands.sort((a, b) => b.s - a.s);
+      this.pitEscapeMode = cands[0]?.mode || (canJ ? 'jump' : canR ? 'rope' : 'dig');
+    }
+    if (!this.pendingEscapeEval) {
+      const mapSeed = presenter?.state?.mapSeed || 0;
+      this.pendingEscapeEval = {
+        wormIndex: Number(presenter?.state?.currentPlayerIndex) || 0,
+        startDepthPx: Number(pit?.depthPx) || 0,
+        startTrapped: pit?.isTrapped ? 1 : 0,
+        mode: this.pitEscapeMode,
+        dir,
+        widthPx: Number(pit?.widthPx) || 0,
+        mapSeed
+      };
+    } else {
+      this.pendingEscapeEval.mode = this.pitEscapeMode;
     }
     if (this.pitEscapeMode === 'jump') {
       if (!pit?.canJumpOut || this.pitEscapeAttempts.jump >= 7) this.pitEscapeMode = pit?.canRopeOut ? 'rope' : 'dig';
@@ -2128,8 +2180,8 @@ export class BotTurnController {
       }
     }
     if (weaponIndex < 0 || !weaponId) return false;
-    const aimAngle = weaponId === 'grenade' ? 0.35 : 0.18;
-    const power = weaponId === 'grenade' ? 26 : 34;
+    const aimAngle = weaponId === 'grenade' ? 0.65 : 0.55;
+    const power = weaponId === 'grenade' ? 34 : 44;
     const weapon = getWeaponByEquipmentId(weaponId);
     const explosionRadius = Math.max(0, Number(weapon?.explosionRadius) || 0);
     const safeExtra = Math.max(0, Number(cfg?.scoring?.safeExtraRadius) || 0);
@@ -2146,14 +2198,18 @@ export class BotTurnController {
     const step = 4;
     let hitX = startX + dirX * maxDist;
     let hitY = startY + dirY * maxDist;
+    const minHitDist = selfSafe + 12;
     for (let d = 0; d <= maxDist; d += step) {
       const x = startX + dirX * d;
       const y = startY + dirY * d;
       if (x < 0 || x >= presenter.state.width || y < 0 || y >= presenter.state.height) break;
       if (presenter.state.landscape.getMaterial(Math.floor(x), Math.floor(y)) > 0) {
-        hitX = x;
-        hitY = y;
-        break;
+        const selfDist0 = Math.hypot(x - originX, y - (Number(player.y) || 0));
+        if (selfDist0 >= minHitDist) {
+          hitX = x;
+          hitY = y;
+          break;
+        }
       }
     }
     const selfDist = Math.hypot(hitX - originX, hitY - (Number(player.y) || 0));
