@@ -1606,11 +1606,12 @@ export class BotTurnController {
   private trackStuck(player: any, dt: number) {
     const dx = Math.abs(player.x - this.lastX);
     this.lastX = player.x;
-    if (dx < 0.08) {
+    const vx = Math.abs(Number(player.vx) || 0);
+    if (dx < 0.25 && vx < 2.0) {
       this.stuckTime += dt;
-    } else {
-      this.stuckTime = 0;
+      return;
     }
+    this.stuckTime = Math.max(0, this.stuckTime - dt * 0.6);
   }
 
   private getPitInfo(presenter: any, player: any, ropeRemaining: number, now: number): any | null {
@@ -2343,6 +2344,7 @@ export class BotTurnController {
 
     player.aimAngle = best.aimAngle;
     presenter.handleInput?.('fire', true, true);
+    presenter.handleInput?.('fire', false, true);
     this.lastRopeAttemptAt = now;
     this.emitAIVai(presenter, { type: 'bot_rope_attempt', t: now, team: player.team, wormId: String(presenter.state.currentPlayerIndex ?? player.id ?? ''), strategy, result: 'fired', anglesTried: globalAngles.length, bestScore: best.score, anchor: { x: best.ray.x, y: best.ray.y, dist: best.ray.dist }, moveTo: { x: moveTo.x, y: moveTo.y }, dx: moveTo.x - player.x, dy: moveTo.y - player.y, aiV: AI_V, thinkSrc: this.lastThinkSrc, workerMs: this.lastWorkerMs, workerComputeMs: this.lastWorkerComputeMs, ropeRemaining, aimAngle: player.aimAngle, facingRight: player.facingRight ? 1 : 0, rayHit: best.ray, ropeActiveAfterFire: player.ropeActive ? 1 : 0, ropeCast: { x: player.ropeCastX, y: player.ropeCastY, t: player.ropeCastTime } });
     if (player.ropeActive) {
@@ -2395,7 +2397,7 @@ export class BotTurnController {
 
     if (now >= this.strategyEvalAt) {
       const costNow = this.estimateCost(presenter, player, moveTo, now);
-      const improved = costNow + 6 < this.strategyCost0;
+      const improved = costNow + 3 < this.strategyCost0;
       if (improved) {
         this.recordStrategySuccess(s);
         this.strategyCost0 = costNow;
@@ -2404,9 +2406,10 @@ export class BotTurnController {
       } else {
         this.ropeStallCount += 1;
         this.strategyEvalAt = now + 0.65;
-        if (ropeElapsed > 0.9 && this.ropeStallCount >= 2) {
+        if (ropeElapsed > 1.5 && this.ropeStallCount >= 4) {
           this.recordStrategyFailure(s, now);
           presenter.handleInput?.('fire', true, true);
+          presenter.handleInput?.('fire', false, true);
           this.ropeMode = null;
           this.strategy = null;
           return;
@@ -2430,6 +2433,7 @@ export class BotTurnController {
 
     if (shouldDetach) {
       presenter.handleInput?.('fire', true, true);
+      presenter.handleInput?.('fire', false, true);
       this.ropeMode = null;
       this.strategy = null;
     }

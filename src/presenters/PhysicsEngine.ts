@@ -541,9 +541,14 @@ export class PhysicsEngine {
     const hw = 6;
     const hh = 10;
     if (!this.isBoxSolid(state.landscape, worm.x, worm.y, hw, hh)) return;
-    for (let i = 0; i < 36; i++) {
-      if (!this.isBoxSolid(state.landscape, worm.x, worm.y, hw, hh)) return;
-      worm.y -= 1;
+    const x0 = Number(worm.x) || 0;
+    const y0 = Number(worm.y) || 0;
+    for (let i = 1; i <= 18; i++) {
+      if (!this.isBoxSolid(state.landscape, x0 + i, y0, hw, hh)) { worm.x = x0 + i; worm.y = y0; return; }
+      if (!this.isBoxSolid(state.landscape, x0 - i, y0, hw, hh)) { worm.x = x0 - i; worm.y = y0; return; }
+    }
+    for (let i = 1; i <= 36; i++) {
+      if (!this.isBoxSolid(state.landscape, x0, y0 - i, hw, hh)) { worm.x = x0; worm.y = y0 - i; return; }
     }
     for (let i = 0; i < 18; i++) {
       if (!this.isBoxSolid(state.landscape, worm.x, worm.y, hw, hh)) return;
@@ -582,7 +587,7 @@ export class PhysicsEngine {
       
       for (const prop of state.props) {
         const dist = MathUtils.distance(worm.x, worm.y, prop.x, prop.y);
-        const minDist = worm.width / 2 + prop.radius;
+        const minDist = 6 + prop.radius;
         
         if (dist < minDist && dist > 0) {
           // Overlapping! Positional correction
@@ -621,35 +626,56 @@ export class PhysicsEngine {
     }
   }
   private handleWormCollisions(state: GameState): void {
-    for (let i = 0; i < state.players.length; i++) {
-      for (let j = i + 1; j < state.players.length; j++) {
-        const p1 = state.players[i];
-        const p2 = state.players[j];
-        
-        // Skip dead worms
-        if (p1.health <= 0 || p2.health <= 0) continue;
+    const hw = 6;
+    const hh = 10;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < state.players.length; i++) {
+        for (let j = i + 1; j < state.players.length; j++) {
+          const p1 = state.players[i];
+          const p2 = state.players[j];
+          if (p1.health <= 0 || p2.health <= 0) continue;
 
-        const dist = MathUtils.distance(p1.x, p1.y, p2.x, p2.y);
-        const minDist = p1.width / 2 + p2.width / 2;
+          const dx = (Number(p1.x) || 0) - (Number(p2.x) || 0);
+          const dy = (Number(p1.y) || 0) - (Number(p2.y) || 0);
+          const ax = Math.abs(dx);
+          const ay = Math.abs(dy);
+          const overlapX = (hw + hw) - ax;
+          const overlapY = (hh + hh) - ay;
+          if (overlapX <= 0 || overlapY <= 0) continue;
 
-        if (dist < minDist && dist > 0) {
-          // Overlapping! Apply heavy pushing
-          const overlap = minDist - dist;
-          const nx = (p1.x - p2.x) / dist;
-          const ny = (p1.y - p2.y) / dist;
-          
-          // Physically separate them (50/50 split of the overlap)
-          p1.x += nx * overlap * 0.5;
-          p1.y += ny * overlap * 0.5;
-          p2.x -= nx * overlap * 0.5;
-          p2.y -= ny * overlap * 0.5;
+          if (overlapX < overlapY) {
+            const sx = Math.sign(dx) || 1;
+            p1.x += sx * overlapX * 0.5;
+            p2.x -= sx * overlapX * 0.5;
+            const relVx = (Number(p1.vx) || 0) - (Number(p2.vx) || 0);
+            p1.vx -= relVx * 0.6;
+            p2.vx += relVx * 0.4;
+          } else {
+            const sy = Math.sign(dy) || 1;
+            const v1 = Number(p1.vy) || 0;
+            const v2 = Number(p2.vy) || 0;
+            const p1Above = dy < 0;
+            const p2Above = dy > 0;
 
-          // Momentum transfer (heavy pushing makes initiator lose speed)
-          const relVx = p1.vx - p2.vx;
-          
-          // The pusher loses most of their momentum, the pushed gains a little
-          p1.vx -= relVx * 0.8;
-          p2.vx += relVx * 0.2;
+            const fall1 = p1Above && v1 > 0.5;
+            const fall2 = p2Above && v2 > 0.5;
+
+            if (fall1 && !fall2) {
+              p1.y -= overlapY;
+              p1.vy = 0;
+              p1.isJumping = false;
+            } else if (fall2 && !fall1) {
+              p2.y -= overlapY;
+              p2.vy = 0;
+              p2.isJumping = false;
+            } else {
+              p1.y += sy * overlapY * 0.5;
+              p2.y -= sy * overlapY * 0.5;
+              const relVy = (Number(p1.vy) || 0) - (Number(p2.vy) || 0);
+              p1.vy -= relVy * 0.35;
+              p2.vy += relVy * 0.35;
+            }
+          }
         }
       }
     }
