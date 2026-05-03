@@ -28,7 +28,7 @@ export class PhysicsEngine {
   private maxSubsteps: number = 8;
   private terrainDf: TerrainDistanceField | null = null;
 
-  private spawnGrave(state: GameState, worm: any, wormIndex: number): void {
+  private spawnGrave(state: GameState, worm: any): void {
     const sprite = assetUrl('sprites_v2/misc/grave1.png');
     const x = Number(worm.x) || 0;
     const wormH = Math.max(0, Number(worm.height) || 0);
@@ -125,7 +125,7 @@ export class PhysicsEngine {
       if (!worm) continue;
       if (worm.health > 0) continue;
       if ((worm as any).graveSpawned) continue;
-      this.spawnGrave(state, worm, i);
+      this.spawnGrave(state, worm);
     }
 
     if (state.particles) {

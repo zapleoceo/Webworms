@@ -26,7 +26,6 @@ export function planAI2(args: {
   const { rng, world, shooter, enemies, allies, botCfg, difficulty, executeSeconds } = args;
   const t = world?.terrain;
   const w = Number(t?.width) || 0;
-  const h = Number(t?.height) || 0;
   const padX = 520;
   const minX = clamp(shooter.x - padX, 0, w - 1);
   const maxX = clamp(shooter.x + padX, 0, w - 1);

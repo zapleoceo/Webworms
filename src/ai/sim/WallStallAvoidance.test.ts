@@ -26,7 +26,7 @@ test('avoids holding into wall without progress for >=0.25s', () => {
   };
 
   const landscape: any = {
-    getMaterial: (x: number, y: number) => (y >= groundY ? 1 : 0)
+    getMaterial: (x: number, y: number) => (void x, y >= groundY ? 1 : 0)
   };
 
   const state: any = {
