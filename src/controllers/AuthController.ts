@@ -121,6 +121,7 @@ export class AuthController {
   }
 
   logout() {
+    this.storage.removeItem('sessionId');
     this.storage.removeItem('userSessionId');
     this.storage.removeItem('userSessionName');
     this.storage.removeItem('userBalanceSeconds');
@@ -135,10 +136,20 @@ export class AuthController {
     this.timeBalance.update();
   }
 
+  private isInvalidSessionResponse(res: any): boolean {
+    const msg = typeof res?.error === 'string' ? res.error : '';
+    if (!msg) return false;
+    return msg.toLowerCase().includes('invalid session') || msg.toLowerCase().includes('unauthorized');
+  }
+
   async refreshProfileIfLoggedIn() {
     const sessionId = this.storage.getItem('userSessionId');
     if (!sessionId) return;
     const res = await this.api.getProfile(sessionId);
+    if (this.isInvalidSessionResponse(res)) {
+      this.logout();
+      return;
+    }
     if (!res.success || !res.user) return;
 
     this.storage.setItem('userSessionName', res.user.username || res.user.email.split('@')[0]);
@@ -281,4 +292,3 @@ export class AuthController {
     }
   }
 }
-
