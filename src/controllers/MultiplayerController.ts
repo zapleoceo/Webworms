@@ -3,7 +3,6 @@ import { MultiplayerSync } from '../network/MultiplayerSync';
 import { Random } from '../utils/Random';
 import { Worm } from '../models/Worm';
 import { Projectile } from '../models/Projectile';
-import { BrandLogo } from '../models/BrandLogo';
 import { WEAPONS } from '../models/Weapon';
 import { GrenadeProjectile } from '../models/GrenadeProjectile';
 import type { GamePresenter } from '../presenters/GamePresenter';
@@ -20,7 +19,6 @@ export class MultiplayerController {
   private pendingState: any | null = null;
   private lastSeq: number = 0;
   private projectileById: Map<number, Projectile> = new Map();
-  private brandLogoById: Map<number, BrandLogo> = new Map();
   private syncBuffer: Array<{ t: number; state: any }> = [];
   private static readonly INTERP_DELAY_MS = 100;
 
@@ -210,49 +208,6 @@ export class MultiplayerController {
       if (!ids.has(id)) this.projectileById.delete(id);
     }
     this.presenter.state.projectiles = nextProjectiles;
-
-    const logos0 = Array.isArray(s0?.brandLogos) ? s0.brandLogos : [];
-    const logos1 = Array.isArray(s1?.brandLogos) ? s1.brandLogos : [];
-    const lmap0 = new Map<number, any>();
-    const lmap1 = new Map<number, any>();
-    for (const ld of logos0) if (typeof ld?.id === 'number') lmap0.set(ld.id, ld);
-    for (const ld of logos1) if (typeof ld?.id === 'number') lmap1.set(ld.id, ld);
-    const lids = new Set<number>([...lmap0.keys(), ...lmap1.keys()]);
-    const nextLogos: BrandLogo[] = [];
-    for (const id of lids) {
-      const a = lmap0.get(id) || lmap1.get(id);
-      const b = lmap1.get(id) || lmap0.get(id);
-      if (!a || !b) continue;
-      let l = this.brandLogoById.get(id);
-      if (!l) {
-        l = new BrandLogo(b.sprite, b.x, b.y, b.vx || 0, b.vy || 0, b.angle || 0, b.angularVelocity || 0);
-        (l as any).netId = id;
-        this.brandLogoById.set(id, l);
-      }
-      l.sprite = b.sprite;
-      l.x = lerp(a.x, b.x);
-      l.y = lerp(a.y, b.y);
-      l.vx = lerp(a.vx || 0, b.vx || 0);
-      l.vy = lerp(a.vy || 0, b.vy || 0);
-      l.angle = lerp(a.angle || 0, b.angle || 0);
-      l.angularVelocity = lerp(a.angularVelocity || 0, b.angularVelocity || 0);
-      l.width = typeof b.width === 'number' ? b.width : l.width;
-      l.height = typeof b.height === 'number' ? b.height : l.height;
-      l.collisionWidth = typeof b.collisionWidth === 'number' ? b.collisionWidth : l.collisionWidth;
-      l.collisionHeight = typeof b.collisionHeight === 'number' ? b.collisionHeight : l.collisionHeight;
-      l.isDynamic = b.isDynamic !== undefined ? !!b.isDynamic : l.isDynamic;
-      l.isSolid = b.isSolid !== undefined ? !!b.isSolid : l.isSolid;
-      l.hardness = typeof b.hardness === 'number' ? b.hardness : l.hardness;
-      l.health = typeof b.health === 'number' ? b.health : l.health;
-      l.maxHealth = typeof b.maxHealth === 'number' ? b.maxHealth : l.maxHealth;
-      l.touchedGround = b.touchedGround !== undefined ? !!b.touchedGround : l.touchedGround;
-      (l as any).graveFrame = (b as any).graveFrame;
-      nextLogos.push(l);
-    }
-    for (const [id] of this.brandLogoById) {
-      if (!lids.has(id)) this.brandLogoById.delete(id);
-    }
-    this.presenter.state.brandLogos = nextLogos;
   }
 
   private applyHostInit(initData: any) {

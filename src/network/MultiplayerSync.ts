@@ -37,65 +37,6 @@ export class MultiplayerSync {
 
   constructor() {}
 
-  public static buildStatePayload(state: any): any {
-    return {
-      seq: 0,
-      currentPlayerIndex: state.currentPlayerIndex,
-      wind: state.wind,
-      turnTimeLeft: state.turnTimeLeft,
-      hasFiredThisTurn: state.hasFiredThisTurn,
-      lastPlayedIndex: state.lastPlayedIndex,
-      teamAmmo: state.teamAmmo,
-      players: state.players.map((p: any) => ({
-        x: p.x,
-        y: p.y,
-        vx: p.vx,
-        vy: p.vy,
-        health: p.health,
-        aimAngle: p.aimAngle,
-        facingRight: p.facingRight,
-        team: p.team,
-        unitClass: p.unitClass,
-        currentEquipmentIndex: p.currentEquipmentIndex,
-        ropeActive: p.ropeActive,
-        ropeAnchorX: p.ropeAnchorX,
-        ropeAnchorY: p.ropeAnchorY,
-        ropeLength: p.ropeLength
-      })),
-      projectiles: state.projectiles.map((p: any) => ({
-        id: p.netId,
-        x: p.x,
-        y: p.y,
-        vx: p.vx,
-        vy: p.vy,
-        weaponId: p.weaponId,
-        fuseRemaining: p.fuseRemaining
-      })),
-      brandLogos: (state.brandLogos || []).map((l: any) => ({
-        id: l.netId,
-        sprite: l.sprite,
-        x: l.x,
-        y: l.y,
-        vx: l.vx,
-        vy: l.vy,
-        angle: l.angle,
-        angularVelocity: l.angularVelocity,
-        width: l.width,
-        height: l.height,
-        collisionWidth: l.collisionWidth,
-        collisionHeight: l.collisionHeight,
-        isDynamic: l.isDynamic,
-        isSolid: l.isSolid,
-        hardness: l.hardness,
-        health: l.health,
-        maxHealth: l.maxHealth,
-        touchedGround: l.touchedGround,
-        graveFrame: (l as any).graveFrame
-      })),
-      craters: state.landscape.syncCraters
-    };
-  }
-
   dispose(): void {
     try {
       if (this.dataChannelHeartbeatInterval) {
@@ -658,8 +599,41 @@ export class MultiplayerSync {
       if (typeof buffered === 'number' && buffered > MultiplayerSync.MAX_BUFFERED_BYTES) return;
       if (!this.initSent) this.sendInit(state);
 
-      const statePayload = MultiplayerSync.buildStatePayload(state);
-      statePayload.seq = ++this.syncSeq;
+      const statePayload = {
+        seq: ++this.syncSeq,
+        currentPlayerIndex: state.currentPlayerIndex,
+        wind: state.wind,
+        turnTimeLeft: state.turnTimeLeft,
+        hasFiredThisTurn: state.hasFiredThisTurn,
+        lastPlayedIndex: state.lastPlayedIndex,
+        teamAmmo: state.teamAmmo,
+        players: state.players.map((p: any) => ({
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy,
+          health: p.health,
+          aimAngle: p.aimAngle,
+          facingRight: p.facingRight,
+          team: p.team,
+          unitClass: p.unitClass,
+          currentEquipmentIndex: p.currentEquipmentIndex,
+          ropeActive: p.ropeActive,
+          ropeAnchorX: p.ropeAnchorX,
+          ropeAnchorY: p.ropeAnchorY,
+          ropeLength: p.ropeLength
+        })),
+        projectiles: state.projectiles.map((p: any) => ({
+          id: p.netId,
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy,
+          weaponId: p.weaponId,
+          fuseRemaining: p.fuseRemaining
+        })),
+        craters: state.landscape.syncCraters // Sync newly formed craters precisely
+      };
       
       this.dataChannel.send(JSON.stringify({ type: 'sync', state: statePayload }));
       
