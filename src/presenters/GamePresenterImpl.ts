@@ -13,6 +13,7 @@ import { findSafeWormSpawn } from '../gameplay/SpawnSelector';
 
 import { BrandLogo } from '../models/BrandLogo';
 import { DEFAULT_AIRDROP_PHYSICS, normalizeAirdropPhysicsConfig } from '../physics/AirdropConfig';
+import { pickAirdropSprite } from '../gameplay/airdropSprite';
 import { BotTurnController } from '../controllers/BotTurnController';
 import { terrainHitCircle } from '../physics/TrajectorySim';
 import { stepTurn } from '../game/turns/TurnSystem';
@@ -1219,23 +1220,18 @@ export class GamePresenter {
     let width = 100;
     let height = 60;
     let hardness = 10;
-    
-    // Check if custom logos from DB are available
-    if (this.state.availableLogos && this.state.availableLogos.length > 0) {
+
+    const isMultiplayer = this.state.mode === 'friend' || this.state.mode === 'random';
+    if (isMultiplayer) {
+      sprite = pickAirdropSprite(this.state.mode as any, null, Random.next);
+    } else if (this.state.availableLogos && this.state.availableLogos.length > 0) {
       const logo = this.state.availableLogos[Random.nextInt(0, this.state.availableLogos.length - 1)];
-      sprite = logo.image_data; // This contains the base64
+      sprite = logo.image_data;
       width = logo.width || 100;
       height = logo.height || 60;
       hardness = logo.hardness || 10;
     } else {
-      // Fallback to text_to_image URLs
-      const logos = [
-        'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=A%20colorful%20supermarket%20logo%20saying%20MEGA%20MART%20transparent%20background&image_size=landscape_16_9',
-        'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=A%20coffee%20shop%20logo%20with%20a%20star%20saying%20KOSTAR%20transparent%20background&image_size=landscape_16_9',
-        'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=A%20fast%20food%20logo%20with%20golden%20M%20saying%20MUGDONALDS%20transparent%20background&image_size=landscape_16_9',
-        'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=A%20burger%20restaurant%20logo%20saying%20BURGO%20BURGER%20transparent%20background&image_size=landscape_16_9'
-      ];
-      sprite = logos[Random.nextInt(0, logos.length - 1)];
+      sprite = pickAirdropSprite(this.state.mode as any, null, Random.next);
     }
 
     const phi = 0.61803398875;
@@ -1251,6 +1247,7 @@ export class GamePresenter {
     const angularVelocity = (Random.next() - 0.5) * 2;
 
     const brandLogo = new BrandLogo(sprite, spawnX, spawnY, vx, vy, angle, angularVelocity);
+    (brandLogo as any).netId = this.state.nextBrandLogoNetId++;
     brandLogo.width = width * 2;
     brandLogo.height = height * 2;
     brandLogo.hardness = hardness;

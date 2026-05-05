@@ -37,6 +37,7 @@ export class PhysicsEngine {
     const vx = (Number(worm.vx) || 0) * 0.15;
     const vy = (Number(worm.vy) || 0) * 0.15;
     const logo = new BrandLogo(sprite, x, y, vx, vy, 0, 0);
+    (logo as any).netId = state.nextBrandLogoNetId++;
     logo.width = 42;
     logo.height = 42;
     logo.collisionWidth = 30;

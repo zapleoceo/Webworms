@@ -36,6 +36,7 @@ export class GameState {
   public explosions: Explosion[] = [];
   public props: PhysicsProp[] = [];
   public brandLogos: BrandLogo[] = [];
+  public nextBrandLogoNetId: number = 1;
   public particles: Particle[] = [];
   public floatingTexts: FloatingText[] = [];
   public teamAmmo: Record<'team1' | 'team2', { grenade: number }> = { team1: { grenade: Infinity }, team2: { grenade: Infinity } };
