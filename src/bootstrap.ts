@@ -23,6 +23,7 @@ import { createWakeLockManager } from './services/wakeLock';
 import { createControlsUi } from './ui/controlsUi';
 import { loadBestPractices, saveBestPractices } from './ai/BestPractices';
 import { extractTopCasesFromEvents, loadCaseLibrary, mergeCases, normalizePlanJsonRow, saveCaseLibrary } from './ai/CaseLibrary';
+import { getUserSessionId } from './utils/userSession';
 
 declare global {
   interface Window {
@@ -583,7 +584,7 @@ let currentRoomPlayerId: string | null = null;
 
   // Request match token from backend if not training
   if (mode !== 'training' && mode !== 'aivai2') {
-    const sessionId = localStorage.getItem('sessionId');
+    const sessionId = getUserSessionId(localStorage);
     currentRoomPlayerId = sessionId;
     if (sessionId) {
       const res = await APIClient.startMatch(sessionId);
@@ -1027,7 +1028,7 @@ document.getElementById('btn-confirm-leave')?.addEventListener('click', () => {
 
 window.addEventListener('pagehide', () => {
   const roomId = localStorage.getItem('ww_last_room_id');
-  const playerId = localStorage.getItem('sessionId');
+  const playerId = getUserSessionId(localStorage);
   if (roomId && playerId) {
     APIClient.leaveRoom(roomId, playerId);
   }
@@ -1464,7 +1465,7 @@ function bindPresenterEvents() {
         }
         
         // Report match end to server to get playtime reward
-        const sessionId = localStorage.getItem('sessionId');
+        const sessionId = getUserSessionId(localStorage);
         const userId = localStorage.getItem('userId');
         if (sessionId && userId && currentMatchToken) {
           APIClient.reportMatchEnd(sessionId, userId, currentMatchToken, stats?.isTechnical).then(res => {
