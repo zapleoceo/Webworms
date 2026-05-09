@@ -4,6 +4,7 @@ import { capturePayPalOrder, createPayPalOrder } from './controllers/payments';
 import { getTurnIceServers } from './controllers/turn';
 import { handleSignalingSignal, handleSignalingSnapshot, handleSignalingWS } from './controllers/signaling';
 import { SignalingDO as SignalingDOImpl } from './durable/SignalingDO';
+import { MeshSignalingDO as MeshSignalingDOImpl } from './durable/MeshSignalingDO';
 import { createRoom, joinRandomRoom, heartbeatRoom, leaveRoom, joinRoomState, getRoomState } from './controllers/rooms';
 import { handleRegister, handleLogin, handleVerify, handleSession, handleDailyReset, handleUpdateProfile, getProfile, handleUpdatePassword } from './controllers/auth';
 import { getTurnTime, updateTurnTime, getAirdropPhysics, updateAirdropPhysics, getGameSettings, getBotSettings, updateBotSettings } from './controllers/settings';
@@ -25,6 +26,7 @@ export interface Env {
   DB: D1Database;
   ROOMS: KVNamespace;
   SIGNALING: DurableObjectNamespace;
+  MESH: DurableObjectNamespace;
   AIVAI_LOGS?: R2Bucket;
   RESEND_API_KEY?: string;
   PAYPAL_CLIENT_ID?: string;
@@ -435,3 +437,4 @@ export default {
 // --------------------------------------------------------------------
 
 export class SignalingDO extends SignalingDOImpl {}
+export class MeshSignalingDO extends MeshSignalingDOImpl {}

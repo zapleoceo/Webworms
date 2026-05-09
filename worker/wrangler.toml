@@ -17,12 +17,17 @@ bucket_name = "webworms-aivai-logs"
 
 [durable_objects]
 bindings = [
-  { name = "SIGNALING", class_name = "SignalingDO" }
+  { name = "SIGNALING", class_name = "SignalingDO" },
+  { name = "MESH", class_name = "MeshSignalingDO" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SignalingDO"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["MeshSignalingDO"]
 
 [triggers]
 crons = ["0 0 * * *"] # Run every day at midnight UTC
