@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {AI_PROFILES,createTerrain,groundY,selectShot} from './engine.js';
+import {PENDING_KEY,readPendingTurn,savePendingTurn,PENDING_AGE_MS} from './broker-resume.js';
 
 const elements=new Map();
 function element(id){if(!elements.has(id))elements.set(id,{id,style:{},classList:{add(){},remove(){},toggle(){}},dataset:{},listeners:{},textContent:'',innerHTML:'',value:'0',disabled:false,addEventListener(event,fn){this.listeners[event]=fn},appendChild(){},setPointerCapture(){},getBoundingClientRect(){return {left:0,top:0,width:1600,height:800}}});return elements.get(id)}
@@ -10,9 +11,11 @@ const touchButtons=['left','right','jump','aimleft','aimright'].map(k=>{const b=
 const fuseButtons=[1,2,3,4,5].map(n=>{const b=element('fuse-'+n);b.dataset.fuse=String(n);return b});
 globalThis.document={getElementById:element,createElement:tag=>tag==='canvas'?{width:0,height:0,getContext:()=>context}:element('created-'+Math.random()),querySelectorAll:selector=>selector==='[data-hold]'?touchButtons:selector==='[data-fuse]'?fuseButtons:[]};
 globalThis.window={listeners:{},addEventListener(event,fn){this.listeners[event]=fn}};
+const sessionItems=new Map();
+globalThis.sessionStorage={getItem:key=>sessionItems.get(key)??null,setItem:(key,value)=>sessionItems.set(key,value),removeItem:key=>sessionItems.delete(key)};
 globalThis.requestAnimationFrame=()=>{};
 const game=await import('./game.js');
-const {state,newGame,fire,explosion,update,render,beginTurn,cycle,aimAt,aiAct,setGrenadeFuse,toggleGrenadeBounce,toggleStrikeDirection,dropDynamite}=window.__craterCrew;
+const {state,newGame,fire,explosion,update,render,beginTurn,cycle,aimAt,aiAct,requestBrokerTurn,restorePendingBrokerTurn,setGrenadeFuse,toggleGrenadeBounce,toggleStrikeDirection,dropDynamite}=window.__craterCrew;
 function flatDuel(enemyX,difficulty=2,seed=807){
  newGame(0,difficulty,seed);beginTurn(1);const t=state.terrain;
  t.top.fill(600);for(let y=0;y<800;y++)t.mask.fill(y>=600?1:0,y*1600,(y+1)*1600);
@@ -134,6 +137,71 @@ test('Broker mode applies only the selected legal candidate from mocked job poll
  try{newGame(0,2,982);state.aiDriver='broker';beginTurn(1);aiAct();assert.equal(state.phase,'broker-wait');await new Promise(resolve=>setTimeout(resolve,2300));
   assert.equal(postCount,1);assert.equal(state.selected,'airstrike');assert.equal(state.projectiles.length,5);assert.equal(state.phase,'resolving');
  }finally{state.brokerController?.abort();state.aiDriver='local';globalThis.fetch=prior;newGame(0,1,983)}
+});
+
+test('A lost Broker submit response retries the frozen turn instead of generating another match action',async()=>{
+ const prior=globalThis.fetch,posted=[];
+ globalThis.fetch=async (_url,options)=>{
+  if(options?.method==='POST'){
+   posted.push(JSON.parse(options.body));
+   if(posted.length===1)throw Error('response lost after acceptance');
+   return new Response(JSON.stringify({status:'done',turnId:posted[0].turnId,candidateId:posted[0].candidates.find(c=>c.id.startsWith('air_')).id}),{status:200});
+  }
+  throw Error('replay already completed');
+ };
+ try{
+  newGame(0,2,988);state.aiDriver='broker';beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.phase,'broker-error');assert.equal(posted.length,1);assert.ok(sessionItems.has(PENDING_KEY));
+  element('broker-retry').onclick();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(posted.length,2);assert.deepEqual(posted[1],posted[0]);assert.equal(state.selected,'airstrike');
+  assert.equal(sessionItems.has(PENDING_KEY),false);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,989)}
+});
+
+test('Refresh restores a bounded pending Broker job and Retry only polls its existing ticket',async()=>{
+ const prior=globalThis.fetch;let posts=0,polls=0,turnId,choiceId;
+ globalThis.fetch=async (_url,options)=>{
+  if(options?.method==='POST'){
+   posts++;const body=JSON.parse(options.body);turnId=body.turnId;choiceId=body.candidates.find(c=>c.id.startsWith('air_')).id;
+   return new Response(JSON.stringify({status:'pending',ticket:'saved-job-ticket',pollAfter:1}),{status:202});
+  }
+  polls++;return new Response(JSON.stringify({status:'done',turnId,candidateId:choiceId}),{status:200});
+ };
+ try{
+  newGame(1,2,990);state.aiDriver='broker';beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(posts,1);assert.equal(state.brokerTicket,'saved-job-ticket');
+  const saved=readPendingTurn();assert.ok(saved);assert.equal(saved.request.turnId,turnId);
+  state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));
+  newGame(0,1,991,true);assert.equal(restorePendingBrokerTurn(readPendingTurn()),true);
+  assert.equal(state.phase,'broker-error');assert.equal(state.active.id,saved.game.activeId);assert.equal(state.brokerTicket,'saved-job-ticket');
+  const frozenX=state.active.x,frozenWind=state.wind;update(1);assert.equal(state.active.x,frozenX);assert.equal(state.wind,frozenWind);
+  element('broker-retry').onclick();await new Promise(resolve=>setTimeout(resolve,2300));
+  assert.equal(posts,1);assert.equal(polls,1);assert.equal(state.selected,'airstrike');assert.equal(sessionItems.has(PENDING_KEY),false);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,992)}
+});
+
+test('Expired or altered browser recovery state is rejected without a model call',()=>{
+ newGame(0,1,993);state.aiDriver='broker';beginTurn(1);
+ state.brokerTurnId=`t${state.matchId}_1_${state.active.id}_1`;
+ state.brokerSequence=1;
+ state.brokerOptions=[{id:'air_0_left',description:'safe',action:{weapon:'airstrike'}}];
+ state.brokerRequest={turnId:state.brokerTurnId,difficulty:state.difficulty,snapshot:{activeId:state.active.id,round:state.round},candidates:[{id:'air_0_left',description:'safe'}]};
+ state.brokerTicket='ticket';state.brokerSavedAt=Date.now();assert.equal(savePendingTurn(state),true);
+ assert.ok(readPendingTurn());
+ assert.equal(readPendingTurn(undefined,Date.now()+PENDING_AGE_MS+1),null);
+ const record=JSON.parse(sessionItems.get(PENDING_KEY));record.request.turnId='tother_1_3_1';sessionItems.set(PENDING_KEY,JSON.stringify(record));
+ assert.equal(readPendingTurn(),null);newGame(0,1,994);assert.equal(sessionItems.has(PENDING_KEY),false);
+});
+
+test('A late Broker answer cannot act after the match was replaced',async()=>{
+ const prior=globalThis.fetch;let finishSubmit;
+ globalThis.fetch=async (_url,options)=>options?.method==='POST'?new Promise(resolve=>{finishSubmit=resolve}):new Response('{}',{status:200});
+ try{
+  newGame(0,2,995);state.aiDriver='broker';beginTurn(1);aiAct();const oldMatch=state.matchId;
+  assert.ok(sessionItems.has(PENDING_KEY));newGame(0,2,996);assert.notEqual(state.matchId,oldMatch);
+  finishSubmit(new Response(JSON.stringify({status:'done',turnId:'stale',candidateId:'air_0_left'}),{status:200}));
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(state.team,0);assert.equal(state.projectiles.length,0);assert.equal(sessionItems.has(PENDING_KEY),false);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,997)}
 });
 
 test('music and effects unlock only on a gesture, separate controls persist, and rematch makes one music clock',()=>{

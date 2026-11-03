@@ -21,3 +21,45 @@
 
 
 .driver-choice{display:block;margin:12px auto 4px;max-width:445px;font-size:10px;letter-spacing:.12em;font-weight:900;color:#9bc8c8}.driver-choice select{display:block;width:100%;margin-top:5px;padding:9px 12px;border:1px solid #6797a4;border-radius:6px;background:#13384c;color:#fff;font-weight:800}.broker-panel[hidden]{display:none}.broker-panel{position:absolute;z-index:7;left:50%;top:23%;transform:translateX(-50%);max-width:min(90%,560px);padding:18px 22px;border:2px solid #f8c87f;border-radius:12px;background:#15384be8;color:#fff;text-align:center;box-shadow:0 10px 35px #10253e88}.broker-panel strong,.broker-panel span{display:block}.broker-panel span{margin:8px 0 14px}.broker-panel button{margin:3px;padding:8px 10px;border:1px solid #c9d9d5;border-radius:6px;background:#23556b;color:#fff;font-weight:800;cursor:pointer}
+
+/* ===== Cartoon artillery skin: chunky outlines, bold rounded display type, in-canvas HUD ===== */
+:root{font-family:"Arial Rounded MT Bold","Trebuchet MS","Segoe UI",Verdana,sans-serif;--ink:#1c1420;--panel:#2b2242;--panel2:#3d3160;--gold:#ffd23f;color:#fff6e0;background:#1a1530}
+body{background:radial-gradient(circle at 50% -30%,#4b3a78,#1a1530 65%)}
+.brand strong,.modal h1,.fire-button,.start-button,.weapon .name,.turn-panel strong{font-family:inherit;text-shadow:0 2px 0 var(--ink),2px 0 0 var(--ink),-2px 0 0 var(--ink),0 -2px 0 var(--ink)}
+.brand-mark{color:var(--gold);text-shadow:0 3px 0 var(--ink)}
+.arena-wrap{border:4px solid var(--ink);border-radius:14px;box-shadow:0 6px 0 #0a0712,0 14px 36px #000a;background:#6ab7d8}
+.arena-shine{box-shadow:inset 0 -40px 70px #0a122633;border-radius:10px}
+/* team bars, timer and wind are drawn in the canvas; keep only the AI level chip from the DOM HUD */
+.hud{justify-content:flex-end;top:8px;right:12px}.hud .team-dot,.hud .health-track,.hud small,.hud strong,.turn-panel,.team-score.player{display:none!important}
+.team-score.enemy{background:none;box-shadow:none;padding:0;min-width:0}.ai-level{color:#fff;font-size:11px;text-shadow:0 2px 0 var(--ink),1px 0 0 var(--ink),-1px 0 0 var(--ink)}
+.wind,.icon-button,.subtle-button{background:var(--panel2);border:3px solid var(--ink);color:#fff6e0;border-radius:12px;box-shadow:0 3px 0 var(--ink)}
+.subtle-button:active,.icon-button:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.message{font-family:inherit;font-size:26px;text-shadow:0 3px 0 var(--ink),3px 0 0 var(--ink),-3px 0 0 var(--ink),0 -3px 0 var(--ink)}
+.power-wrap{bottom:92px;background:var(--panel);border:3px solid var(--ink);border-radius:12px;color:#fff}.power-meter{background:#0d0a14;border:2px solid var(--ink);height:14px}
+.command{background:var(--panel);border:4px solid var(--ink);border-radius:14px;box-shadow:0 5px 0 #0a0712;align-items:stretch}
+.weapons{display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:8px;overflow:visible}
+.weapon{min-width:0;min-height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:linear-gradient(#5a4b8a,#3d3160);border:3px solid var(--ink);border-radius:12px;box-shadow:0 4px 0 var(--ink);color:#fff6e0;transform:none}
+.weapon:hover{background:linear-gradient(#6c5ca0,#4a3c78);transform:translateY(-2px)}
+.weapon.selected{background:linear-gradient(#ffe36a,#f1a52c);color:var(--ink);border-color:var(--ink);box-shadow:0 4px 0 var(--ink),0 0 0 3px #fff6e0;transform:translateY(-2px)}
+.weapon .glyph{height:32px;line-height:0;display:flex;align-items:center}.weapon .glyph svg{filter:drop-shadow(0 2px 0 #0006)}
+.weapon .name{font-size:10px;text-shadow:none}.weapon.selected .name{color:var(--ink)}.weapon .key{color:#bfb2e6}.weapon.selected .key{color:#5a3a12}
+.fire-button,.start-button{background:linear-gradient(#ffe36a,#f3a42b);color:var(--ink);border:4px solid var(--ink);border-radius:14px;box-shadow:0 5px 0 var(--ink);text-shadow:none}
+.fire-button:active,.start-button:active{box-shadow:0 1px 0 var(--ink);transform:translateY(4px)}.fire-button:disabled{filter:grayscale(.8);opacity:.6}
+.weapon-options{color:#fff6e0}.weapon-settings button{background:var(--panel2);border:3px solid var(--ink);border-radius:10px;color:#fff6e0}.weapon-settings button.selected{background:var(--gold);color:var(--ink)}
+.turn-badge small,.weapon-title small,.bottom,.map-info{color:#d8cdf7}kbd{background:var(--panel2);border:2px solid var(--ink);color:#fff6e0}
+.pulse{background:var(--gold);box-shadow:0 0 14px var(--gold)}
+/* dialogs */
+.modal{background:#120d24cc}
+.modal-card{background:linear-gradient(#4a3b7a,#2b2242);border:5px solid var(--ink);border-radius:26px;box-shadow:0 8px 0 #0a0712,0 24px 60px #000a;color:#fff6e0}
+.modal h1{font-size:60px;letter-spacing:-1px;color:#fff6e0;-webkit-text-stroke:0;text-shadow:0 5px 0 var(--ink),4px 0 0 var(--ink),-4px 0 0 var(--ink),0 -4px 0 var(--ink)}.modal h1 em{color:var(--gold)}
+.modal p{color:#e6defa}.eyebrow{color:var(--gold);text-shadow:0 2px 0 var(--ink)}
+.setup label,.driver-choice{color:#d8cdf7}.setup select,.driver-choice select{background:#1c1830;border:3px solid var(--ink);color:#fff6e0;border-radius:10px}
+.tip,.ai-hint{color:#cfc3f0}
+.help-panel,.audio-panel,.broker-panel{background:var(--panel);border:4px solid var(--ink);border-radius:14px;color:#fff6e0}
+.help-panel h2{color:var(--gold)}
+
+/* never let focus or layout shifts scroll the page while playing */
+html,body{overflow-anchor:none}.weapon-options{min-height:44px}
+
+/* fit the whole game in the viewport height: canvas width follows available height (2:1 aspect) */
+@media(min-width:701px){.arena-wrap{width:min(100%,calc((100vh - var(--chrome,256px))*2));margin-inline:auto}}

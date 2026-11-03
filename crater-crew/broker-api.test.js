@@ -85,3 +85,51 @@ test('Changing the approved model invalidates old poll tickets',async()=>configu
  const poll=await turn.fetch(request('GET',undefined,'?ticket='+encodeURIComponent(ticket)));
  assert.equal(poll.status,400);assert.equal(calls,2);
 }));
+
+test('Lost submit response retries one project-scoped Broker job with the same idempotency key',async()=>configured(async()=>{
+ const keys=[];let uniqueJobs=0;
+ globalThis.fetch=async (input,options)=>{
+  const path=new URL(input).pathname;
+  if(path==='/v1/models')return response(catalog());
+  assert.equal(path,'/v1/jobs');keys.push(options.headers['Idempotency-Key']);
+  assert.match(keys.at(-1),/^ww_[A-Za-z0-9_-]{40,}$/);
+  if(keys.length===1){uniqueJobs++;throw Error('accepted by Broker, response lost')}
+  assert.equal(keys[1],keys[0]);return response({...done(),job_id:94},200);
+ };
+ const lost=await turn.fetch(request('POST',body));assert.equal(lost.status,503);
+ const replay=await turn.fetch(request('POST',body));assert.equal(replay.status,200);
+ assert.deepEqual(await replay.json(),{status:'done',turnId:body.turnId,candidateId:'bazooka_0'});
+ assert.equal(uniqueJobs,1);
+}));
+
+test('Changing the payload of a turn preserves its key and Broker conflict cannot enqueue another job',async()=>configured(async()=>{
+ const keys=[];
+ globalThis.fetch=async (input,options)=>{
+  if(new URL(input).pathname==='/v1/models')return response(catalog());
+  keys.push(options.headers['Idempotency-Key']);
+  return keys.length===1?response({job_id:95},202):response({detail:{error:'idempotency_key_conflict'}},409);
+ };
+ assert.equal((await turn.fetch(request('POST',body))).status,202);
+ const changed={...body,candidates:[{id:'other',description:'different move'}]};
+ assert.equal((await turn.fetch(request('POST',changed))).status,503);
+ assert.deepEqual(keys,[keys[0],keys[0]]);
+}));
+
+test('A bounded signed ticket survives long quota waits then expires without polling another job',async()=>configured(async()=>{
+ const clock=Date.now;let now=clock();Date.now=()=>now;let polls=0;
+ globalThis.fetch=async input=>{
+  const path=new URL(input).pathname;
+  if(path==='/v1/models')return response(catalog());
+  if(path==='/v1/jobs')return response({job_id:96},202);
+  polls++;return response({status:'pending',pending_reason:'waiting_quota',poll_after_s:60});
+ };
+ try{
+  const submit=await turn.fetch(request('POST',body));const ticket=(await submit.json()).ticket;
+  now+=6*60*60_000;
+  const waiting=await turn.fetch(request('GET',undefined,'?ticket='+encodeURIComponent(ticket)));
+  assert.equal(waiting.status,200);assert.equal((await waiting.json()).status,'pending');assert.equal(polls,1);
+  now+=2*60*60_000+1;
+  const expired=await turn.fetch(request('GET',undefined,'?ticket='+encodeURIComponent(ticket)));
+  assert.equal(expired.status,400);assert.equal(polls,1);
+ }finally{Date.now=clock}
+}));

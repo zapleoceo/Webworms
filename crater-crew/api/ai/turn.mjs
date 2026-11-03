@@ -9,7 +9,7 @@ const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:
 const validId=s=>typeof s==='string'&&/^[a-z0-9_-]{1,48}$/.test(s);
 const sign=s=>createHmac('sha256',key()).update(s).digest('base64url');
 function ticketFor(payload){const encoded=Buffer.from(JSON.stringify(payload)).toString('base64url');return encoded+'.'+sign(encoded)}
-function parseTicket(ticket){if(typeof ticket!=='string'||ticket.length>5000)return null;const [encoded,mac,extra]=ticket.split('.');if(!encoded||!mac||extra)return null;const actual=Buffer.from(sign(encoded)),given=Buffer.from(mac);if(actual.length!==given.length||!timingSafeEqual(actual,given))return null;try{const p=JSON.parse(Buffer.from(encoded,'base64url').toString());return Number.isInteger(p.jobId)&&p.jobId>0&&p.exp>Date.now()&&p.exp<Date.now()+15*60_000&&typeof p.turnId==='string'&&Array.isArray(p.ids)&&p.ids.length<=32&&p.model===model()?p:null}catch{return null}}
+function parseTicket(ticket){if(typeof ticket!=='string'||ticket.length>5000)return null;const [encoded,mac,extra]=ticket.split('.');if(!encoded||!mac||extra)return null;const actual=Buffer.from(sign(encoded)),given=Buffer.from(mac);if(actual.length!==given.length||!timingSafeEqual(actual,given))return null;try{const p=JSON.parse(Buffer.from(encoded,'base64url').toString()),now=Date.now();return Number.isInteger(p.jobId)&&p.jobId>0&&p.exp>now&&p.exp<=now+8*60*60_000+1000&&typeof p.turnId==='string'&&Array.isArray(p.ids)&&p.ids.length>0&&p.ids.length<=32&&p.model===model()?p:null}catch{return null}}
 function validate(body){if(!body||typeof body!=='object'||!validId(body.turnId)||!Number.isInteger(body.difficulty)||body.difficulty<0||body.difficulty>2)return false;const s=body.snapshot;if(!s||!Number.isInteger(s.map)||s.map<0||s.map>2||!Number.isInteger(s.round)||s.round<1||s.round>500||!Number.isFinite(s.wind)||Math.abs(s.wind)>100||!Array.isArray(s.worms)||s.worms.length>6||!Array.isArray(s.terrain)||s.terrain.length!==32)return false;if(!Array.isArray(body.candidates)||body.candidates.length<1||body.candidates.length>32)return false;const ids=new Set();for(const c of body.candidates){if(!validId(c.id)||ids.has(c.id)||typeof c.description!=='string'||c.description.length>240)return false;ids.add(c.id)}return true}
 async function broker(path,options={}){const url=new URL(path,brokerBase());if(url.protocol!=='https:')throw Error('broker configuration');const response=await fetch(url,{...options,headers:{'X-Project-Key':key(),'accept':'application/json',...(options.headers||{})},signal:AbortSignal.timeout(7000)});if(!response.ok)throw Error('broker unavailable');return response.json()}
 async function verifiedSubscriptionModel(){
@@ -18,6 +18,12 @@ async function verifiedSubscriptionModel(){
  return Boolean(row&&row.source==='broker'&&row.billing_type==='subscription'&&row.available===true&&Array.isArray(row.capabilities)&&row.capabilities.includes('chat:fast')&&Array.isArray(row.job_request?.response_format_types)&&row.job_request.response_format_types.includes('json_schema'));
 }
 function attestedSubscription(result,pinned){return result.billing_type==='subscription'&&result.provider===pinned.split('/')[0]&&result.model===pinned&&result.requested_model===pinned&&result.cost_usd===null}
+function complete(result,turnId,ids,pinned){
+ if(!attestedSubscription(result,pinned))return json({status:'error',error:'Broker did not attest the approved subscription route.'},502);
+ let plan;try{plan=JSON.parse(result.text)}catch{return json({status:'error',error:'Broker returned invalid JSON.'},502)}
+ if(!plan||plan.turn_id!==turnId||!ids.includes(plan.candidate_id))return json({status:'error',error:'Broker returned an invalid move.'},502);
+ return json({status:'done',turnId,candidateId:plan.candidate_id});
+}
 export default {async fetch(request){
  if(!enabled())return json({status:'unavailable',error:'Broker is not configured for this game.'},503);
  try{
@@ -30,19 +36,22 @@ export default {async fetch(request){
    const names=['easy','normal','hard'];
    const instruction=`You choose ONE legal move for the enemy in a turn-based artillery game. Difficulty: ${names[body.difficulty]}. Analyze the team health, terrain heights, wind, predicted weapon effects, water risk and allies. Choose only a candidate_id from the supplied candidates. Do not invent actions. Return only the required JSON.`;
    const payload={model:model(),messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify({turn_id:body.turnId,snapshot:body.snapshot,candidates:body.candidates})}],response_format:{type:'json_schema',json_schema:{name:'artillery_turn',strict:true,schema:{type:'object',properties:{turn_id:{type:'string'},candidate_id:{type:'string'}},required:['turn_id','candidate_id'],additionalProperties:false}}},workflow:'webworms-turn'};
-   const result=await broker('/v1/jobs?capability=chat:fast',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+   // Broker's project-scoped unique key replays the same job even after completion.
+   // A changed payload for the same turn gets 409 instead of a second subscription run.
+   const idempotencyKey='ww_'+sign('idem:'+body.turnId);
+   const result=await broker('/v1/jobs?capability=chat:fast',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify(payload)});
    if(!Number.isInteger(result.job_id)||result.job_id<1)throw Error('invalid broker response');
-   return json({status:'pending',ticket:ticketFor({jobId:result.job_id,turnId:body.turnId,ids:body.candidates.map(c=>c.id),model:model(),exp:Date.now()+10*60_000}),pollAfter:Math.min(10,Math.max(1,Number(result.poll_after_s)||2))},202);
+   const ids=body.candidates.map(c=>c.id);
+   if(result.status==='done')return complete(result,body.turnId,ids,model());
+   if(result.status==='error'||result.status==='cancelled')return json({status:'error',error:'Broker could not complete this turn.'},502);
+   return json({status:'pending',ticket:ticketFor({jobId:result.job_id,turnId:body.turnId,ids,model:model(),exp:Date.now()+8*60*60_000}),pollAfter:Math.min(10,Math.max(1,Number(result.poll_after_s)||2))},202);
   }
   if(request.method==='GET'){
    const p=parseTicket(new URL(request.url).searchParams.get('ticket'));if(!p)return json({error:'invalid or expired ticket'},400);
    const result=await broker(`/v1/jobs/${p.jobId}`);
    if(result.status==='pending'||result.status==='running')return json({status:'pending',pollAfter:Math.min(10,Math.max(1,Number(result.poll_after_s)||2))});
    if(result.status!=='done')return json({status:'error',error:'Broker could not complete this turn.'},502);
-   if(!attestedSubscription(result,p.model))return json({status:'error',error:'Broker did not attest the approved subscription route.'},502);
-   let plan;try{plan=JSON.parse(result.text)}catch{return json({status:'error',error:'Broker returned invalid JSON.'},502)}
-   if(!plan||plan.turn_id!==p.turnId||!p.ids.includes(plan.candidate_id))return json({status:'error',error:'Broker returned an invalid move.'},502);
-   return json({status:'done',turnId:p.turnId,candidateId:plan.candidate_id});
+   return complete(result,p.turnId,p.ids,p.model);
   }
   return json({error:'method not allowed'},405);
  }catch{return json({status:'unavailable',error:'Broker is unavailable. Retry this turn later.'},503)}
