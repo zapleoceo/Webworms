@@ -59,7 +59,7 @@ function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePend
  // Interleaved central rivals make close weapons tactically usable from round one.
  const spots=[[170,340,730],[780,1270,1450]];
  for(let team=0;team<2;team++)for(let i=0;i<3;i++){let x=spots[team][i],y=groundY(state.terrain,x)-R-2;state.worms.push({id:team*3+i,team,name:names[team][i],x,y,vx:0,vy:0,hp:100,alive:true,face:team? -1:1,grounded:true,flash:0,active:false});}
- for(let i=0;i<85;i++)state.decor.push({x:visualRand()*W,y:visualRand()*H*.55,r:visualRand()*3+1,phase:visualRand()*6.28});
+ for(let i=0;i<42;i++)state.decor.push({x:visualRand()*W,y:visualRand()*H*.55,r:visualRand()*3+1,phase:visualRand()*6.28});
  state.active=state.worms[0];state.active.active=true;updateUI();say('YOUR TURN · TAKE AIM',2.5);
 }
 function living(team){return state.worms.filter(w=>w.team===team&&w.alive)}
@@ -258,11 +258,11 @@ $('bounce-toggle').addEventListener('click',toggleGrenadeBounce);
 $('strike-direction').addEventListener('click',toggleStrikeDirection);
 $('drop-dynamite').addEventListener('click',dropDynamite);
 canvas.addEventListener('pointermove',aimAt);canvas.addEventListener('pointerdown',e=>{aimAt(e);if(e.pointerType==='mouse'&&e.button===0&&state.selected!=='airstrike')chargeStart()});window.addEventListener('pointerup',chargeEnd);
-$('fire').addEventListener('pointerdown',e=>{e.preventDefault();chargeStart()});$('fire').addEventListener('pointerup',e=>{e.preventDefault();chargeEnd()});$('fire').addEventListener('pointerleave',chargeEnd);
+$('fire').addEventListener('pointerdown',e=>{e.preventDefault();chargeStart()});$('fire').addEventListener('pointerup',e=>{e.preventDefault();chargeEnd();$('fire').blur?.()});$('fire').addEventListener('focus',()=>{const y=window.scrollY;requestAnimationFrame?.(()=>window.scrollTo?.(0,y))});$('fire').addEventListener('pointerleave',chargeEnd);
 $('end-turn').onclick=endTurn;$('touch-switch').onclick=cycle;
 for(const b of document.querySelectorAll('[data-hold]')){const k=b.dataset.hold;b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);state.keys[k]=true});for(const event of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(event,()=>state.keys[k]=false)}
 window.addEventListener('keydown',e=>{
- if(['Space','ArrowLeft','ArrowRight','ArrowUp','Tab'].includes(e.code))e.preventDefault();
+ if(['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','PageDown','PageUp','Tab'].includes(e.code))e.preventDefault();
  if(e.repeat&&['Space','Tab','KeyX'].includes(e.code))return;
  state.keys[e.code]=true;
  if(e.code==='Space')chargeStart();if(e.code==='Tab')cycle();if(e.code==='Enter')endTurn();
