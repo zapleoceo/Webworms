@@ -1,11 +1,13 @@
 import {drawEnvironment,drawCharacter,drawOrdnance} from './art.js';
+import {bakeSoil,hexRgb} from './terrain-art.js';
+import {themes} from './themes.js';
+import {bakeBackground,drawBackdrop,drawAmbient,drawWater} from './scenery.js';
 import {brokerTurnOptions,brokerSnapshot} from './broker-ai.js';
 import {clearPendingTurn,savePendingTurn,readPendingTurn} from './broker-resume.js';
 import {W,H,WATER,R,GRAVITY,WEAPONS,data,AI_PROFILES,clamp,seeded,createTerrain,solid,carve,groundY,blastDamage,selectShot,selectLob,AIM_MIN,AIM_MAX,aimAngle} from './engine.js';
 const $=id=>document.getElementById(id), canvas=$('game'),ctx=canvas.getContext('2d');
 const names=[['Pip','Bubbles','Mochi'],['Grub','Maverick','Nibbles']];
 const mapNames=['SUNSET COVE','CINDER PEAKS','MOONLIT ATOLL'];
-const themes=[{sky:['#75c6d5','#ffd292'],hill:'#637f8e',dirt:'#6c4b45',light:'#c68c5a',dark:'#3e343c',water:'#267da6'}, {sky:['#536d95','#f6a073'],hill:'#6b5e71',dirt:'#684551',light:'#b77c72',dark:'#3c364e',water:'#4966a0'}, {sky:['#203d69','#a1a8b1'],hill:'#3e567c',dirt:'#445471',light:'#8c90a1',dark:'#252f50',water:'#315f96'}];
 const state={running:false,ended:false,map:0,difficulty:1,aiDriver:'local',brokerController:null,brokerTicket:null,brokerTurnId:null,brokerRequest:null,brokerSavedAt:null,brokerSequence:0,brokerOptions:[],brokerError:'',terrain:null,terrainCanvas:null,worms:[],projectiles:[],particles:[],decor:[],team:0,active:null,lastActiveId:[-1,-1],selected:'bazooka',playerWeapon:'bazooka',phase:'ready',timer:35,round:1,waterLevel:WATER,wind:0,windTarget:0,aim:-0.75,dir:1,power:.5,charging:false,chargeDir:1,used:false,shotgunLeft:0,grenadeFuse:3,grenadeBounce:'high',strikeDir:1,playerGrenadeFuse:3,playerGrenadeBounce:'high',playerStrikeDir:1,jetDropped:false,keys:{},aiTimer:0,aiMoves:0,aiTarget:0,aiMoveTime:0,aiRetreat:0,resolveTimer:0,message:'',messageTimer:0,shake:0,sound:false,musicEnabled:false,fxVolume:.65,musicVolume:.42,audioUnlocked:false,musicStep:0,musicNextTime:0,jetTime:0};
 let simRand=seeded(77421),visualRand=seeded(19031);
 const simRandom=()=>{state.simDraws=(state.simDraws||0)+1;return simRand()};
@@ -30,9 +32,23 @@ function weaponSound(id){
  else if(id==='jetpack'){noise(.55,.07,2400);tone(280,.4,'sawtooth',.025,470)}
 }
 function say(text,time=2){state.message=text;state.messageTimer=time;$('message').textContent=text}
-function buildTerrain(){const t=state.terrain,off=document.createElement('canvas');off.width=W;off.height=H;const c=off.getContext('2d'),im=c.createImageData(W,H),p=im.data,th=themes[state.map];const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));const a=hex(th.dirt),b=hex(th.light),dark=hex(th.dark);
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!t.mask[i])continue;const k=i*4,depth=y-t.top[x],rim=y>3&&(!t.mask[(y-3)*W+x]||x>3&&!t.mask[y*W+x-3]||x<W-4&&!t.mask[y*W+x+3]),grain=((x*73856093^y*19349663)>>>0)%97/97,vein=Math.sin(x*.071+y*.037)+Math.sin(x*.019-y*.083),fleck=grain>.94?-.22:grain<.025?.16:0,n=.79+grain*.31+vein*.055+fleck,col=rim?b:depth>95?dark:a;p[k]=clamp(col[0]*n,0,255);p[k+1]=clamp(col[1]*n,0,255);p[k+2]=clamp(col[2]*n,0,255);p[k+3]=255;}
-  c.putImageData(im,0,0);state.terrainCanvas=off;
+function buildTerrain(){
+ const t=state.terrain,th=themes[state.map],key=state.seed+':'+state.map;
+ if(!state.soil||state.soil.key!==key)state.soil={key,...bakeSoil(state.map,state.seed,W,H,th)};
+ if(!state.terrainBuf){const off=document.createElement('canvas');off.width=W;off.height=H;const c=off.getContext('2d');state.terrainBuf={off,c,im:c.createImageData(W,H),run:new Uint16Array(W),grass:new Uint8Array(W)};for(let x=0;x<W;x++)state.terrainBuf.grass[x]=Math.round(8+3*Math.sin(x*.31)+2*Math.sin(x*.9))}
+ const {off,c,im,run,grass}=state.terrainBuf,p=im.data,m=t.mask,shade=state.soil.shade,over=state.soil.over,o8=new Uint8Array(over.buffer);
+ const a=hexRgb(th.dirt),dark=hexRgb(th.dark),g0=hexRgb(th.grass[0]),g1=hexRgb(th.grass[1]),ol=hexRgb(th.outline);run.fill(0);
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const i=y*W+x,k=i*4;
+  if(!m[i]){run[x]=0;p[k+3]=0;continue}
+  const dep=run[x]++;let r,g,b;
+  if((x>2&&!m[i-3])||(x<W-3&&!m[i+3])||(y>2&&!m[i-3*W])||(y<H-3&&!m[i+3*W])){r=ol[0];g=ol[1];b=ol[2]}
+  else if(dep<grass[x]){const f=dep/grass[x],q=f*f,hl=dep<3?1.12:1;r=(g0[0]+(g1[0]-g0[0])*q)*hl;g=(g0[1]+(g1[1]-g0[1])*q)*hl;b=(g0[2]+(g1[2]-g0[2])*q)*hl}
+  else if(over[i]){r=o8[i*4];g=o8[i*4+1];b=o8[i*4+2]}
+  else{const d=Math.min(1,Math.max(0,(dep-30)/230)),s=shade[i]/128,cs=dep<grass[x]+5?.8:1;r=(a[0]+(dark[0]-a[0])*d)*s*cs;g=(a[1]+(dark[1]-a[1])*d)*s*cs;b=(a[2]+(dark[2]-a[2])*d)*s*cs}
+  p[k]=r;p[k+1]=g;p[k+2]=b;p[k+3]=255;
+ }
+ c.putImageData(im,0,0);state.terrainCanvas=off;
 }
 function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePending=false){
  if(!preservePending)clearPendingTurn();state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];state.brokerSequence=0;$('broker-panel').hidden=true;
@@ -180,11 +196,11 @@ function updateWeaponSettings(){
  $('drop-dynamite').textContent=state.jetDropped?'DYNAMITE DROPPED':'DROP DYNAMITE · X';
 }
 function updateUI(){const p=living(0),e=living(1);$('p-count').textContent=`${p.length} WORM${p.length===1?'':'IES'}`;$('e-count').textContent=`${e.length} WORM${e.length===1?'':'IES'}`;$('p-health').style.width=`${p.reduce((s,w)=>s+w.hp,0)/3}%`;$('e-health').style.width=`${e.reduce((s,w)=>s+w.hp,0)/3}%`;$('timer').textContent=Math.ceil(state.timer);$('turn-label').textContent=state.team?(state.aiDriver==='broker'&&(state.phase==='broker-wait'||state.phase==='broker-error')?'LLM THINKING':'AI TURN'):'YOUR TURN';$('active-name').textContent=state.active?.alive?state.active.name.toUpperCase():'K.O.';$('wind').textContent=`WIND · ${Math.abs(Math.round(state.wind))} ${state.wind<0?'←':'→'}`;$('power').style.width=`${Math.round(state.power*100)}%`;$('power-text').textContent=`${Math.round(state.power*100)}%`;$('map-name').textContent=mapNames[state.map];$('round').textContent=`ROUND ${state.round}`;$('ai-level').textContent=AI_PROFILES[state.difficulty].name+(state.aiDriver==='broker'?' · BROKER LLM':' · LOCAL');document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===state.selected));$('fire').disabled=!state.running||state.team!==0||state.phase!=='ready';$('end-turn').disabled=!state.running||state.team!==0||state.phase==='resolving';updateWeaponSettings()}
-function drawBackground(t){const th=themes[state.map],g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,th.sky[0]);g.addColorStop(1,th.sky[1]);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
- const sunX=state.map===2?1280:1260,sunY=state.map===2?148:202;ctx.save();ctx.globalAlpha=state.map===2?.65:.7;ctx.fillStyle=state.map===2?'#eff8ff':'#ffefad';ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=58;ctx.beginPath();ctx.arc(sunX,sunY,state.map===2?58:82,0,Math.PI*2);ctx.fill();ctx.restore();
- ctx.fillStyle=th.hill;ctx.globalAlpha=.32;ctx.beginPath();ctx.moveTo(0,540);for(let x=0;x<=W;x+=15)ctx.lineTo(x,530+65*Math.sin(x/180)+24*Math.sin(x/47));ctx.lineTo(W,800);ctx.lineTo(0,800);ctx.fill();ctx.globalAlpha=1;
- for(const d of state.decor){const a=state.map===2?.6:.24;ctx.fillStyle=`rgba(255,255,255,${a})`;ctx.beginPath();ctx.ellipse(d.x,d.y,d.r*4,d.r,0,0,Math.PI*2);ctx.fill()}
- const water=ctx.createLinearGradient(0,WATER,0,H);water.addColorStop(0,th.water);water.addColorStop(1,'#0b3158');ctx.fillStyle=water;ctx.fillRect(0,WATER,W,H-WATER);ctx.fillStyle='#b4f8fa99';for(let i=0;i<30;i++){const x=(i*79+Math.sin(performance.now()*.001+i)*24)%W;ctx.fillRect(x,WATER+8+(i%3)*10,32,2)}
+let lastFrame=0,frameDt=.016;
+function drawBackground(now){
+ const th=themes[state.map];
+ if(!state.bg||state.bg.map!==state.map)state.bg={map:state.map,...bakeBackground(()=>document.createElement('canvas'),state.map,th,W,H)};
+ drawBackdrop(ctx,state,state.bg,W,now,frameDt);drawAmbient(ctx,state,th,W,H,now,frameDt);drawWater(ctx,state,th,W,H,now,false);
 }
 function drawWorm(w){if(!w.alive)return;const active=w===state.active&&state.running;ctx.save();ctx.translate(w.x,w.y);if(w.flash>0&&Math.sin(w.flash*30)>0)ctx.globalAlpha=.55;
  if(active){ctx.strokeStyle=w.team?'#ffbb80':'#fff2a0';ctx.lineWidth=3;ctx.setLineDash([5,5]);ctx.beginPath();ctx.ellipse(0,4,24,29,0,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
@@ -225,7 +241,7 @@ function drawWormDetails(w){
 }
 function drawProjectile(p){ctx.save();if(p.trail.length){ctx.beginPath();ctx.moveTo(p.trail[0].x,p.trail[0].y);for(const point of p.trail)ctx.lineTo(point.x,point.y);ctx.lineTo(p.x,p.y);ctx.strokeStyle=p.type==='airstrike'?'#fff6a6aa':'#fff9dda6';ctx.lineWidth=p.type==='airstrike'?5:3;ctx.stroke()}ctx.translate(p.x,p.y);ctx.rotate(Math.atan2(p.vy,p.vx));ctx.fillStyle=p.type==='grenade'?'#4e796a':p.type==='dynamite'?'#db6260':p.type==='airstrike'?'#fff0a5':'#fbdf89';ctx.beginPath();ctx.ellipse(0,0,p.type==='dynamite'?10:12,5,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fcf5d7';ctx.fillRect(-6,-2,5,4);ctx.restore()}
 function drawAim(){if(!state.running||state.team!==0||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,v=aimVector();ctx.save();ctx.strokeStyle='#fff8d9';ctx.lineWidth=3;ctx.setLineDash([8,8]);ctx.beginPath();ctx.moveTo(w.x+v.x*27,w.y-8+v.y*27);ctx.lineTo(w.x+v.x*125,w.y-8+v.y*125);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#fff9dd';ctx.beginPath();ctx.arc(w.x+v.x*125,w.y-8+v.y*125,6,0,Math.PI*2);ctx.fill();if(state.selected==='airstrike'&&state.airTarget!=null){ctx.strokeStyle='#ffefaa';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(state.airTarget,120);ctx.lineTo(state.airTarget,groundY(state.terrain,state.airTarget)-30);ctx.stroke();ctx.beginPath();ctx.arc(state.airTarget,groundY(state.terrain,state.airTarget)-25,28,0,Math.PI*2);ctx.stroke()}ctx.restore()}
-function render(){if(!state.terrain)return;ctx.save();if(state.shake){ctx.translate((visualRand()-.5)*state.shake,(visualRand()-.5)*state.shake)}drawBackground();drawEnvironment(ctx,state,groundY);ctx.drawImage(state.terrainCanvas,0,0);if(state.waterLevel<WATER){ctx.fillStyle='#226fa9aa';ctx.fillRect(0,state.waterLevel,W,H-state.waterLevel);ctx.fillStyle='#b4f8fa';ctx.fillRect(0,state.waterLevel,W,4)}for(const p of state.projectiles)drawOrdnance(ctx,p);for(const w of state.worms)drawCharacter(ctx,w,{active:w===state.active&&state.running,weapon:state.selected,aim:state.aim,phase:state.phase,now:performance.now()});drawAim();for(const p of state.particles){ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;ctx.restore()}
+function render(){if(!state.terrain)return;const now=performance.now();frameDt=lastFrame?Math.min(.05,(now-lastFrame)/1000):.016;lastFrame=now;ctx.save();if(state.shake){ctx.translate((visualRand()-.5)*state.shake,(visualRand()-.5)*state.shake)}drawBackground(now);drawEnvironment(ctx,state,groundY);ctx.drawImage(state.terrainCanvas,0,0);for(const p of state.projectiles)drawOrdnance(ctx,p);for(const w of state.worms)drawCharacter(ctx,w,{active:w===state.active&&state.running,weapon:state.selected,aim:state.aim,phase:state.phase,now:performance.now()});drawAim();for(const p of state.particles){ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;drawWater(ctx,state,themes[state.map],W,H,now,true);ctx.restore()}
 let last=performance.now();function loop(now){const dt=Math.min((now-last)/1000,.04);last=now;update(dt);render();requestAnimationFrame(loop)}requestAnimationFrame(loop);
 function pointerCoords(ev){const r=canvas.getBoundingClientRect();return{x:(ev.clientX-r.left)/r.width*W,y:(ev.clientY-r.top)/r.height*H}}
 function aimAt(ev){if(!state.running||state.team!==0||state.phase!=='ready')return;const m=pointerCoords(ev),w=state.active,dx=m.x-w.x,dy=m.y-w.y+8;if(state.selected==='airstrike'){state.airTarget=m.x;return}state.dir=dx<0?-1:1;state.aim=aimAngle(dx,dy);w.face=state.dir}
