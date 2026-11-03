@@ -25,4 +25,4 @@ export async function serve(req,res){
   try { const data=await readFile(file); res.writeHead(200,{'content-type':types[extname(file)]||'application/octet-stream','cache-control':'no-store'}); res.end(data); }
   catch { res.writeHead(404); res.end('Not found'); }
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))createServer(serve).listen(4173,'192.168.1.253',()=>console.log('Crater Crew: http://192.168.1.253:4173'));
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))createServer(serve).listen(Number(process.env.PORT)||4173,process.env.HOST||'127.0.0.1',()=>console.log('Crater Crew local server ready'));
