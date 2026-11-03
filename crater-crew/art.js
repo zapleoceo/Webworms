@@ -1,4 +1,5 @@
 // Original canvas artwork for Crater Crew. The collision shape remains in engine.js.
+import {FONT} from './scenery.js';
 const TAU=Math.PI*2;
 const oval=(c,x,y,rx,ry,color,rotation=0)=>{c.fillStyle=color;c.beginPath();c.ellipse(x,y,rx,ry,rotation,0,TAU);c.fill()};
 function stroke(c,color,width,points){c.strokeStyle=color;c.lineWidth=width;c.lineCap='round';c.lineJoin='round';c.beginPath();c.moveTo(...points[0]);for(const p of points.slice(1))c.lineTo(...p);c.stroke()}
@@ -30,60 +31,87 @@ export function drawEnvironment(c,state,groundY){
  c.restore();
 }
 
+export const TEAM_COLORS=['#4aa8ff','#ff5d52'];
+const OUT='#5a1d38',SKIN='#f7a8bb',SKIN_SHADE='#e07c9a',BELLY='#ffdbe4',INK='#26181f';
+function rrect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.arc(x+w-r,y+r,r,-Math.PI/2,0);c.lineTo(x+w,y+h-r);c.arc(x+w-r,y+h-r,r,0,Math.PI/2);c.lineTo(x+r,y+h);c.arc(x+r,y+h-r,r,Math.PI/2,Math.PI);c.lineTo(x,y+r);c.arc(x+r,y+r,r,Math.PI,Math.PI*1.5);c.lineTo(x+r,y)}
+// Filled shape with a dark cartoon outline.
+function blob(c,x,y,rx,ry,fill,rot=0,line=1.8){oval(c,x,y,rx+line,ry+line,OUT,rot);oval(c,x,y,rx,ry,fill,rot)}
+function box(c,x,y,w,h,fill,r=2){rrect(c,x,y,w,h,r);c.fillStyle=fill;c.fill();c.strokeStyle=INK;c.lineWidth=1.6;c.lineJoin='round';c.stroke()}
+
 function heldWeapon(c,weapon,face,aim,phase){
  if(!weapon)return;
- c.save();
+ c.save();c.lineJoin='round';
  if(weapon==='jetpack'){
-  c.fillStyle='#35566b';c.fillRect(-face*24,-11,12,25);c.fillStyle='#93b9c5';c.fillRect(-face*24,-12,10,5);c.fillStyle='#233747';c.fillRect(-face*23,5,9,8);
-  if(phase==='jetpack'){c.fillStyle='#ffe28c';c.beginPath();c.moveTo(-face*20,13);c.lineTo(-face*27,32);c.lineTo(-face*13,13);c.fill()}
+  box(c,-face*25-(face>0?0:0),-12,13,27,'#5c7d96',5);box(c,-face*24,-13,11,7,'#9fc4d2',3);box(c,-face*23,6,9,9,'#2b4254',2);
+  if(phase==='jetpack'){c.fillStyle='#ffd45e';c.beginPath();c.moveTo(-face*21,15);c.lineTo(-face*28,36);c.lineTo(-face*14,15);c.fill();c.fillStyle='#ff7b2b';c.beginPath();c.moveTo(-face*21,15);c.lineTo(-face*25,28);c.lineTo(-face*17,15);c.fill()}
  }else if(weapon==='airstrike'){
-  c.fillStyle='#314e66';c.fillRect(face*9,-4,16,16);c.fillStyle='#9cd5d8';c.fillRect(face*12,-1,10,7);stroke(c,'#263b4b',2,[[face*19,-4],[face*22,-18]]);oval(c,face*22,-19,3,3,'#ffda83');
+  box(c,face>0?9:-25,-5,16,17,'#3d6a8e',3);box(c,face>0?12:-22,-1,10,7,'#a6e0e2',2);stroke(c,INK,2.4,[[face*19,-5],[face*22,-19]]);oval(c,face*22,-20,3.6,3.6,'#ffd75e');
  }else if(weapon==='grenade'){
-  oval(c,face*19,-5,8,9,'#496a49');stroke(c,'#bad0ac',2,[[face*15,-5],[face*23,-5]]);c.fillStyle='#d5d2af';c.fillRect(face*17,-16,5,4);
+  blob(c,face*19,-5,8,9.5,'#5b9a54',0,1.6);stroke(c,'#b7e0a6',1.6,[[face*15,-7],[face*23,-7]]);stroke(c,'#b7e0a6',1.6,[[face*15,-2],[face*23,-2]]);box(c,face>0?17:-22,-17,5,5,'#d5d2af',1);
  }else if(weapon==='dynamite'){
-  c.fillStyle='#c74445';c.fillRect(face*12,-14,13,22);c.fillStyle='#edd5b4';c.fillRect(face*13,-12,11,3);stroke(c,'#f9cd70',2,[[face*18,-14],[face*21,-20]]);
+  box(c,face>0?12:-25,-15,13,23,'#d24b49',3);box(c,face>0?13:-24,-12,11,4,'#f1dcb6',1);stroke(c,INK,2.4,[[face*18,-15],[face*21,-21]]);oval(c,face*21,-22,2.8,2.8,'#ffd75e');
  }else if(weapon==='punch'){
-  oval(c,face*21,1,11,9,'#efb377');stroke(c,'#a84e4a',3,[[face*13,-4],[face*18,-7],[face*23,-6]]);
+  blob(c,face*21,1,11,9,'#f7a8bb',0,1.8);stroke(c,OUT,1.6,[[face*17,-4],[face*17,6]]);stroke(c,OUT,1.6,[[face*22,-5],[face*22,6]]);
  }else{
   c.rotate(Math.atan2(Math.sin(aim),Math.cos(aim)*face));
   if(weapon==='bazooka'){
-   c.fillStyle='#466656';c.fillRect(1,-7,38,14);c.fillStyle='#283f3c';c.fillRect(2,-9,8,18);c.fillStyle='#d1ac76';c.fillRect(34,-9,9,18);c.fillStyle='#263a38';c.fillRect(12,7,11,8);
-   stroke(c,'#9eb994',2,[[12,-4],[31,-4]]);
+   box(c,1,-8,40,16,'#4f7a5a',6);box(c,0,-10,9,20,'#2f4a40',3);box(c,34,-10,10,20,'#e0b26a',3);box(c,12,7,11,9,'#2b3f3c',2);stroke(c,'#a9d3a0',2,[[13,-4],[31,-4]]);
   }else{
-   c.fillStyle='#4e5b62';c.fillRect(4,-5,38,10);c.fillStyle='#c39b71';c.fillRect(5,4,22,6);c.fillStyle='#293b48';c.fillRect(12,9,9,7);c.fillStyle='#d8c6a0';c.fillRect(37,-6,8,12);
+   box(c,4,-6,40,11,'#5d6b72',3);box(c,5,3,23,8,'#c9945a',3);box(c,12,9,9,8,'#2b3f4c',2);box(c,38,-7,8,13,'#d9c78f',2);
   }
  }
  c.restore();
 }
-
-export function drawCharacter(c,w,{active=false,weapon=null,aim=0,phase='ready',now=0}={}){
- if(!w.alive)return;
- const f=w.face||1,walking=w.grounded&&Math.abs(w.vx)>24,swing=walking?Math.sin(now*.017+w.id)*2:0;
- const squash=w.grounded?1:1.08,teamColor=w.team?'#c95659':'#4ab6ae';
- c.save();c.translate(w.x,w.y);c.scale(.82,.82);
- if(w.flash>0&&Math.sin(w.flash*30)>0)c.globalAlpha=.6;
- if(active){c.setLineDash([5,5]);c.strokeStyle='#ffe5a0';c.lineWidth=2.5;c.beginPath();c.ellipse(0,1,26,29,0,0,TAU);c.stroke();c.setLineDash([])}
- oval(c,0,18,20,5,'#18344555');
- // Coiled tail and a tapered, arched silhouette rather than an oval mascot.
- c.fillStyle='#a34e60';c.beginPath();c.moveTo(-f*9,5);c.bezierCurveTo(-f*25,6,-f*28,17,-f*21,18);c.bezierCurveTo(-f*13,18,-f*9,12,-f*3,12);c.fill();
- c.fillStyle='#cb7280';c.beginPath();c.moveTo(-f*17,13);c.bezierCurveTo(-f*18,3,-f*12,-4,-f*10,-15);c.bezierCurveTo(-f*6,-31,f*9,-31,f*15,-15);c.bezierCurveTo(f*19,-4,f*17,9,f*8,15);c.bezierCurveTo(f*1,20,-f*9,19,-f*17,13);c.fill();
- c.fillStyle='#ef9ba1';c.beginPath();c.moveTo(-f*10,12);c.bezierCurveTo(-f*12,-1,-f*9,-21,0,-25);c.bezierCurveTo(f*12,-28,f*16,-12,f*14,4);c.bezierCurveTo(f*13,15,-f*2,18,-f*10,12);c.fill();
- oval(c,f*4,6,9,7,'#f4b1ac',-.25*f);
- stroke(c,'#d97982',1.6,[[-f*8,6],[-f*4,10],[0,11]]);
- // Two separate eyes, expressive lids, long nose and an actual smile.
- oval(c,f*3,-14,5,7,'#fff7e8');oval(c,f*11,-13,5.5,7.5,'#fff7e8');
- oval(c,f*5,-13,1.8,2.4,'#233449');oval(c,f*13,-12,1.8,2.4,'#233449');
- stroke(c,'#9b4c5a',1.5,[[f*1,-23],[f*6,-23]]);stroke(c,'#9b4c5a',1.5,[[f*9,-22],[f*14,-22]]);
- oval(c,f*19,-4,5.5,4,'#f2a9a0');oval(c,f*21,-5,1.4,1.2,'#d57678');
- c.strokeStyle='#9a4a57';c.lineWidth=1.6;c.beginPath();c.arc(f*10,3,4,f>0?.15:Math.PI+.15,f>0?2.5:Math.PI*2-.15);c.stroke();
- // Team colours belong to equipment; both crews are the same species.
- c.fillStyle=teamColor;c.beginPath();c.moveTo(-12,-25);c.lineTo(9,-29);c.lineTo(15,-23);c.lineTo(-13,-21);c.fill();
- c.fillStyle='#f8d289';c.fillRect(-5,-26,7,2);
- oval(c,-f*6,15+swing,7,3,'#a95861');oval(c,f*8,15-swing,7,3,'#a95861');
- if(active){heldWeapon(c,weapon,f,aim,phase);oval(c,f*10,3,4.2,4,'#e8898b')}
+function grave(c,x,y,team){
+ c.save();c.translate(x,y);oval(c,0,1,15,4.5,'#6b4a35');
+ c.lineJoin='round';c.beginPath();c.moveTo(-9,0);c.lineTo(-9,-17);c.arc(0,-17,9,Math.PI,0);c.lineTo(9,0);c.lineTo(-9,0);c.fillStyle='#b9bfc7';c.fill();c.strokeStyle=INK;c.lineWidth=2;c.stroke();
+ stroke(c,'#7c838d',2,[[0,-24],[0,-10]]);stroke(c,'#7c838d',2,[[-4,-19],[4,-19]]);
+ stroke(c,TEAM_COLORS[team?1:0],3,[[-9,-3],[9,-3]]);
  c.restore();
- c.save();c.textAlign='center';c.font='bold 10px Trebuchet MS';c.lineWidth=2.5;c.strokeStyle='#223747';c.fillStyle='#fff9e9';c.strokeText(w.name.toUpperCase(),w.x,w.y-33);c.fillText(w.name.toUpperCase(),w.x,w.y-33);
- c.fillStyle='#203a46';c.fillRect(w.x-17,w.y-29,34,4);c.fillStyle=teamColor;c.fillRect(w.x-17,w.y-29,34*w.hp/100,4);c.restore();
+}
+
+export function drawCharacter(c,w,{active=false,weapon=null,aim=0,phase='ready',now=0,graveY=null}={}){
+ const team=TEAM_COLORS[w.team?1:0];
+ if(!w.alive){if(graveY!=null)grave(c,w.x,graveY,w.team);return}
+ const f=w.face||1,walking=w.grounded&&Math.abs(w.vx)>24,swing=walking?Math.sin(now*.017+w.id)*2:0;
+ const br=Math.sin(now*.004+w.id*1.3),bounce=walking?Math.abs(Math.sin(now*.017+w.id))*1.6:0,hurt=w.flash>0;
+ c.save();c.translate(w.x,w.y-bounce*.8);c.scale(.82,.82);
+ if(hurt&&Math.sin(w.flash*30)>0)c.globalAlpha=.65;
+ oval(c,0,20+bounce,19,4.5,'#10284466');
+ // Curled tail, then four chubby segments stacked toward the head, lighter belly on the facing side.
+ blob(c,-f*12,15,6.5,4.2,SKIN_SHADE,-.4*f);
+ const hy=-13+br*.7-bounce*.4,hx=f*2.5;
+ const seg=[[-f*1,12,10.2],[0,3.5,10.8],[f*1,-4.5,11.2]];
+ for(const [x,y,r] of seg)oval(c,x,y,r+1.9,r+1.9,OUT);
+ oval(c,hx,hy,12.4+br*.25,12.8,OUT);
+ for(const [x,y,r] of seg)oval(c,x,y,r,r,SKIN);
+ oval(c,hx,hy,10.6+br*.25,11,SKIN);
+ for(const [x,y,r] of seg)oval(c,x+f*3.2,y+2.2,r*.6,r*.55,BELLY);
+ stroke(c,SKIN_SHADE,1.6,[[-f*8,7.8],[0,10],[f*9,7.8]]);stroke(c,SKIN_SHADE,1.6,[[-f*9,-.3],[0,2],[f*10,-.3]]);stroke(c,SKIN_SHADE,1.6,[[-f*8,-8],[0,-6.4],[f*9,-8]]);
+ oval(c,hx-f*5,hy-2,5.5,7,SKIN_SHADE,.3*f);oval(c,hx-f*3,hy-4,3,4,SKIN);
+ // Team sweatband with a knot at the back.
+ stroke(c,OUT,6,[[hx-f*10,hy-5],[hx,hy-9],[hx+f*10,hy-6]]);stroke(c,team,3.4,[[hx-f*10,hy-5],[hx,hy-9],[hx+f*10,hy-6]]);
+ blob(c,hx-f*12,hy-3,3.6,2.2,team,-.6*f,1.2);blob(c,hx-f*13,hy+1,3.2,2,team,.7*f,1.2);
+ // Big white eyes, pupils follow the aim, periodic blink.
+ const vx=active?Math.cos(aim)*f:f*.8,vy=active?Math.sin(aim):.12,blink=((now+w.id*911)%3600)<140;
+ for(const ex of [hx+f*.5,hx+f*8]){
+  if(blink){stroke(c,INK,2,[[ex-4,hy+1],[ex+4,hy+1]]);continue}
+  blob(c,ex,hy+.5,4.8,6.2,'#ffffff',0,1.2);oval(c,ex+vx*1.9,hy+.8+vy*2.4,2.5,2.9,INK);oval(c,ex+vx*1.9-.7,hy-.3+vy*2.4,.9,.9,'#ffffff');
+  stroke(c,OUT,1.7,hurt||w.hp<35?[[ex-4,hy-9],[ex+4,hy-7]]:[[ex-4,hy-8],[ex+4,hy-8.8]]);
+ }
+ if(hurt)oval(c,hx+f*5,hy+9,2.6,3,OUT);else stroke(c,OUT,1.8,[[hx+f*2,hy+8.5],[hx+f*5,hy+10.2],[hx+f*9,hy+8.2]]);
+ oval(c,hx-f*1,hy+6,2.4,1.6,'#ff8fa6aa');
+ // Little feet.
+ blob(c,-f*6,19+swing*.4,5.5,3,SKIN_SHADE,0,1.4);blob(c,f*7,19-swing*.4,5.5,3,SKIN_SHADE,0,1.4);
+ if(active){heldWeapon(c,weapon,f,aim,phase);blob(c,f*10,3,4.4,4.2,SKIN,0,1.4)}
+ c.restore();
+ // Name and HP in team colour with a dark outline, bold rounded face.
+ c.save();c.textAlign='center';c.lineJoin='round';c.font='bold 12px '+FONT;c.lineWidth=3.6;c.strokeStyle=INK;c.fillStyle=team;
+ const nm=w.name.toUpperCase();c.strokeText(nm,w.x,w.y-46);c.fillText(nm,w.x,w.y-46);
+ rrect(c,w.x-14,w.y-41,28,13,5);c.fillStyle=team;c.fill();c.lineWidth=2;c.strokeStyle=INK;c.stroke();
+ c.font='bold 11px '+FONT;c.fillStyle='#fff';c.lineWidth=2;c.strokeStyle='#00000066';c.strokeText(String(Math.max(0,Math.ceil(w.hp))),w.x,w.y-31);c.fillText(String(Math.max(0,Math.ceil(w.hp))),w.x,w.y-31);
+ if(active){const by=w.y-64+Math.sin(now*.008)*3;c.beginPath();c.moveTo(w.x-8,by-9);c.lineTo(w.x+8,by-9);c.lineTo(w.x,by+3);c.lineTo(w.x-8,by-9);c.fillStyle=team;c.fill();c.lineWidth=2.4;c.strokeStyle=INK;c.stroke()}
+ c.restore();
 }
 
 export function drawOrdnance(c,p){
