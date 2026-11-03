@@ -8,3 +8,14 @@ test('soil bake is deterministic per seed and embeds features',()=>{
  assert.ok(a.over.some(v=>v!==0));assert.equal(a.shade.length,320*200);assert.ok(a.shade.some(v=>v>0));
  assert.deepEqual(hexRgb('#102030'),[16,32,48]);
 });
+import {paintTerrain,grassDepths} from './terrain-art.js';
+test('dirty-rect repaint matches a full rebuild byte for byte',()=>{
+ const W=240,H=160,th={dirt:'#8a5a3c',dark:'#573629',grass:['#9be84a','#3f9d2c'],outline:'#2b1a1c'};
+ const soil=bakeSoil(0,9,W,H,pal),m=new Uint8Array(W*H),grass=grassDepths(W);
+ for(let x=0;x<W;x++)for(let y=60+Math.round(8*Math.sin(x*.05));y<H;y++)m[y*W+x]=1;
+ const inc=new Uint8ClampedArray(W*H*4),run=new Uint16Array(W);paintTerrain(inc,run,grass,m,soil,th,W,H);
+ const cx=120,cy=70,r=25;for(let y=0;y<H;y++)for(let x=0;x<W;x++)if((x-cx)**2+(y-cy)**2<=r*r)m[y*W+x]=0;
+ paintTerrain(inc,run,grass,m,soil,th,W,H,{x0:cx-r-6,x1:cx+r+6,y0:cy-r-6});
+ const full=new Uint8ClampedArray(W*H*4);paintTerrain(full,new Uint16Array(W),grass,m,soil,th,W,H);
+ assert.deepEqual(inc,full);
+});

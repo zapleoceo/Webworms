@@ -1,6 +1,10 @@
 # Crater Crew
 
-An original browser artillery game. In this folder run `node server.mjs`, then visit `http://192.168.1.253:4173/` on the existing local network.
+An original browser artillery game. 
+
+## Play locally
+
+Run `npm start` in this folder and open the printed address. The server listens on loopback by default; set `HOST` explicitly only for an approved LAN deployment.
 
 The game uses original Canvas art and procedural WebAudio music and effects. Game audio starts only after you press LET'S BATTLE. The music-note button opens separate music and effects switches and volume sliders; the computer's system mute setting is untouched. The game does not contain the copyrighted sprites, voices, music or maps from Worms Armageddon.
 

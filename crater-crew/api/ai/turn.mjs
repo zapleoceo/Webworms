@@ -38,7 +38,7 @@ export default {async fetch(request){
    const payload={model:model(),messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify({turn_id:body.turnId,snapshot:body.snapshot,candidates:body.candidates})}],response_format:{type:'json_schema',json_schema:{name:'artillery_turn',strict:true,schema:{type:'object',properties:{turn_id:{type:'string'},candidate_id:{type:'string'}},required:['turn_id','candidate_id'],additionalProperties:false}}},workflow:'webworms-turn'};
    // Broker's project-scoped unique key replays the same job even after completion.
    // A changed payload for the same turn gets 409 instead of a second subscription run.
-   const idempotencyKey='ww_'+sign(body.turnId);
+   const idempotencyKey='ww_'+sign('idem:'+body.turnId);
    const result=await broker('/v1/jobs?capability=chat:fast',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify(payload)});
    if(!Number.isInteger(result.job_id)||result.job_id<1)throw Error('invalid broker response');
    const ids=body.candidates.map(c=>c.id);

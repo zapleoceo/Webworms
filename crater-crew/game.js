@@ -1,5 +1,5 @@
 import {drawEnvironment,drawCharacter,drawOrdnance} from './art.js';
-import {bakeSoil,hexRgb} from './terrain-art.js';
+import {bakeSoil,paintTerrain,grassDepths} from './terrain-art.js';
 import {themes} from './themes.js';
 import {drawHud} from './hud.js';
 import {weaponIcon} from './icons.js';
@@ -35,23 +35,14 @@ function weaponSound(id){
  else if(id==='jetpack'){noise(.55,.07,2400);tone(280,.4,'sawtooth',.025,470)}
 }
 function say(text,time=2){state.message=text;state.messageTimer=time;$('message').textContent=text}
-function buildTerrain(){
+function buildTerrain(rect=null){
  const t=state.terrain,th=themes[state.map],key=state.seed+':'+state.map;
  if(!state.soil||state.soil.key!==key)state.soil={key,...bakeSoil(state.map,state.seed,W,H,th)};
- if(!state.terrainBuf){const off=document.createElement('canvas');off.width=W;off.height=H;const c=off.getContext('2d');state.terrainBuf={off,c,im:c.createImageData(W,H),run:new Uint16Array(W),grass:new Uint8Array(W)};for(let x=0;x<W;x++)state.terrainBuf.grass[x]=Math.round(8+3*Math.sin(x*.31)+2*Math.sin(x*.9))}
- const {off,c,im,run,grass}=state.terrainBuf,p=im.data,m=t.mask,shade=state.soil.shade,over=state.soil.over,o8=new Uint8Array(over.buffer);
- const a=hexRgb(th.dirt),dark=hexRgb(th.dark),g0=hexRgb(th.grass[0]),g1=hexRgb(th.grass[1]),ol=hexRgb(th.outline);run.fill(0);
- for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-  const i=y*W+x,k=i*4;
-  if(!m[i]){run[x]=0;p[k+3]=0;continue}
-  const dep=run[x]++;let r,g,b;
-  if((x>2&&!m[i-3])||(x<W-3&&!m[i+3])||(y>2&&!m[i-3*W])||(y<H-3&&!m[i+3*W])){r=ol[0];g=ol[1];b=ol[2]}
-  else if(dep<grass[x]){const f=dep/grass[x],q=f*f,hl=dep<3?1.12:1;r=(g0[0]+(g1[0]-g0[0])*q)*hl;g=(g0[1]+(g1[1]-g0[1])*q)*hl;b=(g0[2]+(g1[2]-g0[2])*q)*hl}
-  else if(over[i]){r=o8[i*4];g=o8[i*4+1];b=o8[i*4+2]}
-  else{const d=Math.min(1,Math.max(0,(dep-30)/230)),s=shade[i]/128,cs=dep<grass[x]+5?.8:1;r=(a[0]+(dark[0]-a[0])*d)*s*cs;g=(a[1]+(dark[1]-a[1])*d)*s*cs;b=(a[2]+(dark[2]-a[2])*d)*s*cs}
-  p[k]=r;p[k+1]=g;p[k+2]=b;p[k+3]=255;
- }
- c.putImageData(im,0,0);state.terrainCanvas=off;
+ if(!state.terrainBuf){const off=document.createElement('canvas');off.width=W;off.height=H;const c=off.getContext('2d');state.terrainBuf={off,c,im:c.createImageData(W,H),run:new Uint16Array(W),grass:grassDepths(W)}}
+ const {off,c,im,run,grass}=state.terrainBuf;
+ paintTerrain(im.data,run,grass,t.mask,state.soil,th,W,H,rect);
+ if(rect){const x=Math.max(0,rect.x0),y=Math.max(0,rect.y0);c.putImageData(im,0,0,x,y,Math.min(W-1,rect.x1)-x+1,H-y)}else c.putImageData(im,0,0);
+ state.terrainCanvas=off;
 }
 function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePending=false){
  if(!preservePending)clearPendingTurn();state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];state.brokerSequence=0;$('broker-panel').hidden=true;
@@ -77,7 +68,7 @@ function cycle(){if(!state.running||state.team!==0||state.used||state.shotgunLef
 function endTurn(){if(!state.running||state.team!==0||state.phase==='resolving')return;state.used=true;state.phase='resolving';state.resolveTimer=.5;state.charging=false;say('TURN PASSED',.8)}
 function emit(x,y,color,count=18,speed=180){for(let i=0;i<count;i++){const a=visualRand()*Math.PI*2,v=speed*(.25+visualRand()*.9);state.particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-50,life:.35+visualRand()*.6,max:1,r:1.5+visualRand()*5,color});}}
 function addBlast(x,y,r){state.blasts.push(makeBlast(x,y,r,visualRand));const th=themes[state.map];emit(x,y,th.dirt,26,330);emit(x,y,th.light,16,260);emit(x,y,th.dark,12,200)}
-function explosion(x,y,r,damage,source){state.shake=Math.max(state.shake,13);addBlast(x,y,r);tone(95,.36,'sawtooth',.13,38);noise(.34,.11,750);emit(x,y,'#ffdd82',42,310);emit(x,y,'#634957',22,230);carve(state.terrain,x,y,r*.78);buildTerrain();
+function explosion(x,y,r,damage,source){state.shake=Math.max(state.shake,13);addBlast(x,y,r);tone(95,.36,'sawtooth',.13,38);noise(.34,.11,750);emit(x,y,'#ffdd82',42,310);emit(x,y,'#634957',22,230);carve(state.terrain,x,y,r*.78);buildTerrain({x0:Math.floor(x-r-6),x1:Math.ceil(x+r+6),y0:Math.floor(y-r-6)});
  for(const w of state.worms){if(!w.alive)continue;const d=Math.hypot(w.x-x,w.y-y);const hurt=blastDamage(d,r,damage);if(hurt){w.hp=Math.max(0,w.hp-hurt);w.flash=.7;wormCry();const push=(1-d/r)*400;w.vx+=(w.x-x)/(d||1)*push;w.vy-=Math.max(130,push*.7);w.grounded=false;emit(w.x,w.y,w.team?'#ff9980':'#8ef9e4',8,110);if(!w.hp)kill(w);}}
  updateUI();if(state.phase==='retreat')state.phase='resolving';if(state.phase==='resolving')state.resolveTimer=Math.max(state.resolveTimer,1.3);
 }
@@ -290,7 +281,7 @@ function restorePendingBrokerTurn(record){
   const {terrain,worms,activeId,top,maskRuns,...values}=record.game;
   Object.assign(state,values);state.terrain=terrain;state.worms=worms;state.active=worms[activeId];
   state.worms.forEach(w=>w.active=w===state.active);state.team=1;state.aiDriver='broker';state.running=true;state.ended=false;
-  state.projectiles=[];state.particles=[];state.brokerController=null;state.brokerRequest=record.request;
+  state.projectiles=[];state.particles=[];state.blasts=[];state.brokerController=null;state.brokerRequest=record.request;
   state.brokerTurnId=record.request.turnId;state.brokerTicket=record.ticket;state.brokerSavedAt=record.savedAt;
   state.brokerOptions=brokerTurnOptions(state);
   const offered=state.brokerOptions.map(({id,description})=>({id,description}));

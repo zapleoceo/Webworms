@@ -32,3 +32,23 @@ export function bakeSoil(map,seed,W,H,pal){
  if(pal.spark)for(let i=0;i<Math.round(380*area);i++){const [x,y]=place();disc(over,W,H,x,y,1.4+r()*1.4,1.4,0,pack(pal.spark[i%pal.spark.length]))}
  return {shade,over};
 }
+
+export const grassDepths=W=>{const g=new Uint8Array(W);for(let x=0;x<W;x++)g[x]=Math.round(8+3*Math.sin(x*.31)+2*Math.sin(x*.9));return g};
+// Paints solid terrain pixels into `p` (RGBA). `rect` {x0,x1,y0} limits work to columns x0..x1 from row y0 to the bottom:
+// depth-based shading means everything below a carved crater can change, so the area extends to the bottom edge.
+export function paintTerrain(p,run,grass,m,soil,th,W,H,rect=null){
+ const shade=soil.shade,over=soil.over,o8=new Uint8Array(over.buffer);
+ const a=hexRgb(th.dirt),dark=hexRgb(th.dark),g0=hexRgb(th.grass[0]),g1=hexRgb(th.grass[1]),ol=hexRgb(th.outline);
+ const x0=rect?Math.max(0,rect.x0):0,x1=rect?Math.min(W-1,rect.x1):W-1,y0=rect?Math.max(0,rect.y0):0;
+ for(let x=x0;x<=x1;x++){let n=0;for(let y=y0-1;y>=0&&m[y*W+x];y--)n++;run[x]=n}
+ for(let y=y0;y<H;y++)for(let x=x0;x<=x1;x++){
+  const i=y*W+x,k=i*4;
+  if(!m[i]){run[x]=0;p[k]=p[k+1]=p[k+2]=p[k+3]=0;continue}
+  const dep=run[x]++;let r,g,b;
+  if((x>2&&!m[i-3])||(x<W-3&&!m[i+3])||(y>2&&!m[i-3*W])||(y<H-3&&!m[i+3*W])){r=ol[0];g=ol[1];b=ol[2]}
+  else if(dep<grass[x]){const f=dep/grass[x],q=f*f,hl=dep<3?1.12:1;r=(g0[0]+(g1[0]-g0[0])*q)*hl;g=(g0[1]+(g1[1]-g0[1])*q)*hl;b=(g0[2]+(g1[2]-g0[2])*q)*hl}
+  else if(over[i]){r=o8[i*4];g=o8[i*4+1];b=o8[i*4+2]}
+  else{const d=Math.min(1,Math.max(0,(dep-30)/230)),s=shade[i]/128,cs=dep<grass[x]+5?.8:1;r=(a[0]+(dark[0]-a[0])*d)*s*cs;g=(a[1]+(dark[1]-a[1])*d)*s*cs;b=(a[2]+(dark[2]-a[2])*d)*s*cs}
+  p[k]=r;p[k+1]=g;p[k+2]=b;p[k+3]=255;
+ }
+}
