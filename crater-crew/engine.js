@@ -117,7 +117,7 @@ function fixedStep(t,b,dt,{wind=0,body=BODIES.grenadeHigh}={}){
   if(b.resting){if(overlaps(t,b.x,b.y+2,b.r))return 0;b.resting=false;b.restTime=0}
   b.contact=false;
   // Forces apply per substep, so a 60 fps frame, a 25 fps frame and the AI forecast agree.
-  const n=Math.max(1,Math.ceil((Math.hypot(b.vx,b.vy)+GRAVITY*dt)*dt/3)),h=dt/n;
+  const n=Math.max(1,Math.ceil((Math.hypot(b.vx,b.vy)+GRAVITY*dt)*dt/1.5)),h=dt/n;
   for(let i=0;i<n;i++){
     b.vx+=wind*h;b.vy+=GRAVITY*h;
     let nx=b.x+b.vx*h,ny=b.y+b.vy*h;
@@ -144,17 +144,21 @@ function fixedStep(t,b,dt,{wind=0,body=BODIES.grenadeHigh}={}){
 }
 
 // ---- Worm locomotion: pixel crawl like the original, climbing small steps and hugging slopes. ----
-export const CLIMB=9,WALK_SPEED=95;
+// Single bumps up to CLIMB px are stepped over, but sustained climbing steeper than CLIMB_RATE px
+// per pixel walked (about 68 degrees) drains CLIMB_BUDGET and stops the worm: cliffs need a jump.
+export const CLIMB=9,CLIMB_RATE=2.5,CLIMB_BUDGET=12,WALK_SPEED=95;
 export function wormFits(t,x,y){return !solid(t,x,y+R-1)&&!solid(t,x-7,y+R-4)&&!solid(t,x+7,y+R-4)&&!solid(t,x,y-R)&&!solid(t,x-9,y-2)&&!solid(t,x+9,y-2)}
-export function wormGrounded(t,x,y){return solid(t,x,y+R)||solid(t,x-6,y+R)||solid(t,x+6,y+R)}
+// Support is the rounded underside of wormFits pushed one pixel down, so 'cannot sink' means 'grounded'.
+export function wormGrounded(t,x,y){return solid(t,x,y+R)||solid(t,x-7,y+R-3)||solid(t,x+7,y+R-3)}
 // Moves a grounded worm up to `distance` pixels; returns 'walked', 'blocked' or 'fell'.
 export function crawl(t,w,dir,distance){
   let left=distance,status='walked';
   while(left>0){
     const step=Math.min(1,left),x=clamp(w.x+dir*step,R,W-R);if(x===w.x){status='blocked';break}
     let y=null;
-    for(let up=0;up<=CLIMB;up++)if(wormFits(t,x,w.y-up)){y=w.y-up;break}
-    if(y===null){status='blocked';break}
+    let up=0;while(up<=CLIMB&&!wormFits(t,x,w.y-up))up++;
+    if(up>CLIMB||(w.climbDebt||0)+up>CLIMB_BUDGET){status='blocked';break}
+    y=w.y-up;w.climbDebt=Math.max(0,(w.climbDebt||0)+up-CLIMB_RATE*step);
     let drop=0;while(drop<CLIMB&&!wormGrounded(t,x,y)&&wormFits(t,x,y+1)){y++;drop++}
     w.x=x;w.y=y;left-=step;w.crawl=(w.crawl||0)+step;
     if(!wormGrounded(t,x,y)){status='fell';break}

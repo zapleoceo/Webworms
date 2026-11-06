@@ -180,9 +180,16 @@ function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);cons
 }
 // Landing: hard hits bounce once and skid like the original ragdoll; long falls hurt.
 function land(w,jet){
- const impact=w.vy;
+ const t=state.terrain;
+ // Caught only by a side probe on a corner: shove off it and keep falling instead of hanging.
+ // Balanced on a corner over a drop: roll off it. A worm wedged in a crevice (no free side, or many shoves) settles.
+ let gap=0;while(gap<8&&!solid(t,w.x,w.y+R+gap))gap++;
+ if(gap>=8){const away=solid(t,w.x-7,w.y+R-3)||solid(t,w.x-9,w.y-1)?1:-1,nx=clamp(w.x+away*2,R,W-R);if(wormFits(t,nx,w.y)&&(w.shoves=(w.shoves||0)+1)<40){w.x=nx;w.vx=away*Math.max(40,Math.abs(w.vx)*.5);w.vy=Math.min(w.vy,40);return}}
+ w.shoves=0;w.climbDebt=0;const impact=w.vy;
  if(!jet&&impact>560&&state.running){const hurt=Math.min(30,Math.round((impact-560)/8));w.hp=Math.max(0,w.hp-hurt);w.flash=.6;voice(w,'hurt');emit(w.x,w.y+R,themes[state.map].dirt,10,120);if(!w.hp)kill(w);updateUI()}
  if(!jet&&impact>300){w.vy=-impact*.25;w.vx*=.6;return}
+ // Settle on a whole pixel touching the ground, so the grounded test agrees next frame.
+ w.y=Math.floor(w.y);for(let k=0;k<3&&!wormGrounded(t,w.x,w.y)&&wormFits(t,w.x,w.y+1);k++)w.y++;
  w.vy=0;w.grounded=true;w.sliding=!jet&&Math.abs(w.vx)>60;if(!w.sliding)w.vx=0;
 }
 function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dynamite'&&Math.ceil(oldFuse)>Math.ceil(p.fuse)&&p.fuse>0)tone(920,.07,'square',.035,650);p.trail.push({x:p.x,y:p.y});if(p.trail.length>12)p.trail.shift();if(p.type==='grenade'||p.type==='dynamite'){const body=p.type==='dynamite'?BODIES.dynamite:(p.bounceFactor??.55)<.4?BODIES.grenadeLow:BODIES.grenadeHigh,hit=stepBody(state.terrain,p,dt,{body}).impact;if(hit>70){p.bounces++;if(p.type==='grenade')tone(650,.055,'triangle',clamp(hit/900,.008,.028),340);else tone(240,.05,'square',.018,160)}if(p.y>state.waterLevel){p.dead=true;emit(p.x,state.waterLevel,'#d6f5ff',15,110);tone(440,.12,'sine',.04);return}}
@@ -267,7 +274,7 @@ function drawAim(){if(!state.running||state.team!==0||state.phase!=='ready'||!st
 function render(){if(!state.terrain)return;const now=performance.now();frameDt=lastFrame?Math.min(.05,(now-lastFrame)/1000):.016;lastFrame=now;ctx.save();if(state.shake){ctx.translate((visualRand()-.5)*state.shake,(visualRand()-.5)*state.shake)}drawBackground(now);drawEnvironment(ctx,state,groundY);ctx.drawImage(state.terrainCanvas,0,0);for(const p of state.projectiles)drawOrdnance(ctx,p);for(const w of state.worms)drawCharacter(ctx,w,{active:w===state.active&&state.running,weapon:state.selected,aim:state.aim,phase:state.phase,now,graveY:w.alive?null:graveY(w)});for(const b of state.blasts)drawBlast(ctx,b);drawAim();for(const p of state.particles){ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();if(p.r>3.4){ctx.lineWidth=1.5;ctx.strokeStyle='#2b1a1c';ctx.stroke()}}ctx.globalAlpha=1;drawWater(ctx,state,themes[state.map],W,H,now,true);ctx.restore();drawHud(ctx,state,W,H,now)}
 let last=performance.now();function loop(now){const dt=Math.min((now-last)/1000,.04);last=now;update(dt);render();requestAnimationFrame(loop)}requestAnimationFrame(loop);
 function pointerCoords(ev){const r=canvas.getBoundingClientRect();return{x:(ev.clientX-r.left)/r.width*W,y:(ev.clientY-r.top)/r.height*H}}
-function aimAt(ev){if(!state.running||state.team!==0||state.phase!=='ready')return;const m=pointerCoords(ev),w=state.active,dx=m.x-w.x,dy=m.y-w.y+8;if(state.selected==='airstrike'){if(ev.type==='pointerdown'){state.airTarget=m.x;state.airHover=null}else if(state.airTarget==null)state.airHover=m.x;return}state.dir=dx<0?-1:1;state.aim=aimAngle(dx,dy);w.face=state.dir}
+function aimAt(ev){if(!state.running||state.team!==0||state.phase!=='ready')return;const m=pointerCoords(ev),w=state.active,dx=m.x-w.x,dy=m.y-w.y+8;if(state.selected==='airstrike'){if(ev.type==='pointerdown'&&(ev.button===0||ev.pointerType!=='mouse')){state.airTarget=m.x;state.airHover=null}else if(state.airTarget==null)state.airHover=m.x;return}state.dir=dx<0?-1:1;state.aim=aimAngle(dx,dy);w.face=state.dir}
 function chargeStart(){if(!state.running||state.team!==0||state.phase!=='ready'||state.charging)return;if(['punch','dynamite','airstrike','jetpack','shotgun'].includes(state.selected)){fire();return}state.charging=true;state.chargeDir=1;state.power=.22;tone(480,.08,'sine',.03,650)}
 function chargeEnd(){if(state.charging)fire()}
 const weaponBox=$('weapons');WEAPONS.forEach((id,i)=>{const b=document.createElement('button');b.className='weapon';b.dataset.weapon=id;b.title=`${data[id].name} - ${data[id].short}`;b.innerHTML=`<span class="glyph">${weaponIcon(id)||data[id].icon}</span><span class="name">${data[id].name}</span><span class="key">${i+1}</span>`;b.addEventListener('click',()=>{if(state.team!==0||state.phase!=='ready'||state.shotgunLeft)return;state.selected=id;state.playerWeapon=id;state.airTarget=null;state.airHover=null;updateUI();tone(530,.06,'sine',.03)});weaponBox.appendChild(b)});
@@ -275,13 +282,14 @@ for(const button of document.querySelectorAll('[data-fuse]'))button.addEventList
 $('bounce-toggle').addEventListener('click',toggleGrenadeBounce);
 $('strike-direction').addEventListener('click',toggleStrikeDirection);
 $('drop-dynamite').addEventListener('click',dropDynamite);
-canvas.addEventListener('pointermove',aimAt);canvas.addEventListener('pointerdown',e=>{aimAt(e);if(e.pointerType==='mouse'&&e.button===0)chargeStart()});window.addEventListener('pointerup',chargeEnd);
+canvas.addEventListener('pointermove',aimAt);canvas.addEventListener('pointerdown',e=>{document.activeElement?.blur?.();aimAt(e);if(e.pointerType==='mouse'&&e.button===0)chargeStart()});window.addEventListener('pointerup',chargeEnd);
 $('fire').addEventListener('pointerdown',e=>{e.preventDefault();chargeStart()});$('fire').addEventListener('pointerup',e=>{e.preventDefault();chargeEnd();$('fire').blur?.()});$('fire').addEventListener('focus',()=>{const y=window.scrollY;requestAnimationFrame?.(()=>window.scrollTo?.(0,y))});$('fire').addEventListener('pointerleave',chargeEnd);
+document.addEventListener?.('click',e=>{const b=e.target?.closest?.('button');if(b&&!b.closest('.modal')&&e.detail>0)b.blur()});
 $('end-turn').onclick=endTurn;$('touch-switch').onclick=cycle;
 for(const b of document.querySelectorAll('[data-hold]')){const k=b.dataset.hold;b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);state.keys[k]=true});for(const event of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(event,()=>state.keys[k]=false)}
 window.addEventListener('keydown',e=>{
  // Menus, dialogs and form fields keep their own keys; the battlefield takes them only in play.
- const el=e.target,field=el?.closest?.('input,select,textarea,[contenteditable="true"]'),modal=document.querySelector?.('.modal.open');
+ const el=e.target,field=el?.closest?.('input:not([type=checkbox]):not([type=range]),select,textarea,[contenteditable="true"]'),modal=document.querySelector?.('.modal.open');
  if(!state.running||modal||field||(e.code==='Enter'&&el?.closest?.('button')))return;
  if(['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','PageDown','PageUp','Tab','Backspace'].includes(e.code))e.preventDefault();
  if(e.repeat&&['Space','Tab','KeyX'].includes(e.code))return;
