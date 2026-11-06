@@ -15,6 +15,7 @@ import {placeProps,dropCrate,blastProps,updateProps,drawProps,propsBusy} from '.
 import {fireRope,stepRope,releaseRope,ropePoints} from './rope.js';
 import {planTeleport,planCrate,planRope,executeRopeInputs} from './ai-utility.js';
 import {mergeSettings,pickSponsors} from './settings.js';
+import {readPrefs,savePrefs} from './prefs.js';
 import {loadSponsorImages,sponsorImage,safeLink,placeBillboards,drawBillboards,placeBattleAds,drawBattleAds} from './sponsors.js';
 // Match settings, like a classic scheme: map props and how often a health crate drops at turn start.
 const scheme={mines:8,barrels:6,crateChance:.3};
@@ -28,7 +29,8 @@ const names=[['Pip','Bubbles','Mochi'],['Grub','Maverick','Nibbles']],TEAM_NAMES
 // the wind), 'ultra' (Broker LLM with every game parameter) or 'god' (ultra plus the match journal: every earlier
 // turn and its outcome, see journal.js). Without a setup choice the legacy
 // single-player defaults apply: humans are team 0, the AI is team 1 driven by state.aiDriver.
-const ctrl=t=>state.controllers?.[t]??(t?(state.aiDriver==='broker'?'ultra':'local'):'human');
+// Local fallback overrides a team only for this match; the setup choice stays intact.
+const ctrl=t=>state.localAiTeams?.[t]?'easy':state.controllers?.[t]??(t?(state.aiDriver==='broker'?'ultra':'local'):'human');
 const isHuman=t=>ctrl(t)==='human',isBot=t=>!isHuman(t),usesBroker=t=>['hard','ultra','god'].includes(ctrl(t));
 export const CONTROLLER_LABELS={human:'HUMAN',easy:'PC EASY',hard:'PC HARD',ultra:'PC ULTRA',god:'PC GOD'};
 const mapNames=['SUNSET COVE','RUST RIDGE','CRYSTAL ATOLL','GRAND EXPEDITION'];
@@ -68,9 +70,10 @@ function buildTerrain(rect=null){if(state.sim)return;
  state.terrainCanvas=off;
 }
 function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePending=false){
+ state.localAiTeams=[false,false];
  if(pendingSettings){const s=pendingSettings;pendingSettings=null;useSettings(s)}
  stopVoices();if(!preservePending)clearPendingTurn();state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];state.brokerSequence=0;state.journal=[];state.turnLog=null;$('broker-panel').hidden=true;
- simRand=seeded((seed^0x9e3779b9)>>>0);visualRand=seeded((seed^0x7f4a7c15)>>>0);state.seed=seed;state.matchId=newMatchId();state.simDraws=0;state.map=map;state.difficulty=clamp(Number(difficulty)||0,0,2);state.musicStep=0;state.musicNextTime=0;state.terrain=createTerrain(map,seed);buildTerrain();state.worms=[];state.projectiles=[];state.particles=[];state.blasts=[];state.decor=[];state.team=0;state.active=null;state.lastActiveId=[0,-1];state.phase='ready';state.timer=rules.turnTime;state.round=1;state.waterLevel=WATER;state.ended=false;state.running=true;state.used=false;state.shotgunLeft=0;state.grenadeFuse=3;state.grenadeBounce='high';state.strikeDir=1;state.playerGrenadeFuse=3;state.playerGrenadeBounce='high';state.playerStrikeDir=1;state.jetDropped=false;state.selected='bazooka';state.playerWeapon='bazooka';state.airTarget=null;state.aim=-.72;state.dir=1;state.power=.5;state.charging=false;state.keys={};state.aiTimer=0;state.resolveTimer=0;state.jetTime=0;state.jetPulse=0;state.shake=0;state.wind=(simRandom()-.5)*rules.windStart*2;state.crateHeal=rules.crateHeal;state.suddenDeathRound=rules.suddenDeathRound;state.windTarget=state.wind;state.aiMoves=0;state.aiTarget=0;state.aiMoveTime=0;state.aiRetreat=0;
+ simRand=seeded((seed^0x9e3779b9)>>>0);visualRand=seeded((seed^0x7f4a7c15)>>>0);state.seed=seed;state.matchId=newMatchId();state.simDraws=0;state.map=map;state.difficulty=clamp(Number(difficulty)||0,0,2);state.musicStep=0;state.musicNextTime=0;state.terrain=createTerrain(map,seed);buildTerrain();state.worms=[];state.projectiles=[];state.particles=[];state.blasts=[];state.decor=[];state.team=0;state.active=null;state.lastActiveId=[0,-1];state.phase='ready';state.timer=rules.turnTime;state.round=1;state.waterLevel=WATER;state.ended=false;state.running=true;state.used=false;state.shotgunLeft=0;state.grenadeFuse=3;state.grenadeBounce='high';state.strikeDir=1;state.playerGrenadeFuse=3;state.playerGrenadeBounce='high';state.playerStrikeDir=1;state.jetDropped=false;state.selected='bazooka';state.playerWeapon='bazooka';state.airTarget=null;state.aim=-.72;state.dir=1;state.power=.5;state.charging=false;state.keys={};state.aiTimer=0;state.resolveTimer=0;state.jetTime=0;state.jetPulse=0;state.rope=null;state.aiRope=null;state.shake=0;state.wind=(simRandom()-.5)*rules.windStart*2;state.crateHeal=rules.crateHeal;state.suddenDeathRound=rules.suddenDeathRound;state.windTarget=state.wind;state.aiMoves=0;state.aiTarget=0;state.aiMoveTime=0;state.aiRetreat=0;
  // Random level spots across the big map; teams alternate along it so rivals start within range.
  const spots=spawnSpots(state.terrain,seed);
  for(let team=0;team<2;team++)for(let i=0;i<3;i++){const s=spots[i*2+team]??{x:400+(i*2+team)*500,y:groundY(state.terrain,400+(i*2+team)*500)-R-2};let x=s.x,y=s.y;state.worms.push({id:team*3+i,team,name:names[team][i],x,y,vx:0,vy:0,hp:100,alive:true,face:team? -1:1,grounded:true,flash:0,active:false});}
@@ -84,7 +87,7 @@ function beginTurn(team){
  state.worms.forEach(w=>w.active=false);
  const alive=living(team);if(!alive.length){finish(1-team);return}
  // Bots: the local algorithm always plays its sharpest profile; Broker levels name themselves in the prompt.
- if(state.controllers&&isBot(team))state.difficulty=ctrl(team)==='hard'?1:2;
+ if((state.controllers||state.localAiTeams?.[team])&&isBot(team))state.difficulty=ctrl(team)==='hard'?1:2;
  const prior=state.lastActiveId[team];state.active=alive.find(w=>w.id>prior)||alive[0];state.active.active=true;state.lastActiveId[team]=state.active.id;state.dir=team? -1:1;state.aim=-.78;state.power=.55;state.turnLog=openTurn(state);
  updateUI();say(isBot(team)?thinkingText():(isBot(1-team)?'YOUR TURN · TAKE AIM':TEAM_NAMES[team]+' · YOUR TURN'),1.8,TEAM_COLORS[team]);voice(state.active,'turn');
  // The Broker model needs several seconds, so its request leaves the moment the AI turn starts.
@@ -386,6 +389,10 @@ function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musi
  for(const p of state.projectiles)if(!p.dead){updateProjectile(p,dt);if(p.dead&&!state.sim)noteLanding(state.turnLog,p)}state.projectiles=state.projectiles.filter(p=>!p.dead);
  updateProps(state,dt,propApi);
  for(const p of state.particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=350*dt;p.life-=dt}state.particles=state.particles.filter(p=>p.life>0);state.blasts=state.blasts.filter(b=>(b.t+=dt)<1.3);
+ // The turn resolves at once when its worm is gone mid-move (jetpack, AI walk); kill() covers 'ready'.
+ if((state.phase==='jetpack'||state.phase==='reposition')&&!state.active?.alive){state.phase='resolving';state.resolveTimer=1.5}
+ // A worm still on the rope when the turn resolves (END TURN, a wiped team) lets go, or it never lands.
+ if((state.phase==='resolving'||state.phase==='retreat')&&state.rope){if(state.active?.alive){releaseRope(state.active,state.rope);state.active.grounded=false}state.rope=null;state.aiRope=null}
  if(state.phase==='resolving'||state.phase==='retreat'){state.resolveTimer-=dt;if(settled(dt)){if(state.sim)state.simDone=true;else nextTurn()}}else{state.calm=0;state.settleWait=0;state.camHoldId=null}
  updateUI();
 }
@@ -406,7 +413,7 @@ function updateWeaponSettings(){
 }
 function updateUI(){if(state.sim)return;
  // Teleport tile shows the charges left for the team on turn.
- const tpKey=document.querySelector?.('.weapon[data-weapon="teleport"] .key'),tpLeft=state.ammo?.[state.team]?.teleport;if(tpKey&&tpLeft!=null){setText(tpKey,`9 · ${tpLeft} LEFT`);tpKey.parentElement.classList.toggle('empty',!tpLeft)}const p=living(0),e=living(1);setText($('p-count'),`${p.length} WORM${p.length===1?'':'IES'}`);setText($('e-count'),`${e.length} WORM${e.length===1?'':'IES'}`);setWidth($('p-health'),`${p.reduce((s,w)=>s+w.hp,0)/3}%`);setWidth($('e-health'),`${e.reduce((s,w)=>s+w.hp,0)/3}%`);setText($('timer'),Math.ceil(state.timer));setText($('turn-label'),isBot(state.team)?(usesBroker(state.team)&&(state.phase==='broker-wait'||state.phase==='broker-error')?'LLM THINKING':'AI TURN'):(isBot(1-state.team)?'YOUR TURN':TEAM_NAMES[state.team]));setText($('active-name'),state.active?.alive?state.active.name.toUpperCase():'K.O.');setText($('wind'),`WIND · ${Math.abs(Math.round(state.wind))} ${state.wind<0?'←':'→'}`);setWidth($('power'),`${Math.round(state.power*100)}%`);setText($('power-text'),`${Math.round(state.power*100)}%`);setText($('map-name'),`${mapNames[state.map]} · ${W}×${H}`);setText($('round'),`ROUND ${state.round}`);setText($('ai-level'),state.controllers?state.controllers.map(c=>CONTROLLER_LABELS[c]).join(' vs '):AI_PROFILES[state.difficulty].name+(usesBroker(state.team)?' · BROKER LLM':' · LOCAL'));document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===state.selected));setProp($('fire'),'disabled',!state.running||!isHuman(state.team)||state.phase!=='ready');setProp($('end-turn'),'disabled',!state.running||!isHuman(state.team)||state.phase==='resolving');updateWeaponSettings()}
+ const tpKey=document.querySelector?.('.weapon[data-weapon="teleport"] .key'),tpLeft=state.ammo?.[state.team]?.teleport;if(tpKey&&tpLeft!=null){setText(tpKey,`9 · ${tpLeft} LEFT`);tpKey.parentElement.classList.toggle('empty',!tpLeft)}const p=living(0),e=living(1);setText($('p-count'),`${p.length} WORM${p.length===1?'':'IES'}`);setText($('e-count'),`${e.length} WORM${e.length===1?'':'IES'}`);setWidth($('p-health'),`${p.reduce((s,w)=>s+w.hp,0)/3}%`);setWidth($('e-health'),`${e.reduce((s,w)=>s+w.hp,0)/3}%`);setText($('timer'),Math.ceil(state.timer));setText($('turn-label'),isBot(state.team)?(usesBroker(state.team)&&(state.phase==='broker-wait'||state.phase==='broker-error')?'LLM THINKING':'AI TURN'):(isBot(1-state.team)?'YOUR TURN':TEAM_NAMES[state.team]));setText($('active-name'),state.active?.alive?state.active.name.toUpperCase():'K.O.');setText($('wind'),`WIND · ${Math.abs(Math.round(state.wind))} ${state.wind<0?'←':'→'}`);setWidth($('power'),`${Math.round(state.power*100)}%`);setText($('power-text'),`${Math.round(state.power*100)}%`);setText($('map-name'),`${mapNames[state.map]} · ${W}×${H}`);setText($('round'),`ROUND ${state.round}`);setText($('ai-level'),state.controllers?[0,1].map(t=>CONTROLLER_LABELS[ctrl(t)]).join(' vs '):AI_PROFILES[state.difficulty].name+(usesBroker(state.team)?' · BROKER LLM':' · LOCAL'));document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===state.selected));setProp($('fire'),'disabled',!state.running||!isHuman(state.team)||state.phase!=='ready');setProp($('end-turn'),'disabled',!state.running||!isHuman(state.team)||state.phase==='resolving');updateWeaponSettings()}
 let lastFrame=0,frameDt=.016;
 function graveY(w){const gy=groundY(state.terrain,w.x);if(w.y>state.waterLevel-6||gy>state.waterLevel-6)return null;if(w.gy==null)w.gy=Math.min(w.y+14,gy);if(w.gy<gy)w.gy=Math.min(gy,w.gy+420*frameDt);return w.gy}
 // Sky and far ridges live in screen space and scroll slower than the battlefield (parallax).
@@ -535,7 +542,8 @@ function shouldRender(now){
  if(document.querySelector?.('.modal.open')){const key=state.seed+':'+state.map+':'+state.phase;if(key===stillKey)return false;stillKey=key;return true}
  stillKey=null;return now-lastRender>=MIN_FRAME_MS;
 }
-function loop(now){const dt=Math.min((now-last)/1000,.04);last=now;update(dt);if(shouldRender(now)){lastRender=now;render()}requestAnimationFrame(loop)}requestAnimationFrame(loop);
+// The next frame is booked first, so an error in one frame cannot stop the game (and the turn clock) for good.
+function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.04);last=now;update(dt);if(shouldRender(now)){lastRender=now;render()}}requestAnimationFrame(loop);
 function pointerCoords(ev){const r=canvas.getBoundingClientRect(),c=state.cam,sx=(ev.clientX-r.left)/r.width*VIEW_W,sy=(ev.clientY-r.top)/r.height*VIEW_H;return{x:c.x+sx/c.zoom,y:c.y+sy/c.zoom}}
 function aimAt(ev){if(!state.running||!isHuman(state.team)||state.phase!=='ready')return;const m=pointerCoords(ev),w=state.active,dx=m.x-w.x,dy=m.y-w.y+8;if(state.selected==='airstrike'||state.selected==='teleport'){if(ev.type==='pointerdown'&&(ev.button===0||ev.pointerType!=='mouse')){state.airTarget=m.x;state.airTargetY=m.y;state.airHover=null}else if(state.airTarget==null){state.airHover=m.x;state.airHoverY=m.y}return}state.dir=dx<0?-1:1;state.aim=aimAngle(dx,dy);w.face=state.dir}
 function chargeStart(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.charging)return;if(['punch','dynamite','airstrike','jetpack','shotgun','teleport','rope'].includes(state.selected)){fire();return}state.charging=true;state.chargeDir=1;state.power=.22;tone(480,.08,'sine',.03,650)}
@@ -581,7 +589,11 @@ window.addEventListener('keyup',e=>{state.keys[e.code]=false;if(e.code==='Space'
 
 // Battle setup: a row of player buttons per team; the choice is remembered on this device.
 const CTRL_HINTS={human:'You play this team.',easy:'Local algorithm at its sharpest: instant turns, exact physics.',hard:'Broker LLM, about 8 s a turn; it gets no wind information, so its shots drift.',ultra:'Broker LLM, about 8 s a turn, with everything: wind, mines, barrels, crates and predicted damage.',god:'PC Ultra plus the whole match history: it studies earlier shots and their results to correct its aim and pick targets.'};
-let setupCtrls=['human','easy'];try{const saved=JSON.parse(localStorage.getItem('craterCrew.controllers')||'null');if(Array.isArray(saved)&&saved.length===2&&saved.every(c=>c in CONTROLLER_LABELS)){setupCtrls=saved;ctrlsSaved=true}}catch{}
+// Saved player preferences (prefs.js): players, map and sound; with storage blocked the defaults stay.
+const prefs=readPrefs();
+let setupCtrls=['human','easy'];if(prefs.controllers?.every(c=>c in CONTROLLER_LABELS)){setupCtrls=[...prefs.controllers];ctrlsSaved=true}
+if(prefs.map!=null&&[...($('map-choice').options??[])].some(o=>o.value===String(prefs.map)))$('map-choice').value=String(prefs.map);
+$('map-choice').onchange=()=>savePrefs({map:Number($('map-choice').value)});
 function updateAiHint(){
  for(const pick of document.querySelectorAll?.('.team-pick')??[]){const t=Number(pick.dataset.team);for(const b of pick.querySelectorAll('button')){const on=b.dataset.ctrl===setupCtrls[t];b.classList.toggle('on',on);b.setAttribute('aria-checked',String(on))}}
  const lines=[0,1].filter(t=>setupCtrls[t]!=='human').map(t=>`${TEAM_NAMES[t]} · ${CONTROLLER_LABELS[setupCtrls[t]]}: ${CTRL_HINTS[setupCtrls[t]]}`);
@@ -590,19 +602,22 @@ function updateAiHint(){
  for(const b of document.querySelectorAll?.('.seg button[data-ctrl]')??[])if(!b.disabled)b.title=CTRL_HINTS[b.dataset.ctrl]||'';
 }
 for(const pick of document.querySelectorAll?.('.team-pick')??[])pick.addEventListener('click',e=>{const b=e.target.closest?.('button[data-ctrl]');if(!b||b.disabled)return;chooseController(Number(pick.dataset.team),b.dataset.ctrl)});
-function chooseController(team,c){if(!(c in CONTROLLER_LABELS))return;setupCtrls[team]=c;ctrlsSaved=true;try{localStorage.setItem('craterCrew.controllers',JSON.stringify(setupCtrls))}catch{}updateAiHint()}
+function chooseController(team,c){if(!(c in CONTROLLER_LABELS))return;setupCtrls[team]=c;ctrlsSaved=true;savePrefs({controllers:setupCtrls});updateAiHint()}
 // PC Hard/Ultra/God stay off when the server has no Broker or the admin settings do not offer them (God follows Ultra).
 function refreshCtrlButtons(){for(const lvl of ['hard','ultra','god']){const off=brokerDown||!offered[lvl];for(const b of document.querySelectorAll?.(`.seg button[data-ctrl="${lvl}"]`)??[]){b.disabled=off;b.title=brokerDown?'Broker LLM is not configured on this server':off?'Not offered on this server':''}}setupCtrls=setupCtrls.map(c=>['hard','ultra','god'].includes(c)&&(brokerDown||!offered[c])?'easy':c);updateAiHint()}
 // Broker levels need the server side configured; otherwise their buttons are disabled with the reason.
 globalThis.fetch?.('api/ai/health').then(r=>r.json()).then(h=>{if(h?.configured)return;brokerDown=true;refreshCtrlButtons()}).catch(()=>{});
 updateAiHint();
 function applyAudioSettings(unlock=false){const priorMusic=state.musicEnabled;state.sound=$('effects-on').checked;state.musicEnabled=$('music-on').checked;state.fxVolume=clamp(Number($('effects-volume').value)/100,0,1);state.musicVolume=clamp(Number($('music-volume').value)/100,0,1);configureVoices({enabled:state.sound&&rules.voices,volume:state.fxVolume});if(unlock){if(!state.audioUnlocked)unlockAudio();else audio?.resume?.()}if(!priorMusic&&state.musicEnabled){state.musicStep=0;state.musicNextTime=0}$('sound').textContent=state.sound||state.musicEnabled?'♫':'×';$('sound').title=state.sound||state.musicEnabled?'Music and effects settings':'Sound off — open settings'}
-for(const id of ['music-on','effects-on'])$(id).onchange=()=>{audioTouched=true;applyAudioSettings(true)};
-for(const id of ['music-volume','effects-volume'])$(id).oninput=()=>{audioTouched=true;applyAudioSettings(true)};
+// The player's own sound choices outlive a reload and win over the admin defaults.
+function saveAudioPrefs(){savePrefs({audio:{music:$('music-on').checked,effects:$('effects-on').checked,musicVolume:Number($('music-volume').value),effectsVolume:Number($('effects-volume').value)}})}
+if(prefs.audio){const a=prefs.audio;if(a.music!=null)$('music-on').checked=a.music;if(a.effects!=null)$('effects-on').checked=a.effects;if(a.musicVolume!=null)$('music-volume').value=String(a.musicVolume);if(a.effectsVolume!=null)$('effects-volume').value=String(a.effectsVolume);audioTouched=true}
+for(const id of ['music-on','effects-on'])$(id).onchange=()=>{audioTouched=true;applyAudioSettings(true);saveAudioPrefs()};
+for(const id of ['music-volume','effects-volume'])$(id).oninput=()=>{audioTouched=true;applyAudioSettings(true);saveAudioPrefs()};
 $('start').onclick=()=>{applyAudioSettings(true);state.controllers=[...setupCtrls];state.aiDriver=usesBroker(1)?'broker':'local';$('intro').classList.remove('open');newGame(enabledMap(Number($('map-choice').value)),2)};
 $('rematch').onclick=()=>{$('result').classList.remove('open');newGame(state.map,state.difficulty)};
 $('new-map').onclick=()=>{$('result').classList.remove('open');newGame(nextMap(state.map),state.difficulty)};
-$('broker-retry').onclick=()=>requestBrokerTurn(true);$('broker-pass').onclick=()=>{if(state.phase==='broker-error'){state.brokerTicket=null;state.brokerRequest=null;clearPendingTurn();$('broker-panel').hidden=true;startResolution(.1)}};$('broker-local').onclick=()=>{if(state.phase==='broker-error'){state.aiDriver='local';state.brokerTicket=null;state.brokerRequest=null;clearPendingTurn();$('broker-panel').hidden=true;state.phase='ready';updateUI();aiAct()}};
+$('broker-retry').onclick=()=>requestBrokerTurn(true);$('broker-pass').onclick=()=>{if(state.phase==='broker-error'){state.brokerTicket=null;state.brokerRequest=null;clearPendingTurn();$('broker-panel').hidden=true;startResolution(.1)}};$('broker-local').onclick=()=>{if(state.phase==='broker-error'){state.localAiTeams??=[false,false];state.localAiTeams[state.team]=true;state.difficulty=2;state.brokerTicket=null;state.brokerRequest=null;clearPendingTurn();$('broker-panel').hidden=true;state.phase='ready';updateUI();aiAct()}};
 $('sound').onclick=()=>{$('audio-panel').hidden=!$('audio-panel').hidden};$('help').onclick=()=>$('help-panel').classList.toggle('open');$('close-help').onclick=()=>$('help-panel').classList.remove('open');
 function restorePendingBrokerTurn(record){
  if(!record)return false;

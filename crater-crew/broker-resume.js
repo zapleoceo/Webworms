@@ -3,7 +3,7 @@ import {validHistory} from './journal.js';
 
 export const PENDING_KEY='crater-crew-broker-pending-v1';
 export const PENDING_AGE_MS=8*60*60_000;
-const fields=['seed','map','difficulty','matchId','simDraws','round','waterLevel','wind','windTarget','timer','lastActiveId','selected','playerWeapon','shotgunLeft','grenadeFuse','grenadeBounce','strikeDir','playerGrenadeFuse','playerGrenadeBounce','playerStrikeDir','brokerSequence','used','aim','dir','power','controllers','journal'];
+const fields=['seed','map','difficulty','matchId','simDraws','round','waterLevel','wind','windTarget','timer','lastActiveId','selected','playerWeapon','shotgunLeft','grenadeFuse','grenadeBounce','strikeDir','playerGrenadeFuse','playerGrenadeBounce','playerStrikeDir','brokerSequence','used','aim','dir','power','controllers','journal','localAiTeams'];
 const CONTROLLERS=new Set(['human','easy','hard','ultra','god']);
 
 function packMask(mask){
@@ -43,6 +43,7 @@ export function readPendingTurn(storage=globalThis.sessionStorage,now=Date.now()
   // PC GOD asks as difficulty 3 while the local profile stays at 2; its journal and the team controllers come back too.
   if(!Array.isArray(r.candidates)||r.candidates.length<1||r.candidates.length>32||!r.candidates.every(c=>typeof c.id==='string'&&typeof c.description==='string')||r.difficulty!==g.difficulty&&!(r.difficulty===3&&g.difficulty===2))return null;
   if(g.journal!==undefined&&!validHistory(g.journal)||g.controllers!==undefined&&!(Array.isArray(g.controllers)&&g.controllers.length===2&&g.controllers.every(c=>CONTROLLERS.has(c))))return null;
+  if(g.localAiTeams!==undefined&&!(Array.isArray(g.localAiTeams)&&g.localAiTeams.length===2&&g.localAiTeams.every(v=>typeof v==='boolean')&&!g.localAiTeams[1]))return null;
   if(record.ticket!==null&&(typeof record.ticket!=='string'||record.ticket.length>5000))return null;
   if(!Array.isArray(g.top)||g.top.length!==W||!g.top.every(y=>Number.isInteger(y)&&y>=0&&y<=H))return null;
   const mask=unpackMask(g.maskRuns);if(!mask)return null;
