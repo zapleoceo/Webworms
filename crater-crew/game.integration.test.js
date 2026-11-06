@@ -370,6 +370,7 @@ test('two close shotgun shots both damage the target and finish the turn',()=>{
 });
 
 test('moving, jumping, cycling and seven weapons resolve without stuck turns',()=>{
+ // Each shot is followed until it resolves and hands the turn over; the AI's own reply is not part of the check.
  // Seeded: spawn spots now depend on the seed, and ~6% of random seeds put the first worm one step from
  // a ledge or under a tunnel roof, where walking right drops it and a jump is (correctly) impossible.
  newGame(0,1,1);let start=state.active.x;
@@ -378,7 +379,7 @@ test('moving, jumping, cycling and seven weapons resolve without stuck turns',()
  state.keys.KeyW=true;update(.04);state.keys.KeyW=false;assert.ok(state.active.vy<0);
  cycle();assert.equal(state.active.name,'Bubbles');
  const ids=['bazooka','grenade','shotgun','dynamite','airstrike','punch','jetpack'];
- for(const id of ids){beginTurn(0);state.selected=id;state.aim=-.6;state.dir=1;state.airTarget=1100;fire(.75);if(id==='shotgun'){assert.equal(state.shotgunLeft,1);fire(.75)}assert.notEqual(state.phase,'ready',id);for(let i=0;i<250;i++)update(.04);assert.ok(state.phase!=='resolving'||state.projectiles.length>0||state.resolveTimer>=0,`${id} resolved`)}
+ for(const id of ids){beginTurn(0);state.selected=id;state.aim=-.6;state.dir=1;state.airTarget=1100;fire(.75);if(id==='shotgun'){assert.equal(state.shotgunLeft,1);fire(.75)}assert.notEqual(state.phase,'ready',id);for(let i=0;i<250&&state.team===0;i++)update(.04);assert.ok(state.phase!=='resolving'||state.projectiles.length>0||state.resolveTimer>=0,`${id} resolved`)}
 });
 
 test('blast damages enemies, destroys terrain, and match reaches victory',()=>{
@@ -424,9 +425,9 @@ test('AI selects bazooka at range and airstrike when terrain blocks fire',()=>{
 });
 
 test('AI takes a bounded safer walking position for a better shot',()=>{
- // x=250 is now a beach at the water's edge (the AI rightly jetpacks out); x=350 is the analogous
- // inland slope on the big map, with the player ~900 px to the right as before.
- flatDuel(1250);state.terrain=createTerrain(0,42);state.wind=0;state.windTarget=0;state.difficulty=1;const ai=state.active,player=state.worms[0];ai.x=350;ai.y=groundY(state.terrain,350)-17;player.y=groundY(state.terrain,1250)-17;
+ // x=300 sits on the low coastal terraces of Sunset Cove (below 225 the AI rightly jetpacks off the beach),
+ // with the player ~950 px to the right on the inland ridge.
+ flatDuel(1250);state.terrain=createTerrain(0,42);state.wind=0;state.windTarget=0;state.difficulty=1;const ai=state.active,player=state.worms[0];ai.x=300;ai.y=groundY(state.terrain,300)-17;player.y=groundY(state.terrain,1250)-17;
  aiAct();assert.equal(state.phase,'reposition');assert.equal(state.aiMoves,1);const initial=ai.x;
  for(let i=0;i<100;i++)update(.04);
  assert.ok(ai.x>initial+15);assert.notEqual(state.phase,'reposition');
@@ -520,6 +521,17 @@ test('PC Easy plays the move with the best simulated outcome: a punch into the w
  me.x=1030;me.y=PLAIN-R-1;foe.x=1075;foe.y=PLAIN-R-1;foe.hp=100;beginTurn(1);state.active=me;me.active=true;aiAct();
  assert.equal(state.selected,'punch','sandbox picks the ring-out');for(let i=0;i<150&&foe.alive;i++)update(1/30);assert.equal(foe.alive,false,'the rival drowned');
  delete state.controllers;
+});
+// Fresh matches on every map: nobody slides, falls or drowns while the first turn is still idle.
+test('worms start on stable ground on every map and stay put for the first seconds',()=>{
+ for(let map=0;map<4;map++)for(const seed of [11,4242,90001,777777]){
+  delete state.controllers;state.aiDriver='local';newGame(map,1,seed);const start=state.worms.map(w=>({x:w.x,y:w.y}));
+  for(let i=0;i<240;i++)update(1/60);
+  state.worms.forEach((w,i)=>{assert.ok(w.alive,`map ${map} seed ${seed}: ${w.name} died`);assert.ok(w.grounded,`map ${map} seed ${seed}: ${w.name} airborne`);
+   assert.ok(Math.abs(w.x-start[i].x)<2&&Math.abs(w.y-start[i].y)<4,`map ${map} seed ${seed}: ${w.name} moved`);assert.ok(w.y<WATER-100,`map ${map} seed ${seed}: ${w.name} near the sea`)});
+ }
+ // Leave the default 3600x1400 world: later tests read WATER/W/H before their own newGame().
+ newGame(0,1,4242);
 });
 // ---- Water: a worm drowns only once the water closes over it (its top, y-R, below the surface).
 // Ground columns [x0,x1) at height top; top=H leaves an open sea with no floor.
@@ -642,4 +654,19 @@ test('a recovered Broker turn keeps the other team local only until the next mat
   beginTurn(0);aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,2,'recovered fallback does not call Broker');
   element('rematch').onclick();beginTurn(0);aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,3,'new match restores HARD');
  }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,5052)}
+});
+
+test('a worm caught by its head under a sloped overhang slides clear and lands before turn handover',()=>{
+ delete state.controllers;state.aiDriver='local';newGame(0,1,6060);flatten(state.terrain,800);
+ const t=state.terrain,w=state.active;
+ // The tip catches the head while all foot/side probes are in empty air. Moving left is blocked;
+ // moving right clears the tip. Previously land() chose left and grounded the worm in mid-air forever.
+ for(let y=460;y<=486;y++)t.mask.fill(1,y*W+700,y*W+975+y-460);
+ w.x=1000;w.y=500;w.vx=0;w.vy=80;w.grounded=false;
+ for(const o of state.worms)if(o!==w){o.x=1700+o.id*100;o.y=800-R-1;o.vx=o.vy=0;o.grounded=true}
+ state.phase='resolving';state.resolveTimer=0;state.used=true;
+ let elapsed=0;while(elapsed<6&&state.team===0){update(1/60);elapsed+=1/60}
+ assert.ok(w.x>1000,'the worm moves away from the blocked side of the overhang');
+ assert.ok(w.y>=800-R-2&&w.grounded,'the worm reaches solid ground, not a false landing under the ceiling');
+ assert.equal(state.team,1,'the turn passes after the real landing rather than the eight-second safety cap');
 });
