@@ -191,7 +191,8 @@ const lin=(p,v,t)=>p.linearRampToValueAtTime?p.linearRampToValueAtTime(v,t):p.se
 const tgt=(p,v,t,k)=>p.setTargetAtTime?p.setTargetAtTime(v,t,k):p.setValueAtTime(v,t);
 export function createMusic(getAudioContext) {
   let ctx = null, master = null, noise = null;
-  let rotation = 0;
+  // A random tune each page load and match (never the same one twice in a row).
+  let rotation = Math.floor(Math.random() * ARRANGED.length);
   let mood = 'battle';
   let current = ARRANGED[0];
   let tempo = 1;
@@ -367,7 +368,7 @@ export function createMusic(getAudioContext) {
   });
 
   const next = guard(() => {
-    rotation = (rotation + 1) % ARRANGED.length;
+    rotation = (rotation + 1 + Math.floor(Math.random() * (ARRANGED.length - 1))) % ARRANGED.length;
     mood = 'battle';
     start(ARRANGED[rotation]);
   });

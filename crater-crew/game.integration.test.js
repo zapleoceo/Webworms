@@ -117,14 +117,16 @@ test('AI selector has three strategic profiles and rematch preserves the chosen 
  assert.ok(AI_PROFILES[2].angleStep<AI_PROFILES[1].angleStep&&AI_PROFILES[1].angleStep<AI_PROFILES[0].angleStep);
  assert.ok(AI_PROFILES[2].aimError<AI_PROFILES[1].aimError&&AI_PROFILES[1].aimError<AI_PROFILES[0].aimError);
  assert.equal(AI_PROFILES[0].reposition,false);assert.equal(AI_PROFILES[2].reposition,true);
- const choice=element('difficulty'),hint=element('ai-hint');choice.value='2';choice.onchange();
- assert.match(hint.textContent,/Hard/);
+ // Setup screen: each team gets a player; the choice reaches the battle and survives rematch and new map.
+ const {chooseController}=window.__craterCrew,hint=element('ai-hint');chooseController(0,'human');chooseController(1,'ultra');
+ assert.match(hint.textContent,/PC ULTRA/);
  element('music-on').checked=false;element('effects-on').checked=false;
- element('start').onclick();assert.equal(state.difficulty,2);assert.equal(element('ai-level').textContent,'HARD · LOCAL');
- element('result').classList.add('open');element('rematch').onclick();assert.equal(state.difficulty,2);
- element('new-map').onclick();assert.equal(state.difficulty,2);
- choice.value='0';choice.onchange();element('start').onclick();assert.equal(state.difficulty,0);assert.equal(element('ai-level').textContent,'EASY · LOCAL');
- newGame(0,1,421);assert.equal(state.difficulty,1);assert.equal(element('ai-level').textContent,'NORMAL · LOCAL');
+ element('start').onclick();assert.deepEqual(state.controllers,['human','ultra']);assert.equal(element('ai-level').textContent,'HUMAN vs PC ULTRA');
+ element('result').classList.add('open');element('rematch').onclick();assert.deepEqual(state.controllers,['human','ultra']);
+ element('new-map').onclick();assert.deepEqual(state.controllers,['human','ultra']);
+ chooseController(0,'easy');chooseController(1,'easy');element('start').onclick();assert.equal(element('ai-level').textContent,'PC EASY vs PC EASY');
+ beginTurn(1);assert.equal(state.difficulty,2,'PC Easy plays the sharpest local profile');
+ delete state.controllers;state.aiDriver='local';chooseController(0,'human');chooseController(1,'easy');newGame(0,1,421);assert.equal(state.difficulty,1);
 });
 
 test('same-seed aimed duel compares all three AI levels without stat bonuses',()=>{
@@ -414,7 +416,10 @@ test('AI selects punch, dynamite, shotgun, grenade and jetpack by situation',()=
 
 test('AI selects bazooka at range and airstrike when terrain blocks fire',()=>{
  flatDuel(1500);state.aiMoves=1;aiAct();assert.equal(state.selected,'bazooka');
- const {t}=flatDuel(1500);state.aiMoves=1;for(let x=900;x<=940;x++){t.top[x]=0;for(let y=0;y<PLAIN;y++)t.mask[y*W+x]=1}aiAct();assert.equal(state.selected,'airstrike');
+ // Walled off with no teleport charge left: the airstrike is the only way through.
+ const {t}=flatDuel(1500);state.aiMoves=1;state.ammo[1].teleport=0;for(let x=900;x<=940;x++){t.top[x]=0;for(let y=0;y<PLAIN;y++)t.mask[y*W+x]=1}aiAct();assert.equal(state.selected,'airstrike');
+ // With a charge the AI teleports past the wall to a strong shot instead (the move keeps its turn).
+ const duel=flatDuel(1500);state.aiMoves=1;for(let x=900;x<=940;x++){duel.t.top[x]=0;for(let y=0;y<PLAIN;y++)duel.t.mask[y*W+x]=1}const ai=state.active,before=ai.x;aiAct();assert.equal(state.ammo[1].teleport,1,'one charge spent');assert.ok(Math.sign(ai.x-940)===Math.sign(state.worms.find(w=>w.team===0&&w.alive).x-940)||Math.abs(ai.x-before)>200,`teleported from ${before} to ${ai.x}`);
 });
 
 test('AI takes a bounded safer walking position for a better shot',()=>{

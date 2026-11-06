@@ -69,3 +69,25 @@ html,body{overflow-anchor:none}.weapon-options{min-height:44px}
 
 /* Power meter sits top-right under the AI label so it never covers the worm being aimed. */
 .arena-wrap .power-wrap{top:44px;right:14px;bottom:auto;left:auto;transform:none}
+
+/* Battle setup: who plays each team. */
+.teams-setup{display:grid;gap:8px;margin:4px 0 12px;text-align:left}
+.team-pick{display:grid;gap:6px;padding:10px 12px;border:3px solid var(--ink);border-radius:14px;background:#211a36}
+.team-tag{font-size:11px;font-weight:900;letter-spacing:.14em}
+.team-sky .team-tag{color:#4aa8ff}.team-dirt .team-tag{color:#ff5d52}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.seg button{padding:9px 4px;border:2px solid var(--ink);border-radius:9px;background:#3d3160;color:#d8cdf7;font:inherit;font-size:11px;font-weight:900;letter-spacing:.04em;cursor:pointer;transition:transform .08s,background .15s}
+.seg button:hover:not(:disabled){background:#4d3f7a;transform:translateY(-1px)}
+.seg button.on{background:var(--gold);color:var(--ink);box-shadow:0 3px 0 #0a0712}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.seg button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.vs{justify-self:center;font-size:12px;font-weight:900;color:var(--gold);letter-spacing:.2em}
+.ai-hint{min-height:34px;margin:0 0 12px}
+@media(max-width:480px){.seg{grid-template-columns:repeat(2,1fr)}}
+
+.weapon.empty{opacity:.45}
+#cam-target,#cam-view{white-space:nowrap}
+/* Camera shortcuts live in the top bar so the armory keeps all nine weapons on one row. */
+.cam-button{height:38px;padding:0 12px;border:3px solid var(--ink);border-radius:12px;background:var(--panel2);color:#fff6e0;font:inherit;font-size:11px;font-weight:900;letter-spacing:.05em;cursor:pointer;box-shadow:0 3px 0 #0a0712}
+.cam-button:hover{background:#4d3f7a}
+@media(max-width:700px){.cam-button{height:32px;padding:0 8px;font-size:10px}}
