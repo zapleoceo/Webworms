@@ -14,14 +14,15 @@ export function drawHud(c,st,W,H,now){
  text(c,String(Math.max(0,Math.ceil(st.timer))),66,H-34,34,low&&Math.floor(now/250)%2?'#ff5d52':'#ffffff');
  text(c,mine?'YOUR TURN':'AI TURN',66,H-58,11,tc);
  // health bars, one row per team
- const cx=W/2,bw=240;
- plate(c,cx-190,H-78,380,62,12);
+ // bar right edge + 1.5px bar stroke + PAD + 1.5px panel stroke must stay inside the panel half-width
+ const cx=W/2,PW=380,PAD=16,bx=cx-18,bw=cx+PW/2-1.5-PAD-1.5-bx;
+ plate(c,cx-PW/2,H-78,PW,62,12);
  for(let t=0;t<2;t++){
   const y=H-70+t*26,f=teamHealth(st.worms,t);
   text(c,NAMES[t],cx-30,y+14,13,TEAM_COLORS[t],'right');
-  rr(c,cx-18,y,bw,18,8);c.fillStyle='#0d0a14';c.fill();
-  if(f>0){rr(c,cx-16,y+2,Math.max(10,(bw-4)*f),14,6);c.fillStyle=TEAM_COLORS[t];c.fill();rr(c,cx-14,y+3,Math.max(6,(bw-8)*f),4,2);c.fillStyle='#ffffff55';c.fill()}
-  rr(c,cx-18,y,bw,18,8);c.lineWidth=3;c.strokeStyle=INK;c.stroke();
+  rr(c,bx,y,bw,18,8);c.fillStyle='#0d0a14';c.fill();
+  if(f>0){rr(c,bx+2,y+2,Math.max(10,(bw-4)*f),14,6);c.fillStyle=TEAM_COLORS[t];c.fill();rr(c,bx+4,y+3,Math.max(6,(bw-8)*f),4,2);c.fillStyle='#ffffff55';c.fill()}
+  rr(c,bx,y,bw,18,8);c.lineWidth=3;c.strokeStyle=INK;c.stroke();
  }
  // wind: segmented bar growing left (blue) or right (red) from the centre
  const wx=W-208,wy=H-74;plate(c,wx,wy,190,58,12);

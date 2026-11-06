@@ -1,0 +1,14 @@
+Worm voice clips in this folder are derived (trimmed, normalised, re-encoded to MP3) from:
+
+1. "Voiceover Pack" by Kenney Vleugels (https://kenney.nl/assets/voiceover-pack)
+   Male voice: Jeffrey M. Smith. License: Creative Commons Zero (CC0 1.0),
+   http://creativecommons.org/publicdomain/zero/1.0/
+   Used for: turn, fire, bazooka, shotgun, incoming, medic, die, miss, kill, win, hurry, tie.
+
+2. "RPG Voice Starter Pack" by Cici Fyre (https://cicifyre.itch.io/rpg-voice-starter-pack)
+   License stated on the itch.io page: Creative Commons Zero v1.0 Universal.
+   Used for: hurt (damaged1-3), jump (jump1-3), water (bubbles), fire (attack1-2).
+   Sky Squad uses Type 3, Dirt Devils use Type 1.
+
+The game raises the pitch at playback time (playbackRate about 1.4).
+No audio from any Worms game is included.
