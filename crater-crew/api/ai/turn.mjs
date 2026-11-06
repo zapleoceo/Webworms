@@ -19,7 +19,7 @@ const validProps=p=>p===undefined||Array.isArray(p)&&p.length<=60&&p.every(q=>q&
 // prompt-cache breakpoint, so this text must not change between turns (no names, dates or difficulty here).
 const RULES=`You command the team of the active worm (snapshot.activeId) in a turn-based 2D artillery game with destructible terrain; the other team is the enemy. Pick ONE move from the supplied candidates for your active worm. Never invent a move.
 
-World: x grows right, y grows DOWN; the map size is snapshot.size [width,height] (3600x1400 or 6400x1800). Water fills everything below snapshot.water; a worm that touches it dies. From round 9 (suddenDeath) the water rises 12 px every round. snapshot.terrain is the ground surface height sampled evenly across the map width. Worms have up to 100+ hp; a worm at 0 hp dies.
+World: x grows right, y grows DOWN; the map size is snapshot.size [width,height] (3600x1400 or 6400x1800). Water fills everything below snapshot.water; a worm (radius 15, y is its centre) drowns only once the water closes over it completely, i.e. y > snapshot.water + 15; standing with its feet in the shallows is safe. From round 9 (suddenDeath) the water rises 12 px every round. snapshot.terrain is the ground surface height sampled evenly across the map width. Worms have up to 100+ hp; a worm at 0 hp dies.
 
 Weapons (the candidates already contain the aim and power; each description shows the outcome predicted by the game's own physics: who is hit for how much, KILL, friendly fire as "ally"/"SELF", chained barrels/mines, water nearby):
 - bazooka: radius 77, damage up to 58; pushed by wind; explodes on impact.

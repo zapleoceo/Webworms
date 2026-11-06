@@ -8,7 +8,7 @@ import {bakeBackground,drawBackdrop,drawAmbient,drawWater} from './scenery.js';
 import {brokerTurnOptions,brokerSnapshot} from './broker-ai.js';
 import {clearPendingTurn,savePendingTurn,readPendingTurn} from './broker-resume.js';
 import {JOURNAL_MAX,openTurn,noteAction,noteTarget,noteLanding,closeTurn,targetFromCandidate} from './journal.js';
-import {W,H,WATER,R,GRAVITY,WEAPONS,data,AI_PROFILES,clamp,seeded,createTerrain,solid,carve,groundY,blastDamage,selectShot,selectLob,AIM_MIN,AIM_MAX,aimAngle,VIEW_W,VIEW_H,spawnSpots,BODIES,stepBody,crawl,wormFits,wormGrounded,WALK_SPEED} from './engine.js';
+import {W,H,WATER,R,GRAVITY,WEAPONS,data,AI_PROFILES,clamp,seeded,createTerrain,solid,carve,groundY,blastDamage,selectShot,selectLob,AIM_MIN,AIM_MAX,aimAngle,VIEW_W,VIEW_H,spawnSpots,BODIES,stepBody,crawl,wormFits,wormGrounded,WALK_SPEED,wormDrowned} from './engine.js';
 import {voice as speak,stopVoices,configureVoices,loadVoices} from './voice.js';
 import {createMusic} from './music.js';
 import {placeProps,dropCrate,blastProps,updateProps,drawProps,propsBusy} from './props.js';
@@ -76,7 +76,7 @@ function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePend
  for(let team=0;team<2;team++)for(let i=0;i<3;i++){const s=spots[i*2+team]??{x:400+(i*2+team)*500,y:groundY(state.terrain,400+(i*2+team)*500)-R-2};let x=s.x,y=s.y;state.worms.push({id:team*3+i,team,name:names[team][i],x,y,vx:0,vy:0,hp:100,alive:true,face:team? -1:1,grounded:true,flash:0,active:false});}
  for(let i=0;i<42;i++)state.decor.push({x:visualRand()*W,y:visualRand()*H*.55,r:visualRand()*3+1,phase:visualRand()*6.28});
  // Bigger maps get proportionally more mines and barrels.
- const area=W*H/(3600*1400);state.props=placeProps(state.terrain,state.worms,seed,{...scheme,mines:Math.round(scheme.mines*area),barrels:Math.round(scheme.barrels*area)});state.billboards=placeBillboards(state.terrain,seed,rules.sponsors,state.worms);state.crateSponsor=pickSponsors(rules.sponsors,'crate',1,seeded((seed^0x3c6ef372)>>>0))[0]||null;state.battleAds=placeBattleAds(state.terrain,seed,rules.sponsors,state.worms,state.billboards.map(b=>b.x));state.stats=newStats();state.propWait=0;music.next();music.setMood('battle');state.active=state.worms[0];state.active.active=true;state.turnLog=openTurn(state);state.cam={x:0,y:0,zoom:1,tz:1,free:false,auto:true};state.camTargetId=null;state.ammo=[{teleport:rules.teleports},{teleport:rules.teleports}];centerCamera();updateUI();say('YOUR TURN · TAKE AIM',2.5);
+ const area=W*H/(3600*1400);state.props=placeProps(state.terrain,state.worms,seed,{...scheme,mines:Math.round(scheme.mines*area),barrels:Math.round(scheme.barrels*area)});state.billboards=placeBillboards(state.terrain,seed,rules.sponsors,state.worms);state.crateSponsor=pickSponsors(rules.sponsors,'crate',1,seeded((seed^0x3c6ef372)>>>0))[0]||null;state.battleAds=placeBattleAds(state.terrain,seed,rules.sponsors,state.worms,state.billboards.map(b=>b.x));state.stats=newStats();state.calm=0;state.settleWait=0;state.camHoldId=null;music.next();music.setMood('battle');state.active=state.worms[0];state.active.active=true;state.turnLog=openTurn(state);state.cam={x:0,y:0,zoom:1,tz:1,free:false,auto:true};state.camTargetId=null;state.ammo=[{teleport:rules.teleports},{teleport:rules.teleports}];centerCamera();updateUI();say('YOUR TURN · TAKE AIM',2.5);
 }
 function living(team){return state.worms.filter(w=>w.team===team&&w.alive)}
 function beginTurn(team){
@@ -130,9 +130,22 @@ function explosion(x,y,r,damage,source){state.shake=Math.max(state.shake,13);add
  for(const p of state.projectiles){if(p.dead||(p.type!=='grenade'&&p.type!=='dynamite'))continue;const d=Math.hypot(p.x-x,p.y-y);if(d<r*1.3){const push=(1-d/(r*1.3))*520;p.vx+=(p.x-x)/(d||1)*push;p.vy+=(p.y-y)/(d||1)*push-120;p.resting=false}}
  updateUI();if(state.phase==='retreat')state.phase='resolving';if(state.phase==='resolving')state.resolveTimer=Math.max(state.resolveTimer,1.3);
 }
-function kill(w){if(!w.alive)return;recordDeath(w,w.y>state.waterLevel-12);voice(w,w.y>state.waterLevel-12?'water':'die');const killer=state.active;if(!state.sim&&killer?.alive&&killer.team!==w.team)setTimeout?.(()=>voice(killer,'kill'),1100);w.alive=false;w.active=false;emit(w.x,w.y,'#fff8d1',28,220);tone(230,.22,'square',.05,80);chirp();say(w.name.toUpperCase()+' IS OUT!',1.3);if((state.active===w&&state.phase==='ready')||living(w.team).length===0){state.phase='resolving';state.resolveTimer=1.5}updateUI()}
+function kill(w){if(!w.alive)return;const drowned=wormDrowned(w,state.waterLevel);recordDeath(w,drowned);voice(w,drowned?'water':'die');const killer=state.active;if(!state.sim&&killer?.alive&&killer.team!==w.team)setTimeout?.(()=>voice(killer,'kill'),1100);w.alive=false;w.active=false;emit(w.x,w.y,'#fff8d1',28,220);tone(230,.22,'square',.05,80);chirp();say(w.name.toUpperCase()+' IS OUT!',1.3);if((state.active===w&&state.phase==='ready')||living(w.team).length===0){state.phase='resolving';state.resolveTimer=1.5}updateUI()}
 // Hooks the map props call back into: blasts, heals, mine beeps and splashes.
 const propApi={explode:(x,y,r,d)=>explosion(x,y,r,d,-1),heal:(w,a)=>{w.hp+=a;w.flash=0;emit(w.x,w.y-10,'#7dffa8',14,120);tone(880,.12,'sine',.05,1320);say(`${w.name.toUpperCase()} +${a} HP`,1.2);updateUI()},beep:()=>tone(1150,.06,'square',.035),splash:(x,y)=>emit(x,y,'#d6f5ff',12,100)};
+// A worm still flying, falling, sinking or skidding after a hit.
+const wormMoving=w=>w.alive&&(!w.grounded||w.sliding&&Math.abs(w.vx)>18);
+// After a shot the turn waits until nothing moves: no ordnance in flight, no prop rolling or ticking, no worm
+// flying, skidding or sinking; then a short beat so the aftermath is seen. A body that never quite settles
+// cannot hold the match: past SETTLE_CAP seconds of waiting the turn hands over anyway.
+const SETTLE_PAUSE=.6,SETTLE_CAP=8;
+function settled(dt){
+ const busy=state.projectiles.length>0||propsBusy(state)||state.worms.some(wormMoving);
+ state.calm=busy?0:(state.calm||0)+dt;
+ if(state.resolveTimer>0)return false;state.settleWait=(state.settleWait||0)+dt;
+ if(state.projectiles.length)return false;
+ return state.calm>0&&(state.sim||state.calm>=SETTLE_PAUSE-1e-9)||state.settleWait>=SETTLE_CAP;
+}
 function startResolution(wait=1){if(state.rope&&state.active){releaseRope(state.active,state.rope);state.active.grounded=false}state.rope=null;state.shotgunLeft=0;state.phase='resolving';state.resolveTimer=wait;state.used=true;state.charging=false}
 function setGrenadeFuse(value){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeFuse=clamp(Number(value)||3,1,5);state.playerGrenadeFuse=state.grenadeFuse;updateUI();tone(620,.05,'triangle',.025)}
 function toggleGrenadeBounce(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeBounce=state.grenadeBounce==='high'?'low':'high';state.playerGrenadeBounce=state.grenadeBounce;updateUI();tone(540,.07,'triangle',.025)}
@@ -226,7 +239,7 @@ function simulateAction(a,{maxSeconds=9}={}){
   state.sim=true;state.simDone=false;state.particles=[];state.blasts=[];
   applyAction(a);
   for(let time=0;time<maxSeconds&&!state.simDone&&state.running;time+=1/30)update(1/30);
-  after=state.worms.map(w=>({hp:w.hp,alive:w.alive,drowned:!w.alive&&w.y>state.waterLevel-12}));
+  after=state.worms.map(w=>({hp:w.hp,alive:w.alive,drowned:!w.alive&&wormDrowned(w,state.waterLevel)}));
  }finally{
   t.mask.set(mask);t.top.set(top);
   for(const k of Object.keys(state))if(!(k in snap))delete state[k];Object.assign(state,snap);
@@ -312,7 +325,7 @@ function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);cons
   if(ai){if(rp.state==='attached')ai.t+=dt;const inp=executeRopeInputs(ai.plan,ai.t);if(inp.release||ai.t>4){releaseRope(w,rp);state.rope=null;state.aiRope=null;w.grounded=false;state.aiTimer=Math.max(state.aiTimer,.5)}else stepRope(state.terrain,w,rp,dt,inp)}
   else stepRope(state.terrain,w,rp,dt,{left:!!(k.KeyA||k.ArrowLeft||k.left),right:!!(k.KeyD||k.ArrowRight||k.right),up:!!(k.KeyW||k.ArrowUp||k.jump),down:!!(k.KeyS||k.ArrowDown)});
   if(rp.state==='missed'){state.rope=null;state.aiRope=null;say('ROPE MISSED',.8)}
-  else if(rp.state==='attached'){w.grounded=false;w.sliding=false;if(Math.abs(w.vx)>20)w.face=Math.sign(w.vx);if(w.y>state.waterLevel-10){w.hp=0;kill(w);say(w.name.toUpperCase()+' TOOK A SWIM!',1.4)}return}
+  else if(rp.state==='attached'){w.grounded=false;w.sliding=false;if(Math.abs(w.vx)>20)w.face=Math.sign(w.vx);if(wormDrowned(w,state.waterLevel)){w.hp=0;kill(w);say(w.name.toUpperCase()+' TOOK A SWIM!',1.4)}return}
  }
  const t=state.terrain,jet=state.phase==='jetpack'&&state.active===w,dir=left&&!right?-1:right&&!left?1:0,backflip=player&&state.keys.Backspace;
  w.stepClock=Math.max(0,(w.stepClock||0)-dt);w.walking=false;
@@ -338,7 +351,7 @@ function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);cons
    w.vy=0;w.x=nx;
   }
  }
- if(w.y>state.waterLevel-10){w.hp=0;kill(w);say(w.name.toUpperCase()+' TOOK A SWIM!',1.4)}
+ if(wormDrowned(w,state.waterLevel)){w.hp=0;kill(w);say(w.name.toUpperCase()+' TOOK A SWIM!',1.4)}
 }
 // Landing: hard hits bounce once and skid like the original ragdoll; long falls hurt.
 function land(w,jet){
@@ -354,7 +367,7 @@ function land(w,jet){
  w.y=Math.floor(w.y);for(let k=0;k<3&&!wormGrounded(t,w.x,w.y)&&wormFits(t,w.x,w.y+1);k++)w.y++;
  w.vy=0;w.grounded=true;w.sliding=!jet&&Math.abs(w.vx)>60;if(!w.sliding)w.vx=0;
 }
-function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dynamite'&&Math.ceil(oldFuse)>Math.ceil(p.fuse)&&p.fuse>0)tone(920,.07,'square',.035,650);p.trail.push({x:p.x,y:p.y});if(p.trail.length>12)p.trail.shift();if(p.type==='grenade'||p.type==='dynamite'){const body=p.type==='dynamite'?BODIES.dynamite:(p.bounceFactor??.55)<.4?BODIES.grenadeLow:BODIES.grenadeHigh,hit=stepBody(state.terrain,p,dt,{body,water:state.waterLevel}).impact;if(hit>70){p.bounces++;if(p.type==='grenade')tone(650,.055,'triangle',clamp(hit/900,.008,.028),340);else tone(240,.05,'square',.018,160)}if(p.sunk||p.y>state.waterLevel){p.dead=true;emit(p.x,state.waterLevel,'#d6f5ff',15,110);tone(440,.12,'sine',.04);return}}
+function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dynamite'&&Math.ceil(oldFuse)>Math.ceil(p.fuse)&&p.fuse>0)tone(920,.07,'square',.035,650);p.trail.push({x:p.x,y:p.y});if(p.trail.length>12)p.trail.shift();if(p.type==='grenade'||p.type==='dynamite'){const body=p.type==='dynamite'?BODIES.dynamite:(p.bounceFactor??.55)<.4?BODIES.grenadeLow:BODIES.grenadeHigh,hit=stepBody(state.terrain,p,dt,{body,water:state.waterLevel}).impact;if(hit>70){p.bounces++;if(p.type==='grenade')tone(650,.055,'triangle',clamp(hit/900,.008,.028),340);else tone(240,.05,'square',.018,160)}if(p.sunk){p.dead=true;emit(p.x,state.waterLevel,'#d6f5ff',15,110);tone(440,.12,'sine',.04);return}}
  else{const sub=4;for(let i=0;i<sub;i++){const d=dt/sub;p.vx+=state.wind*(p.type==='airstrike'?0:.7)*d;p.vy+=GRAVITY*d;p.x+=p.vx*d;p.y+=p.vy*d;
   if(p.x<4||p.x>W-4){p.dead=true;return}
   if(p.y>state.waterLevel){p.dead=true;return}
@@ -373,7 +386,7 @@ function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musi
  for(const p of state.projectiles)if(!p.dead){updateProjectile(p,dt);if(p.dead&&!state.sim)noteLanding(state.turnLog,p)}state.projectiles=state.projectiles.filter(p=>!p.dead);
  updateProps(state,dt,propApi);
  for(const p of state.particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=350*dt;p.life-=dt}state.particles=state.particles.filter(p=>p.life>0);state.blasts=state.blasts.filter(b=>(b.t+=dt)<1.3);
- if(state.phase==='resolving'||state.phase==='retreat'){state.resolveTimer-=dt;state.propWait=propsBusy(state)?state.propWait+dt:0;if(state.resolveTimer<=0&&state.projectiles.length===0&&(state.propWait===0||state.propWait>5)&&state.worms.every(w=>!w.alive||w.grounded||w.y>state.waterLevel)){if(state.sim)state.simDone=true;else nextTurn()}}
+ if(state.phase==='resolving'||state.phase==='retreat'){state.resolveTimer-=dt;if(settled(dt)){if(state.sim)state.simDone=true;else nextTurn()}}else{state.calm=0;state.settleWait=0;state.camHoldId=null}
  updateUI();
 }
 // The HUD is refreshed every frame; touch the DOM only when a value really changes (each write invalidates style).
@@ -408,7 +421,17 @@ function drawSky(now){
 function drawWorldBack(now){const th=themes[state.map];drawAmbient(ctx,state,th,W,H,now,frameDt);drawWater(ctx,state,th,W,H,now,false)}
 // Camera: follows the shot in flight, otherwise the active worm. Wheel or Z zooms out to the whole map,
 // right-drag looks around freely (the turn clock keeps running), C or the next shot snaps back.
-function camFocus(){return state.projectiles.find(p=>!p.dead&&p.type!=='airstrike')||state.projectiles.find(p=>!p.dead&&p.y>0)||state.active}
+function camFocus(){
+ const shot=state.projectiles.find(p=>!p.dead&&p.type!=='airstrike')||state.projectiles.find(p=>!p.dead&&p.y>0);if(shot)return shot;
+ // After the shot the camera stays on whoever is still flying, skidding or sinking (the fastest, but it does not
+ // hop between worms), then rests on the last of them until the turn hands over.
+ if(state.phase==='resolving'||state.phase==='retreat'){
+  const held=state.worms.find(w=>w.id===state.camHoldId);if(held&&wormMoving(held))return held;
+  let fast=null;for(const w of state.worms)if(wormMoving(w)&&(!fast||Math.hypot(w.vx,w.vy)>Math.hypot(fast.vx,fast.vy)))fast=w;
+  if(fast){state.camHoldId=fast.id;return fast}if(held)return held;
+ }
+ return state.active;
+}
 function clampCam(c){c.x=clamp(c.x,0,Math.max(0,W-VIEW_W/c.zoom));c.y=clamp(c.y,0,Math.max(0,H-VIEW_H/c.zoom))}
 function centerCamera(){const c=state.cam,f=camFocus();if(!c||!f)return;c.x=f.x-VIEW_W/c.zoom/2;c.y=f.y-VIEW_H/c.zoom*.55;clampCam(c)}
 function updateCamera(dt){
