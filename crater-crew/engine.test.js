@@ -62,17 +62,12 @@ test('the AI grenade forecast matches live flight at any frame rate',()=>{
   const th=a*Math.PI/180,s=300+280*p,x=500,y=groundY(t,500)-30,f=trajectory(t,x,y,Math.cos(th)*s,Math.sin(th)*s,0,{fuse:3,bounce:true});
   // Same throw with the sea switched off: the whole 3 s flight path (bounces included) must agree.
   const full=trajectory(t,x,y,Math.cos(th)*s,Math.sin(th)*s,0,{fuse:3,bounce:true,water:Infinity});
-  for(const dt of [1/144,1/60,.04]){const b={x,y,vx:Math.cos(th)*s,vy:Math.sin(th)*s,r:8},c={...b};let time=0,prev={x,y};while(time<3-1e-9&&b.y<=WATER){prev={x:b.x,y:b.y};stepBody(t,b,dt);time+=dt}
-   if(f.y>WATER){
-    // On the big map many of these throws end in a sea channel. The forecast stops at the first
-    // 1/120 s body step below WATER; the live loop (like updateProjectile) only checks water once
-    // per frame, so it sinks up to one frame further (~20 px at 25 fps). The forecast splash point must
-    // lie on the live path within the frame that crossed the water line (same 6 px tolerance).
-    assert.ok(b.y>WATER,`drowns live too: angle ${a}, power ${p}, dt ${dt}`);
-    const sx=b.x-prev.x,sy=b.y-prev.y,k=Math.max(0,Math.min(1,((f.x-prev.x)*sx+(f.y-prev.y)*sy)/(sx*sx+sy*sy||1)));
-    assert.ok(Math.hypot(prev.x+sx*k-f.x,prev.y+sy*k-f.y)<6,`splash (${f.x.toFixed(1)},${f.y.toFixed(1)}) off live frame (${prev.x.toFixed(1)},${prev.y.toFixed(1)})->(${b.x.toFixed(1)},${b.y.toFixed(1)}): angle ${a}, power ${p}, dt ${dt}`);
-    assert.ok(Math.abs(time-f.time)<=dt+BODY_STEP+1e-9,`splash time ${time} vs ${f.time}: angle ${a}, power ${p}, dt ${dt}`);
-   }else assert.ok(Math.hypot(b.x-f.x,b.y-f.y)<6,`angle ${a}, power ${p}, dt ${dt}`);
+  for(const dt of [1/144,1/60,.04]){const b={x,y,vx:Math.cos(th)*s,vy:Math.sin(th)*s,r:8},c={...b};let time=0;
+   // The game passes the water level to stepBody exactly like the forecast does, so a throw that ends
+   // in a sea channel sinks at the same body step in both: same splash point at any frame rate.
+   while(time<3-1e-9&&!b.sunk){stepBody(t,b,dt,{water:WATER});time+=dt}
+   assert.equal(Boolean(b.sunk),f.y>WATER,`drowns in both or neither: angle ${a}, power ${p}, dt ${dt}`);
+   assert.ok(Math.hypot(b.x-f.x,b.y-f.y)<6,`angle ${a}, power ${p}, dt ${dt}: live (${b.x.toFixed(1)},${b.y.toFixed(1)}) forecast (${f.x.toFixed(1)},${f.y.toFixed(1)})`);
    let ct=0;while(ct<3-1e-9){stepBody(t,c,dt);ct+=dt}
    assert.ok(Math.hypot(c.x-full.x,c.y-full.y)<6,`no-water path: angle ${a}, power ${p}, dt ${dt}`)}
  }

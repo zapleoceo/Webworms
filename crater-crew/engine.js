@@ -72,7 +72,7 @@ export function groundY(t,x){return t.top[clamp(Math.floor(x),0,W-1)]}
 export function blastDamage(distance,radius,max){return distance>=radius?0:Math.round(max*(1-distance/radius)**1.28)}
 export function trajectory(t,x,y,vx,vy,wind,{fuse=8,bounce=false,exact=true,dt=1/40,water=WATER,body=BODIES.grenadeHigh,r=8}={}){
   // Bouncing ordnance runs the live body step, so the AI forecast and the real throw agree.
-  if(bounce&&exact){const b={x,y,vx,vy,r};let time=0;while(time<fuse-1e-9&&b.y<=water){stepBody(t,b,BODY_STEP,{body});time+=BODY_STEP}return {x:b.x,y:b.y,time,hit:false}}
+  if(bounce&&exact){const b={x,y,vx,vy,r};let time=0;while(time<fuse-1e-9&&!b.sunk){stepBody(t,b,BODY_STEP,{body,water});time+=BODY_STEP}return {x:b.x,y:b.y,time,hit:false}}
   let time=0, px=x,py=y,ax=vx,ay=vy,hit=false;
   while(time<fuse&&py<H+100){
     const nx=px+ax*dt,ny=py+ay*dt;
@@ -145,7 +145,9 @@ export function contactNormal(t,x,y,r){
 export const BODY_STEP=1/120;
 export function stepBody(t,b,dt,opts={}){
   const events={impact:0};b.acc=(b.acc||0)+dt;
-  while(b.acc>=BODY_STEP-1e-9){b.acc-=BODY_STEP;events.impact=Math.max(events.impact,fixedStep(t,b,BODY_STEP,opts));if(b.resting)b.acc=0}
+  // The water check runs every step, so a body dipping under and bouncing back out is caught in game and forecast alike.
+  const water=opts.water??Infinity;
+  while(!b.sunk&&b.acc>=BODY_STEP-1e-9){b.acc-=BODY_STEP;events.impact=Math.max(events.impact,fixedStep(t,b,BODY_STEP,opts));if(b.y>water)b.sunk=true;if(b.resting)b.acc=0}
   return events;
 }
 function fixedStep(t,b,dt,{wind=0,body=BODIES.grenadeHigh}={}){
@@ -174,8 +176,10 @@ function fixedStep(t,b,dt,{wind=0,body=BODIES.grenadeHigh}={}){
   if(b.contact){
     const drag=Math.max(0,1-body.rollDrag*dt);b.vx*=drag;b.vy*=drag;
     // Props may come to rest on a slope (body.restOnSlope); ordnance keeps rolling until the ground is flat.
-    const flat=body.restOnSlope||(b.normal?.y??-1)<-.93;
-    if(flat&&Math.hypot(b.vx,b.vy)<14){b.restTime=(b.restTime||0)+dt;if(b.restTime>.2){b.resting=true;b.vx=0;b.vy=0}}else b.restTime=0;
+    // Static friction for props (body.restOnSlope): a slow one sticks on slopes up to ~37 degrees.
+    // Ordnance keeps rolling until the ground is flat.
+    const ny=b.normal?.y??-1,still=body.restOnSlope?ny<-.8&&Math.hypot(b.vx,b.vy)<40:ny<-.93&&Math.hypot(b.vx,b.vy)<14;
+    if(still){b.restTime=(b.restTime||0)+dt;if(b.restTime>.2){b.resting=true;b.vx=0;b.vy=0}}else b.restTime=0;
   }else b.restTime=0;
   return events.impact;
 }
