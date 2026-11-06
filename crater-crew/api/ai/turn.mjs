@@ -10,7 +10,27 @@ const validId=s=>typeof s==='string'&&/^[a-z0-9_-]{1,48}$/.test(s);
 const sign=s=>createHmac('sha256',key()).update(s).digest('base64url');
 function ticketFor(payload){const encoded=Buffer.from(JSON.stringify(payload)).toString('base64url');return encoded+'.'+sign(encoded)}
 function parseTicket(ticket){if(typeof ticket!=='string'||ticket.length>5000)return null;const [encoded,mac,extra]=ticket.split('.');if(!encoded||!mac||extra)return null;const actual=Buffer.from(sign(encoded)),given=Buffer.from(mac);if(actual.length!==given.length||!timingSafeEqual(actual,given))return null;try{const p=JSON.parse(Buffer.from(encoded,'base64url').toString()),now=Date.now();return Number.isInteger(p.jobId)&&p.jobId>0&&p.exp>now&&p.exp<=now+8*60*60_000+1000&&typeof p.turnId==='string'&&Array.isArray(p.ids)&&p.ids.length>0&&p.ids.length<=32&&p.model===model()?p:null}catch{return null}}
-function validate(body){if(!body||typeof body!=='object'||!validId(body.turnId)||!Number.isInteger(body.difficulty)||body.difficulty<0||body.difficulty>2)return false;const s=body.snapshot;if(!s||!Number.isInteger(s.map)||s.map<0||s.map>2||!Number.isInteger(s.round)||s.round<1||s.round>500||!Number.isFinite(s.wind)||Math.abs(s.wind)>100||!Array.isArray(s.worms)||s.worms.length>6||!Array.isArray(s.terrain)||s.terrain.length!==32)return false;if(!Array.isArray(body.candidates)||body.candidates.length<1||body.candidates.length>32)return false;const ids=new Set();for(const c of body.candidates){if(!validId(c.id)||ids.has(c.id)||typeof c.description!=='string'||c.description.length>240)return false;ids.add(c.id)}return true}
+const PROP_KINDS=new Set(['mine','barrel','health_crate']);
+const validProps=p=>p===undefined||Array.isArray(p)&&p.length<=60&&p.every(q=>q&&PROP_KINDS.has(q.kind)&&Number.isFinite(q.x)&&Number.isFinite(q.y));
+// Stable rules first and the per-turn state after them: Broker marks the leading system message as a
+// prompt-cache breakpoint, so this text must not change between turns (no names, dates or difficulty here).
+const RULES=`You are the enemy commander ("Dirt Devils", team 1) in a turn-based 2D artillery game with destructible terrain. Pick ONE move from the supplied candidates for your active worm. Never invent a move.
+
+World: x grows right, y grows DOWN; the map is 3600x1400. Water fills everything below snapshot.water; a worm that touches it dies. From round 9 (suddenDeath) the water rises 12 px every round. snapshot.terrain is the ground surface height sampled evenly across the map width. Worms have up to 100+ hp; a worm at 0 hp dies. Team 0 is the enemy you fight.
+
+Weapons (the candidates already contain the aim and power; each description shows the outcome predicted by the game's own physics: who is hit for how much, KILL, friendly fire as "ally"/"SELF", chained barrels/mines, water nearby):
+- bazooka: radius 77, damage up to 58; pushed by wind; explodes on impact.
+- grenade: radius 84, damage up to 66; not affected by wind; bounces, explodes after 3 s.
+- shotgun: two straight shots, up to 25 damage each; needs a clear line.
+- dynamite: radius 102, damage up to 82; placed beside the target, 3 s fuse, you retreat.
+- airstrike: 5 missiles along the target, radius 56, up to 40 each; any range; wind-proof.
+- punch: 30 damage plus strong knockback (can push the target into water).
+- jetpack: flies you to safer ground; uses the turn.
+Map props: a mine explodes about 1 s after a worm comes within ~46 px (radius 62, damage 42); a barrel explodes when a blast reaches it (radius 80, damage 48) and can chain; a health_crate heals +25 to whoever touches it. Big knockbacks and long falls also hurt.
+
+How to choose: prefer KILLs and the largest damage to enemies; avoid moves that hurt allies or SELF; use barrels and mines near enemies; consider knocking enemies into water; when standing close to rising water, escaping can beat a weak shot. Difficulty in the message: "easy" plays simply and may pick a plain decent shot, "normal" weighs damage and safety, "hard" maximises kills and expected damage while protecting allies.
+Reply with JSON only: {"turn_id": <the given turn_id>, "candidate_id": <one supplied id>}.`;
+function validate(body){if(!body||typeof body!=='object'||!validId(body.turnId)||!Number.isInteger(body.difficulty)||body.difficulty<0||body.difficulty>2)return false;const s=body.snapshot;if(!s||!Number.isInteger(s.map)||s.map<0||s.map>2||!Number.isInteger(s.round)||s.round<1||s.round>500||!Number.isFinite(s.wind)||Math.abs(s.wind)>100||!Array.isArray(s.worms)||s.worms.length>6||!Array.isArray(s.terrain)||(s.terrain.length!==32&&s.terrain.length!==64)||!validProps(s.props)||!s.worms.every(w=>w&&(w.name===undefined||typeof w.name==='string'&&w.name.length<=24)))return false;if(!Array.isArray(body.candidates)||body.candidates.length<1||body.candidates.length>32)return false;const ids=new Set();for(const c of body.candidates){if(!validId(c.id)||ids.has(c.id)||typeof c.description!=='string'||c.description.length>240)return false;ids.add(c.id)}return true}
 async function broker(path,options={}){const url=new URL(path,brokerBase());if(url.protocol!=='https:')throw Error('broker configuration');const response=await fetch(url,{...options,headers:{'X-Project-Key':key(),'accept':'application/json',...(options.headers||{})},signal:AbortSignal.timeout(7000)});if(!response.ok){let code='unparsed';try{const e=(await response.json()).error;if(typeof e==='string'&&/^[a-z0-9_.-]{1,64}$/.test(e))code=e}catch{}throw Error(`broker ${response.status} on ${url.pathname}: ${code}`)}return response.json()}
 async function verifiedSubscriptionModel(){
  const catalog=await broker('/v1/models');
@@ -37,8 +57,8 @@ export default {async fetch(request){
    if(!validate(body))return json({error:'invalid turn snapshot'},422);
    if(!await verifiedSubscriptionModel())return json({status:'unavailable',error:'The approved subscription model is unavailable.'},503);
    const names=['easy','normal','hard'];
-   const instruction=`You choose ONE legal move for the enemy in a turn-based artillery game. Difficulty: ${names[body.difficulty]}. Analyze the team health, terrain heights, wind, predicted weapon effects, water risk and allies. Choose only a candidate_id from the supplied candidates. Do not invent actions. Return only the required JSON.`;
-   const payload={model:model(),messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify({turn_id:body.turnId,snapshot:body.snapshot,candidates:body.candidates})}],response_format:{type:'json_schema',json_schema:{name:'artillery_turn',strict:true,schema:{type:'object',properties:{turn_id:{type:'string'},candidate_id:{type:'string'}},required:['turn_id','candidate_id'],additionalProperties:false}}},workflow:'webworms-turn'};
+
+   const payload={model:model(),messages:[{role:'system',content:RULES},{role:'user',content:JSON.stringify({turn_id:body.turnId,difficulty:names[body.difficulty],snapshot:body.snapshot,candidates:body.candidates})}],response_format:{type:'json_schema',json_schema:{name:'artillery_turn',strict:true,schema:{type:'object',properties:{turn_id:{type:'string'},candidate_id:{type:'string'}},required:['turn_id','candidate_id'],additionalProperties:false}}},workflow:'webworms-turn'};
    // Broker's project-scoped unique key replays the same job even after completion.
    // A changed payload for the same turn gets 409 instead of a second subscription run.
    const idempotencyKey='ww_'+sign('idem:'+body.turnId);
