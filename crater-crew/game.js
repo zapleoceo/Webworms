@@ -65,7 +65,8 @@ function beginTurn(team){
  const alive=living(team);if(!alive.length){finish(1-team);return}
  const prior=state.lastActiveId[team];state.active=alive.find(w=>w.id>prior)||alive[0];state.active.active=true;state.lastActiveId[team]=state.active.id;state.dir=team? -1:1;state.aim=-.78;state.power=.55;
  updateUI();say(team?'DIRT DEVILS ARE THINKING...':'YOUR TURN · TAKE AIM',1.8);voice(state.active,'turn');
- state.aiTimer=team?1.1:0;pickTarget(null);state.rope=null;if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
+ // The Broker model needs several seconds, so its request leaves the moment the AI turn starts.
+ state.aiTimer=team?(state.aiDriver==='broker'?0:1.1):0;pickTarget(null);state.rope=null;if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
 }
 function finish(winner){clearPendingTurn();state.brokerController?.abort();state.brokerController=null;$('broker-panel').hidden=true;state.ended=true;state.running=false;state.phase='ended';state.musicNextTime=0;$('result-caption').textContent=winner===2?'THE ISLAND CLAIMS EVERYONE':winner?'THE DIRT DEVILS WIN':'SKY SQUAD WINS';$('result-title').textContent=winner===2?'DRAW':winner?'DEFEAT':'VICTORY!';$('result-text').textContent=winner===2?'Both teams went under. Try another island!':winner?'The Dirt Devils took this island. Try another tactic!':'The Dirt Devils have been sent packing. The island is yours!';$('result').classList.add('open');music.setMood(winner===0?'victory':'defeat');$('rematch').focus?.();tone(winner?180:600,.5,'sine',.1,winner?80:900);const champ=state.worms.find(w=>w.alive&&w.team===winner);if(champ)voice(champ,'win');else if(winner===2)voice(state.worms[0],'tie')}
 function nextTurn(){if(state.ended)return;const p=living(0).length,e=living(1).length;if(!p||!e){finish(!p&&!e?2:p?0:1);return}if(state.team===1){state.round++;if(state.round>8){state.waterLevel=Math.max(270,WATER-(state.round-8)*12);music.setMood('tense');say('SUDDEN DEATH · WATER RISING!',1.7)}}beginTurn(1-state.team)}
@@ -141,7 +142,7 @@ async function requestBrokerTurn(resume=false){
  }
  const turnId=state.brokerTurnId,activeId=state.active.id,controller=new AbortController();
  const current=()=>state.running&&state.active?.id===activeId&&state.brokerTurnId===turnId&&state.phase==='broker-wait';
- state.brokerController=controller;state.phase='broker-wait';$('broker-panel').hidden=true;say('BROKER LLM IS THINKING...',20);updateUI();
+ state.brokerController=controller;state.phase='broker-wait';state.brokerElapsed=0;$('broker-panel').hidden=true;say('BROKER LLM IS THINKING...',20);updateUI();
  const deadline=setTimeout(()=>controller.abort(),28000);
  try{
   let result;
@@ -227,7 +228,7 @@ function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dyn
  }}
  if(p.fuse<=0){p.dead=true;if(p.type==='grenade'||p.type==='dynamite'){explosion(p.x,p.y,data[p.type].radius,data[p.type].damage,p.source)}else if(p.type==='airstrike'){explosion(p.x,p.y,56,40,p.source)}else if(p.type==='bazooka'){p.dead=true}}
 }
-function update(dt){if(!state.running)return;updateCamera(dt);musicTick();if(state.team===1&&state.aiDriver==='broker'&&['broker-wait','broker-error'].includes(state.phase)){updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
+function update(dt){if(!state.running)return;updateCamera(dt);musicTick();if(state.team===1&&state.aiDriver==='broker'&&['broker-wait','broker-error'].includes(state.phase)){if(state.phase==='broker-wait'){state.brokerElapsed=(state.brokerElapsed||0)+dt;$('message').textContent=`DIRT DEVILS ARE THINKING · ${Math.floor(state.brokerElapsed)}s`}updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
  if(state.phase==='ready'||state.phase==='jetpack'||state.phase==='reposition'){{const before=state.timer;state.timer-=dt;if(before>5&&state.timer<=5&&state.active?.alive)voice(state.active,'hurry')}if(state.timer<=0){state.timer=0;say('TIME IS UP!',1);startResolution(.7)}if(state.phase==='jetpack'){state.jetTime-=dt;state.jetPulse=(state.jetPulse||0)-dt;if(state.jetPulse<=0){noise(.19,.018,1800);state.jetPulse=.44}if(state.jetTime<=0)startResolution(.8)}if(state.phase==='reposition'){state.aiMoveTime-=dt;if(state.aiMoveTime<=0||Math.abs(state.active.x-state.aiTarget)<20){state.phase='ready';state.aiTimer=.25}}}
  if(state.team===1&&state.phase==='ready'){state.aiTimer-=dt;if(state.aiTimer<=0)aiAct()}
  if(state.team===1&&state.phase==='jetpack'&&!state.jetDropped&&state.active?.alive){const w=state.active;const target=living(0).find(f=>Math.abs(f.x-w.x)<62&&f.y-w.y>45);if(target&&living(1).every(f=>f===w||Math.hypot(f.x-w.x,f.y-w.y)>125))dropDynamite()}
