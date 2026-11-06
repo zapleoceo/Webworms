@@ -29,7 +29,7 @@ test('startup fetches /api/settings once and applies it before the first match',
  assert.equal(requested.filter(u=>u==='api/settings').length,1);
  assert.equal(rules.turnTime,50);assert.equal(rules.teleports,4);
  newGame(0,1,4242);
- assert.equal(state.timer,50);assert.deepEqual(state.ammo,[{teleport:4},{teleport:4}]);
+ assert.equal(state.timer,50);assert.deepEqual(state.ammo,[{teleport:4,airstrike:2},{teleport:4,airstrike:2}]);
  beginTurn(1);assert.equal(state.timer,50,'every turn uses the configured time');
  assert.equal(state.crateHeal,40);assert.equal(state.props.length,0,'mines 0, barrels 0');
  // Setup screen: default players and audio come from the settings when the player has not chosen yet.
@@ -40,7 +40,7 @@ test('startup fetches /api/settings once and applies it before the first match',
 test('defaults reproduce the built-in match exactly',()=>{
  applySettings({});
  newGame(0,1,1234);
- assert.equal(state.timer,35);assert.deepEqual(state.ammo,[{teleport:2},{teleport:2}]);
+ assert.equal(state.timer,35);assert.deepEqual(state.ammo,[{teleport:2,airstrike:2},{teleport:2,airstrike:2}]);
  assert.deepEqual({...scheme},{mines:8,barrels:6,crateChance:.3});assert.equal(state.crateHeal,25);
  const first=seeded((1234^0x9e3779b9)>>>0)();
  assert.equal(state.wind,(first-.5)*72,'same random draw, same ±36 start wind');
@@ -56,7 +56,7 @@ test('settings that arrive mid-match wait for the next match',()=>{
 
 test('sudden death round and water rise per round',()=>{
  state.running=false;applySettings({water:{suddenDeathRound:3,waterRise:20}});
- newGame(0,1,99);state.controllers=['human','easy'];
+ delete state.controllers;newGame(0,1,99);state.controllers=['human','easy'];
  state.team=1;state.round=1;nextTurn();assert.equal(state.round,2);assert.equal(state.waterLevel,WATER,'round 2: calm');
  state.team=1;nextTurn();assert.equal(state.round,3);assert.equal(state.waterLevel,WATER-20,'round 3: sudden death');
  state.team=1;nextTurn();assert.equal(state.waterLevel,WATER-40);

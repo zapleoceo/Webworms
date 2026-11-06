@@ -33,6 +33,8 @@ function placeBeside(shooter,target,near,far){
 }
 // The duel plain keeps its old height above the sea (600 vs water 755), since AI jetpack/walk rules key off the water line.
 const PLAIN=WATER-155;
+// A match started from the setup screen tosses a coin for the opening turn; scripted human turns need team 0 to open.
+function humanOpens(){for(let seed=1;state.team!==0;seed++)newGame(state.map,state.difficulty,seed)}
 function flatDuel(enemyX,difficulty=2,seed=807){
  // The duel scenarios check the step-by-step local algorithm per difficulty, not the PC Easy sandbox player.
  delete state.controllers;state.aiDriver='local';newGame(0,difficulty,seed);beginTurn(1);const t=state.terrain;
@@ -240,7 +242,7 @@ test('music and effects unlock only on a gesture, separate controls persist, and
  const prior=globalThis.__audioStarts;element('music-on').checked=false;element('music-on').onchange();
  globalThis.__audioContext.currentTime+=.3;update(.04);assert.equal(globalThis.__audioStarts,prior,'music off schedules nothing');
  element('effects-on').checked=true;element('effects-on').onchange();assert.equal(state.sound,true);assert.equal(state.musicEnabled,false);
- state.sound=false;state.musicEnabled=false;
+ state.sound=false;state.musicEnabled=false;delete state.controllers;
 });
 
 test('ordnance launch rules: wind-proof airstrike, dropped dynamite and downward fire',()=>{
@@ -455,7 +457,7 @@ test('complete autoplay battles terminate across maps, difficulties and seeds',(
   for(let frame=0;frame<18000&&!state.ended;frame++){
    if(state.team===0&&state.phase==='ready'){
     const opponents=state.worms.filter(w=>w.team===1&&w.alive);
-    if(opponents.length){state.selected='airstrike';state.airTarget=opponents.reduce((a,b)=>a.hp<b.hp?a:b).x;fire();turns++}
+    if(opponents.length){state.ammo[0].airstrike=1;state.selected='airstrike';state.airTarget=opponents.reduce((a,b)=>a.hp<b.hp?a:b).x;fire();turns++}
    }
    update(.04);
   }
@@ -618,7 +620,7 @@ test('PC GOD sends the journal after the snapshot and candidates; PC Ultra does 
  const prior=globalThis.fetch,posts=[];
  globalThis.fetch=async (_url,options)=>{if(options?.method==='POST'){posts.push(JSON.parse(options.body));return new Response(JSON.stringify({status:'pending',ticket:'god-ticket',pollAfter:5}),{status:202})}return new Response(JSON.stringify({status:'pending',pollAfter:5}))};
  try{
-  const {chooseController}=window.__craterCrew;chooseController(0,'human');chooseController(1,'god');element('start').onclick();
+  const {chooseController}=window.__craterCrew;chooseController(0,'human');chooseController(1,'god');element('start').onclick();humanOpens();
   assert.deepEqual(state.controllers,['human','god']);assert.equal(element('ai-level').textContent,'HUMAN vs PC GOD');
   // Sky Squad's airstrike becomes the first journal entry, then the GOD turn is asked for.
   state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
@@ -632,7 +634,7 @@ test('PC GOD sends the journal after the snapshot and candidates; PC Ultra does 
   state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));
   newGame(0,1,995,true);delete state.controllers;assert.equal(restorePendingBrokerTurn(readPendingTurn()),true);
   assert.deepEqual(state.controllers,['human','god']);assert.equal(state.journal.length,1);
-  chooseController(1,'ultra');element('start').onclick();state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
+  chooseController(1,'ultra');element('start').onclick();humanOpens();state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
   aiAct();await new Promise(resolve=>setImmediate(resolve));
   assert.equal(posts.length,2);assert.equal(posts[1].difficulty,2);assert.equal(Object.hasOwn(posts[1],'history'),false,'PC Ultra gets no history');
  }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,996)}
@@ -669,4 +671,33 @@ test('a worm caught by its head under a sloped overhang slides clear and lands b
  assert.ok(w.x>1000,'the worm moves away from the blocked side of the overhang');
  assert.ok(w.y>=800-R-2&&w.grounded,'the worm reaches solid ground, not a false landing under the ceiling');
  assert.equal(state.team,1,'the turn passes after the real landing rather than the eight-second safety cap');
+});
+
+test('pending Broker recovery preserves spent airstrikes and teleport charges',async()=>{
+ const prior=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({status:'unavailable',error:'mock offline'}),{status:503});
+ try{
+  delete state.controllers;newGame(0,2,5151);state.controllers=['human','god'];beginTurn(1);
+  state.ammo=[{teleport:1,airstrike:1},{teleport:0,airstrike:0}];aiAct();await new Promise(resolve=>setImmediate(resolve));
+  const saved=readPendingTurn();assert.ok(saved);assert.deepEqual(saved.game.ammo,state.ammo);
+  const raw=JSON.parse(sessionItems.get(PENDING_KEY));
+  for(const invalid of [[],[{teleport:0,airstrike:-1},{teleport:0,airstrike:0}],[{teleport:0,airstrike:1.5},{teleport:0,airstrike:0}],[null,null]]){
+   sessionItems.set(PENDING_KEY,JSON.stringify({...raw,game:{...raw.game,ammo:invalid}}));assert.equal(readPendingTurn(),null)
+  }
+  newGame(0,2,5152,true);assert.equal(restorePendingBrokerTurn(saved),true);
+  assert.deepEqual(state.ammo,[{teleport:1,airstrike:1},{teleport:0,airstrike:0}]);
+  assert.ok(state.brokerOptions.every(o=>o.action?.weapon!=='airstrike'),'recovery does not offer spent airstrikes');
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,5153)}
+});
+
+test('coin-toss opening bots use their selected profile and Broker difficulty immediately',async()=>{
+ const prior=globalThis.fetch,posts=[];globalThis.fetch=async(_url,options)=>{if(options?.method==='POST')posts.push(JSON.parse(options.body));return new Response(JSON.stringify({status:'unavailable',error:'mock offline'}),{status:503})};
+ try{
+  for(const first of [0,1])for(const level of ['hard','ultra','god']){
+   const seed=Array.from({length:32},(_,i)=>i+1).find(s=>(Math.imul((s^0x6a09e667)>>>0,0x2c1b3c6d)>>>31)===first);
+   const controllers=first?['human',level]:[level,'human'];state.controllers=[...controllers];newGame(0,level==='hard'?2:1,seed);
+   assert.equal(state.team,first);assert.equal(state.difficulty,level==='hard'?1:2,'opening bot gets the same profile as subsequent turns');
+   const before=posts.length;aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts.length,before+1);assert.equal(posts.at(-1).difficulty,level==='god'?3:level==='hard'?1:2);
+   assert.deepEqual(state.controllers,controllers,'the selected controller settings are unchanged');
+  }
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,5252)}
 });
