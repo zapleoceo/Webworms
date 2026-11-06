@@ -58,10 +58,11 @@ function say(text,time=2,color=''){if(state.sim)return;state.message=text;state.
 function buildTerrain(rect=null){if(state.sim)return;
  const t=state.terrain,th=themes[state.map],key=state.seed+':'+state.map;
  if(!state.soil||state.soil.key!==key)state.soil={key,...bakeSoil(state.map,state.seed,W,H,th)};
- if(!state.terrainBuf){const off=document.createElement('canvas');off.width=W;off.height=H;const c=off.getContext('2d');state.terrainBuf={off,c,im:c.createImageData(W,H),run:new Uint16Array(W),grass:grassDepths(W)}}
- const {off,c,im,run,grass}=state.terrainBuf;
- paintTerrain(im.data,run,grass,t.mask,state.soil,th,W,H,rect);
- if(rect){const x=Math.max(0,rect.x0),y=Math.max(0,rect.y0);c.putImageData(im,0,0,x,y,Math.min(W-1,rect.x1)-x+1,H-y)}else c.putImageData(im,0,0);
+ if(!state.terrainBuf){const off=document.createElement('canvas');off.width=W;off.height=H;const c=off.getContext('2d');state.terrainBuf={off,c,run:new Uint16Array(W),grass:grassDepths(W)}}
+ const {off,c,run,grass}=state.terrainBuf;
+ // Painted in column strips the size of the changed area, so no full W x H RGBA copy stays in memory.
+ const x0=rect?Math.max(0,rect.x0):0,x1=rect?Math.min(W-1,rect.x1):W-1,y0=rect?Math.max(0,rect.y0):0;
+ if(y0<H)for(let sx=x0;sx<=x1;sx+=512){const ex=Math.min(x1,sx+511),im=c.createImageData(ex-sx+1,H-y0);paintTerrain(im.data,run,grass,t.mask,state.soil,th,W,H,{x0:sx,x1:ex,y0,local:true});c.putImageData(im,sx,y0)}
  state.terrainCanvas=off;
 }
 function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePending=false){
@@ -210,8 +211,9 @@ function applyAction(a){
  if(Number.isFinite(a.targetX)){state.aiTarget=a.targetX;if(a.weapon==='airstrike')state.airTarget=a.targetX}
  if(state.active)state.active.face=state.dir;fire();
 }
+let simMask=null;
 function simulateAction(a,{maxSeconds=9}={}){
- const t=state.terrain,mask=t.mask.slice(),top=t.top.slice(),snap={...state};
+ const t=state.terrain;if(simMask?.length!==t.mask.length)simMask=new Uint8Array(t.mask.length);simMask.set(t.mask);const mask=simMask,top=t.top.slice(),snap={...state};
  const worms=state.worms.map(w=>({...w})),props=state.props.map(p=>({...p})),propList=state.props.slice();
  // Arrays the move pushes into (fire() adds to state.projectiles in place) are restored from copies.
  const deep={stats:state.stats&&structuredClone(state.stats),ammo:state.ammo&&structuredClone(state.ammo),cam:state.cam&&{...state.cam},keys:{...state.keys},projectiles:state.projectiles.slice(),particles:state.particles.slice(),blasts:state.blasts.slice()};
@@ -356,7 +358,7 @@ function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dyn
  }}
  if(p.fuse<=0){p.dead=true;if(p.type==='grenade'||p.type==='dynamite'){explosion(p.x,p.y,data[p.type].radius,data[p.type].damage,p.source)}else if(p.type==='airstrike'){explosion(p.x,p.y,56,40,p.source)}else if(p.type==='bazooka'){p.dead=true}}
 }
-function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musicTick();if(isBot(state.team)&&usesBroker(state.team)&&['broker-wait','broker-error'].includes(state.phase)){if(state.phase==='broker-wait'){state.brokerElapsed=(state.brokerElapsed||0)+dt;$('message').textContent=thinkingText(Math.floor(state.brokerElapsed))}updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
+function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musicTick();if(isBot(state.team)&&usesBroker(state.team)&&['broker-wait','broker-error'].includes(state.phase)){if(state.phase==='broker-wait'){state.brokerElapsed=(state.brokerElapsed||0)+dt;setText($('message'),thinkingText(Math.floor(state.brokerElapsed)))}updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
  if(state.phase==='ready'||state.phase==='jetpack'||state.phase==='reposition'){{const before=state.timer;state.timer-=dt;if(before>5&&state.timer<=5&&state.active?.alive)voice(state.active,'hurry')}if(state.timer<=0){state.timer=0;say('TIME IS UP!',1);startResolution(.7)}if(state.phase==='jetpack'){state.jetTime-=dt;state.jetPulse=(state.jetPulse||0)-dt;if(state.jetPulse<=0){noise(.19,.018,1800);state.jetPulse=.44}if(state.jetTime<=0)startResolution(.8)}if(state.phase==='reposition'){state.aiMoveTime-=dt;if(state.aiMoveTime<=0||Math.abs(state.active.x-state.aiTarget)<20){state.phase='ready';state.aiTimer=.25}}}
  if(isBot(state.team)&&state.phase==='ready'&&!state.sim){state.aiTimer-=dt;if(state.aiTimer<=0)aiAct()}
  if(isBot(state.team)&&state.phase==='jetpack'&&!state.jetDropped&&state.active?.alive){const w=state.active;const target=living(1-w.team).find(f=>Math.abs(f.x-w.x)<62&&f.y-w.y>45);if(target&&living(w.team).every(f=>f===w||Math.hypot(f.x-w.x,f.y-w.y)>125))dropDynamite()}
@@ -369,20 +371,24 @@ function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musi
  if(state.phase==='resolving'||state.phase==='retreat'){state.resolveTimer-=dt;state.propWait=propsBusy(state)?state.propWait+dt:0;if(state.resolveTimer<=0&&state.projectiles.length===0&&(state.propWait===0||state.propWait>5)&&state.worms.every(w=>!w.alive||w.grounded||w.y>state.waterLevel)){if(state.sim)state.simDone=true;else nextTurn()}}
  updateUI();
 }
+// The HUD is refreshed every frame; touch the DOM only when a value really changes (each write invalidates style).
+const setText=(el,v)=>{v=String(v);if(el.textContent!==v)el.textContent=v};
+const setProp=(el,k,v)=>{if(el[k]!==v)el[k]=v};
+const setWidth=(el,v)=>{if(el.__width!==v){el.__width=v;el.style.width=v}};
 function updateWeaponSettings(){
  const player=state.running&&isHuman(state.team);
- $('grenade-settings').hidden=!(player&&state.phase==='ready'&&state.selected==='grenade');
- $('airstrike-settings').hidden=!(player&&state.phase==='ready'&&state.selected==='airstrike');
- $('jetpack-settings').hidden=!(player&&state.phase==='jetpack');
+ setProp($('grenade-settings'),'hidden',!(player&&state.phase==='ready'&&state.selected==='grenade'));
+ setProp($('airstrike-settings'),'hidden',!(player&&state.phase==='ready'&&state.selected==='airstrike'));
+ setProp($('jetpack-settings'),'hidden',!(player&&state.phase==='jetpack'));
  for(const b of document.querySelectorAll('[data-fuse]'))b.classList.toggle('selected',Number(b.dataset.fuse)===state.grenadeFuse);
- $('bounce-toggle').textContent='BOUNCE: '+state.grenadeBounce.toUpperCase();
- $('strike-direction').textContent=state.strikeDir>0?'FROM LEFT →':'FROM RIGHT ←';
- $('drop-dynamite').disabled=state.jetDropped||!state.active?.alive;
- $('drop-dynamite').textContent=state.jetDropped?'DYNAMITE DROPPED':'DROP DYNAMITE · X';
+ setText($('bounce-toggle'),'BOUNCE: '+state.grenadeBounce.toUpperCase());
+ setText($('strike-direction'),state.strikeDir>0?'FROM LEFT →':'FROM RIGHT ←');
+ setProp($('drop-dynamite'),'disabled',state.jetDropped||!state.active?.alive);
+ setText($('drop-dynamite'),state.jetDropped?'DYNAMITE DROPPED':'DROP DYNAMITE · X');
 }
 function updateUI(){if(state.sim)return;
  // Teleport tile shows the charges left for the team on turn.
- const tpKey=document.querySelector?.('.weapon[data-weapon="teleport"] .key'),tpLeft=state.ammo?.[state.team]?.teleport;if(tpKey&&tpLeft!=null){tpKey.textContent=`9 · ${tpLeft} LEFT`;tpKey.parentElement.classList.toggle('empty',!tpLeft)}const p=living(0),e=living(1);$('p-count').textContent=`${p.length} WORM${p.length===1?'':'IES'}`;$('e-count').textContent=`${e.length} WORM${e.length===1?'':'IES'}`;$('p-health').style.width=`${p.reduce((s,w)=>s+w.hp,0)/3}%`;$('e-health').style.width=`${e.reduce((s,w)=>s+w.hp,0)/3}%`;$('timer').textContent=Math.ceil(state.timer);$('turn-label').textContent=isBot(state.team)?(usesBroker(state.team)&&(state.phase==='broker-wait'||state.phase==='broker-error')?'LLM THINKING':'AI TURN'):(isBot(1-state.team)?'YOUR TURN':TEAM_NAMES[state.team]);$('active-name').textContent=state.active?.alive?state.active.name.toUpperCase():'K.O.';$('wind').textContent=`WIND · ${Math.abs(Math.round(state.wind))} ${state.wind<0?'←':'→'}`;$('power').style.width=`${Math.round(state.power*100)}%`;$('power-text').textContent=`${Math.round(state.power*100)}%`;$('map-name').textContent=mapNames[state.map];$('round').textContent=`ROUND ${state.round}`;$('ai-level').textContent=state.controllers?state.controllers.map(c=>CONTROLLER_LABELS[c]).join(' vs '):AI_PROFILES[state.difficulty].name+(usesBroker(state.team)?' · BROKER LLM':' · LOCAL');document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===state.selected));$('fire').disabled=!state.running||!isHuman(state.team)||state.phase!=='ready';$('end-turn').disabled=!state.running||!isHuman(state.team)||state.phase==='resolving';updateWeaponSettings()}
+ const tpKey=document.querySelector?.('.weapon[data-weapon="teleport"] .key'),tpLeft=state.ammo?.[state.team]?.teleport;if(tpKey&&tpLeft!=null){setText(tpKey,`9 · ${tpLeft} LEFT`);tpKey.parentElement.classList.toggle('empty',!tpLeft)}const p=living(0),e=living(1);setText($('p-count'),`${p.length} WORM${p.length===1?'':'IES'}`);setText($('e-count'),`${e.length} WORM${e.length===1?'':'IES'}`);setWidth($('p-health'),`${p.reduce((s,w)=>s+w.hp,0)/3}%`);setWidth($('e-health'),`${e.reduce((s,w)=>s+w.hp,0)/3}%`);setText($('timer'),Math.ceil(state.timer));setText($('turn-label'),isBot(state.team)?(usesBroker(state.team)&&(state.phase==='broker-wait'||state.phase==='broker-error')?'LLM THINKING':'AI TURN'):(isBot(1-state.team)?'YOUR TURN':TEAM_NAMES[state.team]));setText($('active-name'),state.active?.alive?state.active.name.toUpperCase():'K.O.');setText($('wind'),`WIND · ${Math.abs(Math.round(state.wind))} ${state.wind<0?'←':'→'}`);setWidth($('power'),`${Math.round(state.power*100)}%`);setText($('power-text'),`${Math.round(state.power*100)}%`);setText($('map-name'),mapNames[state.map]);setText($('round'),`ROUND ${state.round}`);setText($('ai-level'),state.controllers?state.controllers.map(c=>CONTROLLER_LABELS[c]).join(' vs '):AI_PROFILES[state.difficulty].name+(usesBroker(state.team)?' · BROKER LLM':' · LOCAL'));document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===state.selected));setProp($('fire'),'disabled',!state.running||!isHuman(state.team)||state.phase!=='ready');setProp($('end-turn'),'disabled',!state.running||!isHuman(state.team)||state.phase==='resolving');updateWeaponSettings()}
 let lastFrame=0,frameDt=.016;
 function graveY(w){const gy=groundY(state.terrain,w.x);if(w.y>state.waterLevel-6||gy>state.waterLevel-6)return null;if(w.gy==null)w.gy=Math.min(w.y+14,gy);if(w.gy<gy)w.gy=Math.min(gy,w.gy+420*frameDt);return w.gy}
 // Sky and far ridges live in screen space and scroll slower than the battlefield (parallax).
@@ -486,8 +492,21 @@ function drawProjectile(p){ctx.save();if(p.trail.length){ctx.beginPath();ctx.mov
 function drawAim(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,v=aimVector();ctx.save();ctx.strokeStyle='#fff8d9';ctx.lineWidth=3;ctx.setLineDash([8,8]);ctx.beginPath();ctx.moveTo(w.x+v.x*27,w.y-8+v.y*27);ctx.lineTo(w.x+v.x*125,w.y-8+v.y*125);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#fff9dd';ctx.beginPath();ctx.arc(w.x+v.x*125,w.y-8+v.y*125,6,0,Math.PI*2);ctx.fill();const ax=state.airTarget??state.airHover;if(state.selected==='airstrike'&&ax!=null){ctx.strokeStyle='#ffefaa';ctx.lineWidth=2;if(state.airTarget==null)ctx.setLineDash?.([6,6]);ctx.beginPath();ctx.moveTo(ax,120);ctx.lineTo(ax,groundY(state.terrain,ax)-30);ctx.stroke();ctx.beginPath();ctx.arc(ax,groundY(state.terrain,ax)-25,28,0,Math.PI*2);ctx.stroke();ctx.setLineDash?.([])}
  // Teleport preview: a worm-sized ring, green where it fits, red where it does not.
  if(state.selected==='teleport'){const tx=state.airTarget??state.airHover,ty=state.airTarget!=null?state.airTargetY:state.airHoverY;if(tx!=null&&ty!=null){const ok=wormFits(state.terrain,tx,ty)&&ty<state.waterLevel-40&&ty>R;ctx.strokeStyle=ok?'#9dffb8':'#ff7a6b';ctx.lineWidth=3;ctx.setLineDash?.([5,5]);ctx.beginPath();ctx.arc(tx,ty,R+7,0,Math.PI*2);ctx.stroke();ctx.setLineDash?.([])}}ctx.restore()}
-function render(){if(!state.terrain)return;const now=performance.now();frameDt=lastFrame?Math.min(.05,(now-lastFrame)/1000):.016;lastFrame=now;drawSky(now);const cam=state.cam;ctx.save();ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.x,-cam.y);if(state.shake){ctx.translate((visualRand()-.5)*state.shake,(visualRand()-.5)*state.shake)}drawWorldBack(now);drawEnvironment(ctx,state,groundY);drawBillboards(ctx,state.billboards,state.terrain,now);ctx.drawImage(state.terrainCanvas,0,0);drawProps(ctx,state.props,now,{crateLogo:sponsorImage(state.crateSponsor)});drawRope();for(const p of state.projectiles)drawOrdnance(ctx,p);for(const w of state.worms)drawCharacter(ctx,w,{active:w===state.active&&state.running,weapon:state.selected,aim:state.aim,phase:state.phase,now,graveY:w.alive?null:graveY(w)});for(const b of state.blasts)drawBlast(ctx,b);drawAim();for(const p of state.particles){ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();if(p.r>3.4){ctx.lineWidth=1.5;ctx.strokeStyle='#2b1a1c';ctx.stroke()}}ctx.globalAlpha=1;drawWater(ctx,state,themes[state.map],W,H,now,true);ctx.restore();drawOffscreen();drawHud(ctx,state,VIEW_W,VIEW_H,now)}
-let last=performance.now();function loop(now){const dt=Math.min((now-last)/1000,.04);last=now;update(dt);render();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+// The camera's world rectangle plus a margin (covers the screen shake); drawing is skipped outside it.
+const WORM_PAD=110;
+function viewRect(c){const m=40+(state.shake||0);return {x0:c.x-m,y0:c.y-m,x1:c.x+VIEW_W/c.zoom+m,y1:c.y+VIEW_H/c.zoom+m}}
+const inView=(v,x,y,pad)=>x+pad>=v.x0&&x-pad<=v.x1&&y+pad>=v.y0&&y-pad<=v.y1;
+function render(){if(!state.terrain)return;const now=performance.now();frameDt=lastFrame?Math.min(.05,(now-lastFrame)/1000):.016;lastFrame=now;drawSky(now);const cam=state.cam;const v=state.view=viewRect(cam);ctx.save();ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.x,-cam.y);if(state.shake){ctx.translate((visualRand()-.5)*state.shake,(visualRand()-.5)*state.shake)}drawWorldBack(now);drawEnvironment(ctx,state,groundY);drawBillboards(ctx,state.billboards,state.terrain,now);ctx.drawImage(state.terrainCanvas,0,0);drawProps(ctx,state.props,now,{crateLogo:sponsorImage(state.crateSponsor),view:v});drawRope();for(const p of state.projectiles)drawOrdnance(ctx,p);for(const w of state.worms){const gy=w.alive?null:graveY(w);if(inView(v,w.x,w.y,WORM_PAD))drawCharacter(ctx,w,{active:w===state.active&&state.running,weapon:state.selected,aim:state.aim,phase:state.phase,now,graveY:gy})}for(const b of state.blasts)if(inView(v,b.x,b.y,b.r*2+60))drawBlast(ctx,b);drawAim();for(const p of state.particles){if(!inView(v,p.x,p.y,p.r+2))continue;ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();if(p.r>3.4){ctx.lineWidth=1.5;ctx.strokeStyle='#2b1a1c';ctx.stroke()}}ctx.globalAlpha=1;drawWater(ctx,state,themes[state.map],W,H,now,true);ctx.restore();drawOffscreen();drawHud(ctx,state,VIEW_W,VIEW_H,now)}
+// update() runs on every animation frame as before. Drawing is skipped while nothing can be seen changing: a modal
+// (setup or results) dims and blurs the canvas, so it gets one still frame, and a hidden tab gets none. On 120/144 Hz
+// screens every other refresh is drawn (60-72 fps); 60-100 Hz screens draw every refresh.
+const MIN_FRAME_MS=9.5;let last=performance.now(),lastRender=-1e9,stillKey=null;
+function shouldRender(now){
+ if(document.hidden)return false;
+ if(document.querySelector?.('.modal.open')){const key=state.seed+':'+state.map+':'+state.phase;if(key===stillKey)return false;stillKey=key;return true}
+ stillKey=null;return now-lastRender>=MIN_FRAME_MS;
+}
+function loop(now){const dt=Math.min((now-last)/1000,.04);last=now;update(dt);if(shouldRender(now)){lastRender=now;render()}requestAnimationFrame(loop)}requestAnimationFrame(loop);
 function pointerCoords(ev){const r=canvas.getBoundingClientRect(),c=state.cam,sx=(ev.clientX-r.left)/r.width*VIEW_W,sy=(ev.clientY-r.top)/r.height*VIEW_H;return{x:c.x+sx/c.zoom,y:c.y+sy/c.zoom}}
 function aimAt(ev){if(!state.running||!isHuman(state.team)||state.phase!=='ready')return;const m=pointerCoords(ev),w=state.active,dx=m.x-w.x,dy=m.y-w.y+8;if(state.selected==='airstrike'||state.selected==='teleport'){if(ev.type==='pointerdown'&&(ev.button===0||ev.pointerType!=='mouse')){state.airTarget=m.x;state.airTargetY=m.y;state.airHover=null}else if(state.airTarget==null){state.airHover=m.x;state.airHoverY=m.y}return}state.dir=dx<0?-1:1;state.aim=aimAngle(dx,dy);w.face=state.dir}
 function chargeStart(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.charging)return;if(['punch','dynamite','airstrike','jetpack','shotgun','teleport','rope'].includes(state.selected)){fire();return}state.charging=true;state.chargeDir=1;state.power=.22;tone(480,.08,'sine',.03,650)}

@@ -19,3 +19,13 @@ test('dirty-rect repaint matches a full rebuild byte for byte',()=>{
  const full=new Uint8ClampedArray(W*H*4);paintTerrain(full,new Uint16Array(W),grass,m,soil,th,W,H);
  assert.deepEqual(inc,full);
 });
+test('soil features take one byte per pixel and a local strip paints the same pixels as the full image',()=>{
+ const W=200,H=120,th={dirt:'#8a5a3c',dark:'#573629',grass:['#9be84a','#3f9d2c'],outline:'#2b1a1c'};
+ const soil=bakeSoil(1,4,W,H,pal),m=new Uint8Array(W*H),grass=grassDepths(W);
+ assert.ok(soil.over instanceof Uint8Array);assert.ok(soil.colors.length<=8);
+ for(let x=0;x<W;x++)for(let y=40+Math.round(6*Math.sin(x*.07));y<H;y++)m[y*W+x]=1;
+ const full=new Uint8ClampedArray(W*H*4);paintTerrain(full,new Uint16Array(W),grass,m,soil,th,W,H);
+ const x0=37,x1=121,y0=30,pw=x1-x0+1,strip=new Uint8ClampedArray(pw*(H-y0)*4);
+ paintTerrain(strip,new Uint16Array(W),grass,m,soil,th,W,H,{x0,x1,y0,local:true});
+ for(let y=y0;y<H;y++)assert.deepEqual(strip.subarray((y-y0)*pw*4,(y-y0+1)*pw*4),full.subarray((y*W+x0)*4,(y*W+x1+1)*4),`row ${y}`);
+});

@@ -57,11 +57,12 @@ export function drawBackdrop(c,st,bg,W,t,dt){
 }
 // Falling leaves / ash / sparkles steered by state.wind. Mutates the cosmetic decor list only.
 export function drawAmbient(c,st,th,W,H,t,dt){
- const m=st.map,wind=st.wind||0;
+ const m=st.map,wind=st.wind||0,v=st.view;
  for(const d of st.decor){
   d.y+=(m===2?10+d.r*3:m===1?22+d.r*5:30+d.r*7)*dt;d.x+=(wind*(.9+d.r*.12)+Math.sin(t*.001+d.phase)*(m===0?22:10))*dt;
   if(d.y>H-60){d.y=-8;d.x=(d.x*7+d.phase*500)%W}
   if(d.x<-20)d.x+=W+40;else if(d.x>W+20)d.x-=W+40;
+  if(v&&(d.x+10<v.x0||d.x-10>v.x1||d.y+10<v.y0||d.y-10>v.y1))continue;
   const al=.3+d.r*.14;c.globalAlpha=al;
   if(m===0){c.save();c.translate(d.x,d.y);c.rotate(t*.002+d.phase);oval(c,0,0,d.r*1.3+1.2,d.r*.65+.6,th.fx[(d.phase*10|0)%3]);c.restore()}
   else if(m===1){oval(c,d.x,d.y,d.r*.5+.5,d.r*.5+.5,d.phase>3.4?'#ff9a4a':'#b8a6b4')}
@@ -70,17 +71,21 @@ export function drawAmbient(c,st,th,W,H,t,dt){
  }
 }
 // Layered, animated wave rows. Back rows sit behind the terrain, front rows overlap its foot.
+// st.view (the camera's world rectangle) limits the work to the visible span, on the same 16 px grid of wave points.
 export function drawWater(c,st,th,W,H,t,front){
- const wl=st.waterLevel,rows=th.water;
+ const wl=st.waterLevel,rows=th.water,v=st.view;
+ if(v&&v.y1<wl-30)return;
+ const last=-10+Math.floor((W+20)/16)*16,xs=v?Math.max(-10,-10+Math.floor((v.x0+10)/16)*16):-10,xe=v?Math.min(last,-10+Math.ceil((v.x1+10)/16)*16):last,xc=xe===last?W+10:xe;
+ const bx0=v?Math.max(10,10+Math.ceil((v.x0-30)/46)*46):10,bx1=v?Math.min(W,v.x1+20):W;
  if(!front){c.fillStyle=lin(c,wl,H,[rows[1],rows[3],rows[4]]);c.fillRect(0,wl+14,W,H-wl)}
  for(let k=front?3:0;k<(front?5:3);k++){
   const y0=wl+k*9-9,amp=6.5-k*.5,sp=.0011+k*.00035,wy=x=>y0+Math.sin(x*.016+t*sp+k*1.9)*amp+Math.sin(x*.041-t*sp*1.7+k)*2;
   c.fillStyle=rows[k];if(front)c.globalAlpha=.94;
-  c.beginPath();c.moveTo(-10,H);for(let x=-10;x<=W+10;x+=16)c.lineTo(x,wy(x));c.lineTo(W+10,H);c.fill();c.globalAlpha=1;
+  c.beginPath();c.moveTo(xs,H);for(let x=xs;x<=xe;x+=16)c.lineTo(x,wy(x));c.lineTo(xc,H);c.fill();c.globalAlpha=1;
   c.strokeStyle=k===0?'#ffffff':'#d4f8f4';c.globalAlpha=k===0?1:.6;c.lineWidth=k===0?5:2.5;c.beginPath();
-  for(let x=-10;x<=W+10;x+=16)x===-10?c.moveTo(x,wy(x)):c.lineTo(x,wy(x));
+  for(let x=xs;x<=xe;x+=16)x===xs?c.moveTo(x,wy(x)):c.lineTo(x,wy(x));
   c.stroke();c.globalAlpha=1;
-  if(k===0)for(let x=10;x<W;x+=46){const bx=x+Math.sin(t*.0013+x)*8;oval(c,bx,wy(bx)+1,5,3,'#ffffff')}
-  else for(let i=0;i<14;i++){const hx=(i*131+k*57+t*.012*(1+k*.3))%W;c.strokeStyle='#ffffffaa';c.lineWidth=2;c.beginPath();c.moveTo(hx,wy(hx)+9);c.lineTo(hx+24,wy(hx+24)+9);c.stroke()}
+  if(k===0)for(let x=bx0;x<bx1;x+=46){const bx=x+Math.sin(t*.0013+x)*8;oval(c,bx,wy(bx)+1,5,3,'#ffffff')}
+  else for(let i=0;i<14;i++){const hx=(i*131+k*57+t*.012*(1+k*.3))%W;if(v&&(hx+30<v.x0||hx-10>v.x1))continue;c.strokeStyle='#ffffffaa';c.lineWidth=2;c.beginPath();c.moveTo(hx,wy(hx)+9);c.lineTo(hx+24,wy(hx+24)+9);c.stroke()}
  }
 }

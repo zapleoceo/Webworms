@@ -53,9 +53,12 @@ export function drawEnvironment(c,state,groundY){
  c.save();c.lineCap='round';c.lineJoin='round';
  // Hanging roots / vines under floating rock, swaying a little.
  const vine=state.map===1?'#3a2a2a':state.map===2?'#2c3a66':'#2f5a26',leaf=state.map===2?'#8ff0d2':state.map===1?'#6a4a3a':'#6fbf3a';
- for(const h of hang){const sw=Math.sin(t*.0012+h.ph)*4;stroke(c,'#1c1420',4,[[h.x,h.y-2],[h.x+sw*.5,h.y+h.len*.5],[h.x+sw,h.y+h.len]]);stroke(c,vine,2,[[h.x,h.y-2],[h.x+sw*.5,h.y+h.len*.5],[h.x+sw,h.y+h.len]]);oval(c,h.x+sw,h.y+h.len,2.6,2,leaf)}
+ // st.view (set by render) is the camera's world rectangle; set dressing outside it is skipped.
+ const v=state.view;
+ for(const h of hang){if(v&&(h.x+10<v.x0||h.x-10>v.x1||h.y-4>v.y1||h.y+h.len+6<v.y0))continue;const sw=Math.sin(t*.0012+h.ph)*4;stroke(c,'#1c1420',4,[[h.x,h.y-2],[h.x+sw*.5,h.y+h.len*.5],[h.x+sw,h.y+h.len]]);stroke(c,vine,2,[[h.x,h.y-2],[h.x+sw*.5,h.y+h.len*.5],[h.x+sw,h.y+h.len]]);oval(c,h.x+sw,h.y+h.len,2.6,2,leaf)}
  for(const p of spots){
-  const y=groundY(state.terrain,p.x);if(y>=(state.waterLevel??1e9)-8)continue;
+  if(v&&(p.x+160<v.x0||p.x-160>v.x1))continue;
+  const y=groundY(state.terrain,p.x);if(y>=(state.waterLevel??1e9)-8)continue;if(v&&(y-200>v.y1||y+40<v.y0))continue;
   c.save();c.translate(p.x,y+3);
   ({palm:()=>palm(c,p.s,p.flip,t),hut:()=>hut(c,p.s),flowers:()=>flowers(c,p.s,t),sign:()=>sign(c,p.s,p.flip),shells:()=>shells(c,p.s),pipe:()=>pipe(c,p.s,p.flip),girder:()=>girder(c,p.s,p.flip),warning:()=>warning(c,p.s),vent:()=>vent(c,p.s,t),stack:()=>stack(c,p.s),crystal:()=>crystal(c,p.s,t,p.ph),mushroom:()=>mushroom(c,p.s,t,p.ph),lantern:()=>lantern(c,p.s,t,p.ph),shard:()=>shard(c,p.s,p.flip)}[p.kind]||(()=>{}))();
   c.restore();
