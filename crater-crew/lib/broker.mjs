@@ -35,10 +35,19 @@ export async function activeModel(){
 
 // ---------- catalog ----------
 const caps=row=>Array.isArray(row?.capabilities)?row.capabilities:[];
-export const supportsChat=row=>caps(row).includes('chat:fast');
-export const supportsJson=row=>Array.isArray(row?.job_request?.response_format_types)&&row.job_request.response_format_types.includes('json_schema');
-// What the game needs: the model is up, runs fast chat jobs and honours a strict JSON schema.
-export const usableRow=row=>Boolean(row&&row.available===true&&supportsChat(row)&&supportsJson(row));
+// Broker pins a model only to a capability it serves, so the job goes to the model's own chat capability,
+// fastest first. chat:deep is last: it works as a job but is the slowest route.
+export const CHAT_CAPABILITIES=['chat:fast','chat:smart','chat:code','structured','chat:sales','chat:edit','chat:deep'];
+export const chatCapability=row=>CHAT_CAPABILITIES.find(c=>caps(row).includes(c))||null;
+export const supportsChat=row=>chatCapability(row)!==null;
+// Subscription rows list the accepted formats; API rows have null (Broker forwards response_format to the
+// provider unchecked), so they count as usable and the admin Test button shows whether the provider complies.
+const formats=row=>row?.job_request?.response_format_types;
+export const jsonUnverified=row=>Boolean(row?.job_request)&&formats(row)==null;
+export const supportsJson=row=>Array.isArray(formats(row))?formats(row).includes('json_schema'):jsonUnverified(row);
+// What the game needs: the model is up, runs as a chat job and takes a JSON schema. Only subscription rows carry
+// "available"; API rows don't, and Broker's own limits decide for them.
+export const usableRow=row=>Boolean(row&&row.available!==false&&supportsChat(row)&&supportsJson(row));
 
 // Price objects differ between providers; show their numeric fields compactly ("input 3 · output 15").
 export function priceSummary(price){
@@ -58,9 +67,10 @@ export function trimModel(row){
   id:row.id,
   name:typeof row.name==='string'?row.name.slice(0,80):null,
   billing_type:typeof row.billing_type==='string'?row.billing_type.slice(0,20):null,
-  available:row.available===true,
-  chat_fast:supportsChat(row),
+  available:row.available!==false,
+  chat:chatCapability(row),
   json_schema:supportsJson(row),
+  json_unverified:jsonUnverified(row),
   price:priceSummary(row.price),
   intelligence_index:typeof row.intelligence_index==='number'&&Number.isFinite(row.intelligence_index)?row.intelligence_index:null,
   usable:usableRow(row),

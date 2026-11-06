@@ -15,7 +15,7 @@
 import {randomBytes} from 'node:crypto';
 import {resolveAuth,checkPassword,recordMatches,hashPassword,recordFingerprint,authPath,validNewPassword,MIN_PASSWORD,MAX_PASSWORD,issueSession,isAuthenticated,sessionCookie,clearCookie,clientIp,loginBlocked,recordFailure,clearFailures,INIT_MARKER,invalidateAuthCache} from './auth.mjs';
 import {getStore} from './store.mjs';
-import {broker,brokerKey,catalog,trimModel,activeModel,envModel,resetModelCache} from './broker.mjs';
+import {broker,brokerKey,catalog,trimModel,activeModel,envModel,resetModelCache,CHAT_CAPABILITIES} from './broker.mjs';
 import {validateLogo,MAX_LOGO_BYTES} from './images.mjs';
 import {mergeSettings,validateSettings,validModelId,MAX_SPONSORS,PLACEMENTS,PLACEMENTS_VERSION} from '../settings.js';
 
@@ -180,6 +180,9 @@ async function testModel(request){
  const {body,error}=await readJson(request);if(error)return error;
  const model=body?.model;
  if(typeof model!=='string'||model===''||!validModelId(model))return err(422,'model: a Broker model ID like provider/model');
+ // The list sends the model's chat capability; Broker rejects a pin to a capability the model doesn't serve.
+ const capability=body?.capability===undefined?'chat:fast':body.capability;
+ if(!CHAT_CAPABILITIES.includes(capability))return err(422,'capability: one of '+CHAT_CAPABILITIES.join(', '));
  const start=testClock.now();testRuns=testRuns.filter(t=>start-t<MODEL_TEST_WINDOW_MS);
  if(testRuns.length>=MODEL_TESTS)return err(429,`at most ${MODEL_TESTS} model tests per ${MODEL_TEST_WINDOW_MS/60_000} minutes`);
  testRuns.push(start);
@@ -189,7 +192,7 @@ async function testModel(request){
  let job;
  try{
   // A fresh random key: every test is its own job, never a replay of an earlier one.
-  job=await broker('/v1/jobs?capability=chat:fast',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':'wwt_'+randomBytes(16).toString('hex')},body:JSON.stringify(payload)});
+  job=await broker('/v1/jobs?capability='+capability,{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':'wwt_'+randomBytes(16).toString('hex')},body:JSON.stringify(payload)});
   while(job&&(job.status===undefined||job.status==='pending'||job.status==='running'||job.status==='queued')){
    if(!Number.isInteger(job.job_id)||job.job_id<1)throw Error('invalid broker response');
    const left=MODEL_TEST_DEADLINE_MS-(testClock.now()-start);

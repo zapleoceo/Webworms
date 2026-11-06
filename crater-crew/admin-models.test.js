@@ -37,7 +37,7 @@ test('GET /api/admin/models trims the catalog, marks usable models and never ret
  assert.ok(!text.includes(KEY));assert.ok(!text.includes('secret_internal'));
  assert.deepEqual(seen,[['https://aib.zapleo.com/v1/models',KEY]]);
  assert.deepEqual(body.models.map(m=>m.id),['claude-sub/claude-sonnet-5-5','openai/gpt-5.5-mini','acme/no-json','deepseek/r2'],'usable first, bad IDs dropped');
- assert.deepEqual(body.models[1],{id:'openai/gpt-5.5-mini',name:'GPT-5.5 mini',billing_type:'api',available:true,chat_fast:true,json_schema:true,price:'input per mtok 0.25 · output per mtok 2 USD',intelligence_index:63.5,usable:true});
+ assert.deepEqual(body.models[1],{id:'openai/gpt-5.5-mini',name:'GPT-5.5 mini',billing_type:'api',available:true,chat:'chat:fast',json_schema:true,json_unverified:false,price:'input per mtok 0.25 · output per mtok 2 USD',intelligence_index:63.5,usable:true});
  assert.equal(body.models[2].usable,false);assert.equal(body.models[2].json_schema,false);
  assert.equal(body.models[3].usable,false);assert.equal(body.models[3].available,false);
  assert.deepEqual(body.active,{model:'claude-sub/claude-sonnet-5-5',source:'env'});assert.equal(body.envModel,'claude-sub/claude-sonnet-5-5');
