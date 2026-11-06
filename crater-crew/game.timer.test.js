@@ -51,7 +51,8 @@ test('an AI worm that dies while walking (reposition) ends its turn at once, not
  delete state.controllers;state.aiDriver='local';newGame(0,1,5151);flatten(state.terrain);beginTurn(1);
  const w=state.active;w.x=1400;w.y=PLAIN-R-1;w.grounded=true;
  state.aiTarget=w.x+150;state.aiMoveTime=2;state.phase='reposition';update(.02);
- w.y=WATER-5;update(.02);assert.equal(w.alive,false);
+ // Fully under water (since #25 a worm drowns only when submerged), as after a slip off the shore.
+ w.y=state.waterLevel+3*R;w.grounded=false;update(.02);assert.equal(w.alive,false);
  run(4,()=>state.team===0);
  assert.equal(state.team,0,`turn handed over (phase ${state.phase}, timer ${state.timer.toFixed(1)})`);
 });
