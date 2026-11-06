@@ -13,95 +13,141 @@ export function aimAngle(dx,dy){return clamp(Math.atan2(dy,Math.abs(dx)),AIM_MIN
 export const data={bazooka:{name:'BAZOOKA',short:'Wind-bent rocket',icon:'🚀',radius:77,damage:58},grenade:{name:'GRENADE',short:'Bounce + 3 s fuse',icon:'💣',radius:84,damage:66},shotgun:{name:'SHOTGUN',short:'Close-range spread',icon:'▰',radius:0,damage:10},dynamite:{name:'DYNAMITE',short:'Drop + 3 s fuse',icon:'🧨',radius:102,damage:82},airstrike:{name:'AIRSTRIKE',short:'Five wind-proof missiles',icon:'✈',radius:56,damage:40},punch:{name:'PUNCH',short:'Melee knockback',icon:'✊',radius:0,damage:30},jetpack:{name:'JETPACK',short:'Fly for 4 seconds',icon:'♨',radius:0,damage:0},rope:{name:'NINJA ROPE',short:'Swing across the map; keeps your turn',icon:'➰',radius:0,damage:0},teleport:{name:'TELEPORT',short:'Click a free spot · 2 per match',icon:'✦',radius:0,damage:0}};
 export function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 export function seeded(seed){let x=seed>>>0;return()=>{x=(1664525*x+1013904223)>>>0;return x/4294967296}}
+// ---- Map generation ----
 // Maps are about 120 worm heights wide, like the classic landscapes; the camera shows a 1600x800 window.
-// 0 Sunset Cove: archipelago split by sea channels, tunnels and floating rocks over the water.
-// 1 Rust Ridge: one tall massif riddled with caverns and tunnels.
-// 2 Crystal Atoll: two islands and a scatter of floating crystal chunks.
+// Every map is a walkable landscape: flat ledges joined by ramps no steeper than MAX_GRADE (a worm can
+// crawl far steeper, see CLIMB_RATE), gentle beaches into the sea, at most two narrow sea channels, each
+// spanned by a bridge or an arch, and set pieces of its own:
+// 0 Sunset Cove: dunes and ledges, a lagoon under a rope bridge, sea-cave tunnels, a lighthouse.
+// 1 Rust Ridge: terraced mesas, a dry canyon under a steel girder bridge, tunnels, caverns, oil derricks.
+// 2 Crystal Atoll: two islands joined by a crystal arch, a tunnelled crystal mesa, floating crystal chunks over land.
+// 3 Grand Expedition: one wide world crossing four zones (islands, jungle, industry, atoll).
 const TAU=Math.PI*2;
-// Grand Expedition (map 3): one wide world crossing four zones, each with its own features.
-// 0-25% tropical islands split by channels, 25-50% jungle hills with caverns and tunnels,
-// 50-75% an industrial ridge with chasms, girder bridges and rock towers, 75-100% an atoll of floating islands.
-function createExpedition(seed){
-  const rand=seeded(seed^0x5eed),mask=new Uint8Array(W*H),top=new Int16Array(W),ph=[0,1,2,3].map(()=>rand()*TAU);
-  const zone=x=>x/W*4,base=H-560;
-  const heightAt=x=>{
-    const z=zone(x),b=[
-      base+40+90*Math.sin(x/260+ph[0])+30*Math.sin(x/71+ph[1]),
-      base-140+190*Math.sin(x/330+ph[1])+70*Math.sin(x/97+ph[2]),
-      base-260+60*Math.sin(x/410+ph[2])+20*Math.sin(x/53+ph[3]),
-      base+90+70*Math.sin(x/220+ph[3])+25*Math.sin(x/61+ph[0])];
-    // Blend neighbouring zones across a 300 px seam so the landscape changes smoothly.
-    const i=Math.min(3,Math.floor(z)),f=z-i,seam=300/(W/4);
-    if(f>1-seam&&i<3){const k=(f-(1-seam))/seam,s=k*k*(3-2*k);return b[i]*(1-s)+b[i+1]*s}
-    return b[i];
-  };
-  const gaps=[[W*.09,190],[W*.18,230],[W*.56,170],[W*.66,200],[W*.83,260],[W*.93,220]].map(([x,w])=>[x+(rand()-.5)*120,w]);
-  for(let x=0;x<W;x++){
-    let y=heightAt(x)+2*Math.sin(x*.45)+1.4*Math.sin(x*1.27)+(rand()-.5)*3;
-    let shore=Math.min(x-120,W-120-x);for(const [gx,gw] of gaps)shore=Math.min(shore,Math.abs(x-gx)-gw/2);
-    if(shore<0)y=H;else if(shore<300){const k=1-shore/300;y+=k*k*(WATER+40-y)}
-    top[x]=Math.floor(clamp(y,360,H));
-    for(let iy=top[x];iy<H;iy++)mask[iy*W+x]=1;
-  }
-  const t={mask,top,map:3,seed},fill=(x0,y0,x1,y1)=>{for(let y=Math.max(0,Math.floor(y0));y<Math.min(H,y1);y++)for(let x=Math.max(0,Math.floor(x0));x<Math.min(W,x1);x++)mask[y*W+x]=1;for(let x=Math.max(0,Math.floor(x0));x<Math.min(W,x1);x++){let y=0;while(y<H&&!mask[y*W+x])y++;top[x]=y}};
-  const blob=(cx,cy,rx,ry,flat)=>{for(let y=Math.max(0,Math.floor(cy-ry));y<=Math.min(H-1,cy+ry);y++)for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(W-1,cx+rx);x++)if(((x-cx)/rx)**2+((y-cy)/ry)**2<1&&y>=cy-ry*flat)mask[y*W+x]=1;for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(W-1,cx+rx);x++){let y=0;while(y<H&&!mask[y*W+x])y++;top[x]=y}};
-  // Jungle: caverns and crawlable tunnels.
-  for(let k=0;k<6;k++){const x=W*.27+rand()*W*.21,g=groundY(t,x);if(g<WATER-300)carve(t,x,g+170+rand()*80,50+rand()*40)}
-  for(let k=0;k<3;k++){let x=W*.26+rand()*W*.18,y=groundY(t,x)+80;const dir=rand()<.5?-1:1;for(let s=0;s<420;s+=10){x+=dir*10;y+=Math.sin(s/80+k)*3;if(y<WATER-60&&groundY(t,x)<y-40)carve(t,x,y,30)}}
-  // Industrial ridge: girder bridges over the chasms and flat-topped rock towers.
-  for(const [gx,gw] of gaps.filter(([x])=>x>W*.5&&x<W*.75)){const left=groundY(t,gx-gw/2-40),right=groundY(t,gx+gw/2+40),y=Math.min(left,right)-2;fill(gx-gw/2-60,y,gx+gw/2+60,y+12)}
-  for(let k=0;k<5;k++){const x=W*.52+rand()*W*.22,w=40+rand()*30,g=groundY(t,x);if(g<WATER-200)fill(x-w/2,g-180-rand()*140,x+w/2,g+4)}
-  // Floating islands over the channels and across the atoll.
-  for(const [gx] of gaps.filter(([x])=>x<W*.25||x>W*.75))blob(gx,Math.min(groundY(t,gx-260),groundY(t,gx+260))-100-rand()*80,110+rand()*50,26,.35);
-  for(let k=0;k<7;k++){const x=W*.76+rand()*W*.22;blob(x,groundY(t,x)-180-rand()*200,50+rand()*45,20,.25)}
-  return t;
+export const MAX_GRADE=.65,BEACH=.42,SHELF=60,STEP=40,RISER=Math.ceil(STEP/MAX_GRADE),TERRACE=RISER+30;
+const smooth=k=>{k=clamp(k,0,1);return k*k*(3-2*k)};
+// bands: surface height range per zone (px above the sea); seas/canyons: [position, jitter, style] as width fractions.
+const SPECS=[
+ {bands:[[-340,-180]],shore:[-260,-160],seas:[[.5,.12,'rope']],tunnels:2,caverns:1,floats:[[.08,.92]],landmarks:[['lighthouse',.06,.3]]},
+ {bands:[[-640,-330]],shore:[-300,-170],seas:[],canyons:[[.5,.15]],tunnels:2,caverns:6,floats:[],landmarks:[['derrick',.15,.4],['derrick',.6,.85]]},
+ {bands:[[-350,-180]],shore:[-260,-160],seas:[[.5,.06,'arch']],tunnels:1,caverns:3,floats:[[.06,.4],[.6,.94],[.06,.94]],landmarks:[['spire',.1,.38],['spire',.62,.9]]},
+ {bands:[[-420,-200],[-700,-380],[-620,-400],[-380,-200]],shore:[-260,-160],seas:[[.125,.025,'rope'],[.875,.025,'arch']],canyons:[[.62,.04]],tunnels:[[.27,.48],2],caverns:[[.27,.48],4],floats:[[.18,.24],[.78,.97],[.78,.97],[.78,.97]],landmarks:[['lighthouse',.03,.09],['ruin',.3,.46],['derrick',.52,.58],['spire',.92,.97]]}
+];
+// The surface: a chain of flat ledges and smoothstep ramps. A ramp of length L rises at most
+// MAX_GRADE*L/1.5, so its steepest point (1.5x the mean for smoothstep) stays within MAX_GRADE.
+function ridgeline(rand,band){
+ const h=new Float32Array(W);let x=0,[lo,hi]=band(0),y=lo+(hi-lo)*(.3+rand()*.4),flat=rand()<.5;
+ while(x<W){
+  // Ramps are only as long as their climb needs (up to 1.5x), so most of the width stays level.
+  [lo,hi]=band(Math.min(W-1,x+200));const ny=flat?y:clamp(lo+rand()*(hi-lo),y-90,y+90);
+  const L=Math.round(flat?200+rand()*220:Math.max(50,Math.abs(ny-y)*1.5/MAX_GRADE*(1+rand()*.3))),end=Math.min(W,x+L);
+  for(let i=x;i<end;i++)h[i]=y+(ny-y)*smooth((i-x)/L);
+  y=ny;x=end;flat=flat?false:rand()<.85;
+ }
+ return h;
+}
+// Fills in anything steeper than g (both ways), so forced features blend in with walkable ramps.
+function limitGrade(h,g){for(let x=1;x<W;x++)h[x]=Math.min(h[x],h[x-1]+g);for(let x=W-2;x>=0;x--)h[x]=Math.min(h[x],h[x+1]+g)}
+// Cuts ramps down into a sunken level window [a,b]: outward from each edge, until the ground already fits grade g.
+function cutAround(h,a,b,g){for(let x=b+1;x<W&&h[x]<h[x-1]-g;x++)h[x]=h[x-1]-g;for(let x=a-1;x>=0&&h[x]<h[x+1]-g;x--)h[x]=h[x+1]-g}
+function refreshTop(t,x0,x1){for(let x=Math.max(0,Math.floor(x0));x<=Math.min(W-1,Math.ceil(x1));x++){let y=0;while(y<H&&!t.mask[y*W+x])y++;t.top[x]=y}}
+// Deck of a bridge or arch at column x (the art layer draws planks/girders on the same curve).
+export function deckY(f,x){const u=clamp((x-f.x0)/(f.x1-f.x0),0,1);return f.ya+(f.yb-f.ya)*u+f.sag*Math.sin(Math.PI*u)}
+function span(t,f){
+ for(let x=Math.floor(f.x0)-8;x<=Math.ceil(f.x1)+8;x++){if(x<0||x>=W)continue;const u=clamp((x-f.x0)/(f.x1-f.x0),0,1),y=Math.round(deckY(f,x)),
+  th=f.style==='arch'?22+90*(1-Math.sin(Math.PI*u))**3:f.style==='girder'?10:8;
+  for(let yy=Math.max(0,y);yy<Math.min(H,y+th);yy++)t.mask[yy*W+x]=1}
+ refreshTop(t,f.x0-8,f.x1+8);t.features.push(f);
+}
+// A walk-through tunnel: a level bore through a rock mesa, its floor flush with the flat on both sides.
+function tunnel(t,k){
+ const y=k.base-27,a=Math.floor(k.x-k.half-6),b=Math.ceil(k.x+k.half+6);for(let x=a;x<=b;x+=4)carve(t,x,y,27);
+ t.features.push({kind:'tunnel',x0:a,x1:b,y});
+}
+// Floating rock only over dry land, high enough to walk under.
+function floatRock(t,rand,x0,x1){
+ for(let tries=0;tries<30;tries++){
+  const x=W*(x0+rand()*(x1-x0)),rx=65+rand()*45,g=Math.min(...[-rx-40,0,rx+40].map(d=>t.top[clamp(Math.floor(x+d),0,W-1)])),y=g-190-rand()*70;
+  if(y<420||[-rx-80,0,rx+80].some(d=>!solid(t,x+d,WATER-12))||t.features.some(f=>f.kind!=='landmark'&&Math.abs(x-(f.x0+f.x1)/2)<(f.x1-f.x0)/2+rx+60))continue;
+  const ry=24,flat=.35;
+  for(let yy=Math.floor(y-ry);yy<=y+ry;yy++)for(let xx=Math.floor(x-rx);xx<=x+rx;xx++)if(xx>=0&&xx<W&&((xx-x)/rx)**2+((yy-y)/ry)**2<1&&yy>=y-ry*flat)t.mask[yy*W+xx]=1;
+  refreshTop(t,x-rx,x+rx);t.features.push({kind:'float',x0:x-rx,x1:x+rx,y});return;
+ }
 }
 export function createTerrain(map=0,seed=1){
-  setWorld(map);if(map===3)return createExpedition(seed);
-  const rand=seeded(seed),mask=new Uint8Array(W*H),top=new Int16Array(W),ph=[0,1,2].map(()=>rand()*TAU);
-  const gaps=[],n=[3,1,2][map]??2;
-  for(let i=0;i<n;i++)gaps.push([W*(i+1)/(n+1)+(rand()-.5)*300,(map===2?200:150)+rand()*80]);
-  for(let x=0;x<W;x++){
-    let y;
-    if(map===0) y=1000+150*Math.sin(x/420+ph[0])+70*Math.sin(x/143+ph[1])+30*Math.sin(x/49+ph[2])+12*Math.sin(x/23);
-    else if(map===1) y=890+230*Math.sin(x/510+ph[0])+90*Math.sin(x/170+ph[1])+40*Math.sin(x/61+ph[2]);
-    else y=1050+110*Math.sin(x/360+ph[0])+80*Math.sin(x/120+ph[1])+22*Math.sin(x/37+ph[2]);
-    // Fine, deterministic chips break up the sine-wave silhouette while
-    // keeping the ground height stable enough for walking and aiming.
-    y+=2*Math.sin(x*.45)+1.4*Math.sin(x*1.27)+(rand()-.5)*3;
-    // Beaches slope into the sea at the map ends and into every channel.
-    let shore=Math.min(x-120,W-120-x);for(const [gx,gw] of gaps)shore=Math.min(shore,Math.abs(x-gx)-gw/2);
-    if(shore<0)y=H;else if(shore<320){const k=1-shore/320;y+=k*k*(WATER+40-y)}
-    top[x]=Math.floor(clamp(y,380,H));
-    for(let iy=top[x];iy<H;iy++)mask[iy*W+x]=1;
-  }
-  const t={mask,top,map,seed},fill=(cx,cy,rx,ry,flat)=>{
-    for(let y=Math.max(0,Math.floor(cy-ry));y<=Math.min(H-1,cy+ry);y++)for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(W-1,cx+rx);x++)
-      if(((x-cx)/rx)**2+((y-cy)/ry)**2<1&&y>=cy-ry*flat)mask[y*W+x]=1;
-    for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(W-1,cx+rx);x++){let y=0;while(y<H&&!mask[y*W+x])y++;top[x]=y}
-  };
-  // Tunnels wide enough to crawl through, snaking under the hills.
-  for(let k=0;k<(map===1?4:map===0?2:1);k++){
-    let x=300+rand()*(W-900),y=groundY(t,x)+70+rand()*60;const len=320+rand()*360,dir=rand()<.5?-1:1;
-    for(let s=0;s<len;s+=10){x+=dir*10;y+=Math.sin(s/90+k)*3;if(y<WATER-60&&groundY(t,x)<y-40)carve(t,x,y,30)}
-  }
-  // Caverns inside the Rust Ridge massif.
-  if(map===1)for(let k=0;k<6;k++){const x=250+rand()*(W-500),g=groundY(t,x);if(g<WATER-280)carve(t,x,g+150+rand()*90,55+rand()*45)}
-  // Floating rocks over the sea channels; crystal chunks scattered over the atoll.
-  if(map!==1)for(const [gx] of gaps){const g=Math.min(groundY(t,gx-260),groundY(t,gx+260));fill(gx,g-90-rand()*70,110+rand()*40,26,.35)}
-  if(map===2)for(let k=0;k<5;k++){const x=300+rand()*(W-600);fill(x,groundY(t,x)-170-rand()*120,40+rand()*35,20,.2)}
-  return t;
+ setWorld(map);
+ const spec=SPECS[map]??SPECS[0],rand=seeded(map===3?seed^0x5eed:seed),mask=new Uint8Array(W*H),top=new Int16Array(W),t={mask,top,map,seed,features:[]};
+ const range=v=>Array.isArray(v)?[v[0][0],v[0][1],v[1]]:[.06,.94,v],pick=([x,jit])=>W*(x+(rand()*2-1)*jit),zones=spec.bands.length;
+ const seas=spec.seas.map(s=>({x:pick(s),w:130+rand()*40,style:s[2]})),canyons=(spec.canyons||[]).map(c=>({x:pick(c),w:170+rand()*60}));
+ const ends=85,coast=x=>Math.min(x,W-x,...seas.map(s=>Math.abs(x-s.x)-s.w/2));
+ // Zone heights blend across 300 px seams; near the sea every zone settles down to low coastal ground.
+ const band=x=>{const z=clamp(x/W*zones,0,zones-.001),i=Math.floor(z),f=z-i,seam=300/(W/zones);let b=spec.bands[i];
+  if(f>1-seam&&i<zones-1){const k=smooth((f-(1-seam))/seam),n=spec.bands[i+1];b=[b[0]+(n[0]-b[0])*k,b[1]+(n[1]-b[1])*k]}
+  const k=smooth((coast(x)-120)/900);return [WATER+spec.shore[0]+(b[0]-spec.shore[0])*k,WATER+spec.shore[1]+(b[1]-spec.shore[1])*k]};
+ // The coast: how high the ground may stand at each column. Gentle beaches run down to the map ends and every
+ // channel; under the waterline the sea floor drops away faster, so the shallows stay a thin strip; above the
+ // beach the coast climbs four terraces (STEP px risers at MAX_GRADE, then a level step), then plain MAX_GRADE.
+ const env=new Float32Array(W);for(let x=0;x<W;x++){let e=Math.min(x-ends,W-ends-x);for(const s of seas)e=Math.min(e,Math.abs(x-s.x)-s.w/2);
+  const u=e-SHELF,k=Math.floor(u/TERRACE),r=u-k*TERRACE,stairs=4*TERRACE;
+  env[x]=e<0?WATER-e*1.2:e<SHELF?WATER-e*BEACH:u<stairs?WATER-SHELF*BEACH-STEP*(k+Math.min(1,r/RISER)):WATER-SHELF*BEACH-4*STEP-(u-stairs)*MAX_GRADE}
+ const h=ridgeline(rand,band),coastline=()=>{for(let x=0;x<W;x++)if(!knolls.some(k=>Math.abs(x-k.x)<=k.half))h[x]=Math.max(h[x],env[x])};
+ // Flattens a window to its highest point; a checked ledge sits no higher than the coast allows anywhere under it.
+ const levels=[],ledge=(a,b,checked,keep)=>{a=Math.max(0,Math.floor(a));b=Math.min(W-1,Math.ceil(b));let y=H,lim=0;for(let x=a;x<=b;x++){y=Math.min(y,h[x]);lim=Math.max(lim,env[x])}
+  if(checked)y=Math.max(y,lim);for(let x=a;x<=b;x++)h[x]=y;if(keep)levels.push([a,b,y]);return y};
+ const knolls=[];coastline();
+ // Canyon rims are flat ledges level with the highest ground around them.
+ for(const c of canyons)c.rim=ledge(c.x-c.w/2-110,c.x+c.w/2+110,true,true);
+ // Rock mesas with a tunnel bored through at ground level: the sides are deliberate cliffs, the tunnel is the way on foot.
+ {const [a,b,n]=range(spec.tunnels);for(let k=0,tries=0;k<n&&tries<40;tries++){const x=W*(a+rand()*(b-a)),half=130+rand()*60;
+  if(coast(x)<half+420||canyons.some(c=>Math.abs(x-c.x)<c.w/2+half+650)||knolls.some(o=>Math.abs(o.x-x)<o.half+half+400))continue;
+  const base=ledge(x-half-70,x+half+70,true,true);knolls.push({x,half,base,rise:150+rand()*50});k++}}
+ // Spawn ledges: flat shelves spread along the dry land, well away from the sea and the canyons.
+ const nl=Math.round(W/320);for(let k=0;k<nl;k++){const x=W*(k+.5)/nl+(rand()-.5)*W/nl*.5;
+  if(coast(x)>320&&canyons.every(c=>Math.abs(x-c.x)>c.w/2+260)&&knolls.every(o=>Math.abs(x-o.x)>o.half+200))ledge(x-60-rand()*40,x+60+rand()*40,true)}
+ limitGrade(h,MAX_GRADE);coastline();
+ // Canyon rims and tunnel floors must stay exactly level: restore them and grade the ground around them down.
+ for(const [a,b,y] of levels){for(let x=a;x<=b;x++)h[x]=y;cutAround(h,a,b,MAX_GRADE)}
+ for(const c of canyons)for(let x=Math.floor(c.x-c.w/2-110);x<=c.x+c.w/2+110;x++)h[x]=c.rim;
+ for(const k of knolls)for(let i=Math.floor(k.x-k.half);i<=k.x+k.half;i++)h[i]=Math.min(h[i],k.base-clamp((k.half-Math.abs(i-k.x))*3.2,0,k.rise));
+ // Dry canyons: deliberate sheer walls down to a floor well above the sea, crossed by a girder bridge.
+ for(const c of canyons){c.floor=Math.min(WATER-130,c.rim+240);for(let x=Math.floor(c.x-c.w/2);x<=c.x+c.w/2;x++)h[x]=Math.max(h[x],Math.min(c.floor,c.rim+(c.w/2-Math.abs(x-c.x))*4.5))}
+ const p1=rand()*TAU,p2=rand()*TAU;
+ for(let x=0;x<W;x++){
+  let y=h[x];
+  // Low, fine ripples and chips break up the silhouette without making real slopes.
+  y+=4*Math.sin(x/57+p1)+2*Math.sin(x/26+p2)+.6*Math.sin(x/9);
+  top[x]=Math.floor(clamp(y,380,H));for(let iy=top[x];iy<H;iy++)mask[iy*W+x]=1;
+ }
+ // Every channel is crossable on foot: a sagging rope bridge, or a natural arch on the atoll.
+ for(const s of seas){let a=Math.floor(s.x),b=a;while(a>0&&top[a]>WATER-44)a--;while(b<W-1&&top[b]>WATER-44)b++;
+  span(t,{kind:'bridge',style:s.style,x0:a,x1:b,ya:top[a],yb:top[b],sag:s.style==='arch'?-30:12})}
+ for(const c of canyons){let a=Math.floor(c.x),b=a;while(a>0&&top[a]>c.rim+14)a--;while(b<W-1&&top[b]>c.rim+14)b++;
+  span(t,{kind:'bridge',style:'girder',x0:a,x1:b,ya:top[a],yb:top[b],sag:-6})}
+ for(const k of knolls)tunnel(t,k);
+ // Caverns: hollows deep under thick ground, opened up by the first big blast.
+ {const [a,b,n]=range(spec.caverns);for(let k=0;k<n;k++){const x=W*(a+(b-a)*(k+rand())/n),g=groundY(t,x),r=40+rand()*40;if(g<WATER-240&&solid(t,x,g+60)&&!t.features.some(f=>f.kind!=='landmark'&&x>f.x0-r-80&&x<f.x1+r+80)){const y=Math.min(g+110+r+rand()*50,WATER-60-r);if(y-r<g+100)continue;carve(t,x,y,r);t.features.push({kind:'cave',x0:x-r,x1:x+r,y,r})}}}
+ for(const [a,b] of spec.floats)floatRock(t,rand,a,b);
+ // Landmarks are background art standing on a flat stretch; they do not collide.
+ for(const [type,a,b] of spec.landmarks){let best=null;for(let k=0;k<24;k++){const x=Math.floor(W*(a+rand()*(b-a))),g=top[x];if(!solid(t,x,WATER-12)||!solid(t,x,g+50))continue;const tilt=Math.abs(top[clamp(x-30,0,W-1)]-top[clamp(x+30,0,W-1)]);if(!best||tilt<best.tilt)best={tilt,x}}if(best)t.features.push({kind:'landmark',type,x:best.x})}
+ return t;
 }
 // Six spawn points on level dry ground, sorted left to right; teams take alternate spots so rivals start close.
+// Strict pass: a solid ledge well above the sea and far from any water; the loose pass only backs it up.
 export function spawnSpots(t,seed,count=6){
-  const rand=seeded((seed^0x51ed270b)>>>0),cand=[];
-  // Level ground, headroom to jump, and no sheer drop within a few steps either way.
-  for(let x=140;x<W-140;x+=20){const g=groundY(t,x);if(g>WATER-90||Math.abs(groundY(t,x-14)-groundY(t,x+14))>14||!wormFits(t,x,g-R-1)||solid(t,x,g-R*2-30))continue;
-    if([-70,-40,40,70].some(d=>groundY(t,x+d)-g>45))continue;cand.push(x)}
+ const rand=seeded((seed^0x51ed270b)>>>0),dist=new Float32Array(W);
+ let d=1e6;for(let x=0;x<W;x++){d=solid(t,x,WATER-12)?d+1:0;dist[x]=d}d=1e6;for(let x=W-1;x>=0;x--){d=solid(t,x,WATER-12)?d+1:0;dist[x]=Math.min(dist[x],d)}
+ const ok=(x,strict)=>{const g=groundY(t,x);
+  if(g>WATER-(strict?150:100)||dist[x]<(strict?240:160)||Math.abs(groundY(t,x-14)-groundY(t,x+14))>(strict?8:12)||Math.abs(groundY(t,x-20)-groundY(t,x+20))>12||!wormFits(t,x,g-R-1)||solid(t,x,g-R*2-30))return false;
+  if(!solid(t,x,g+30)||t.features?.some(f=>f.kind==='bridge'&&x>f.x0-40&&x<f.x1+40))return false;
+  if(strict&&(Math.abs(groundY(t,x-32)-groundY(t,x+32))>14||!solid(t,x,g+60)))return false;
+  return ![-70,-40,40,70].some(d=>groundY(t,x+d)-g>45)};
+ let picked=[];
+ for(const strict of [true,false]){
+  const cand=[];for(let x=140;x<W-140;x+=20)if(ok(x,strict))cand.push(x);
   for(let i=cand.length-1;i>0;i--){const j=Math.floor(rand()*(i+1));[cand[i],cand[j]]=[cand[j],cand[i]]}
-  let picked=[];
-  for(const gap of [420,300,200,120,40]){picked=[];for(const x of cand)if(picked.every(p=>Math.abs(p-x)>=gap)){picked.push(x);if(picked.length===count)break}if(picked.length===count)break}
-  return picked.sort((a,b)=>a-b).map(x=>({x,y:groundY(t,x)-R-1}));
+  for(const gap of [Math.round(W/9),300,200,120,40]){picked=[];for(const x of cand)if(picked.every(p=>Math.abs(p-x)>=gap)){picked.push(x);if(picked.length===count)break}if(picked.length===count)break}
+  if(picked.length===count)break;
+ }
+ return picked.sort((a,b)=>a-b).map(x=>({x,y:groundY(t,x)-R-1}));
 }
 export function solid(t,x,y){const ix=Math.floor(x),iy=Math.floor(y);return ix>=0&&ix<W&&iy>=0&&iy<H&&t.mask[iy*W+ix]===1}
 export function carve(t,cx,cy,r){

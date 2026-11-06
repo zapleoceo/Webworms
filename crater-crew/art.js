@@ -1,6 +1,6 @@
 // Original canvas artwork for Crater Crew. The collision shape remains in engine.js.
 import {FONT} from './scenery.js';
-import {clamp} from './engine.js';
+import {clamp,deckY} from './engine.js';
 const TAU=Math.PI*2;
 const oval=(c,x,y,rx,ry,color,rotation=0)=>{c.fillStyle=color;c.beginPath();c.ellipse(x,y,rx,ry,rotation,0,TAU);c.fill()};
 function stroke(c,color,width,points){c.strokeStyle=color;c.lineWidth=width;c.lineCap='round';c.lineJoin='round';c.beginPath();c.moveTo(...points[0]);for(const p of points.slice(1))c.lineTo(...p);c.stroke()}
@@ -14,14 +14,16 @@ function envSpots(state,groundY){
  const spots=[],W=state.terrain.top.length,water=state.waterLevel??1355;
  for(let x=90;x<W-90;x+=100+rnd()*80){
   const y=groundY(state.terrain,x);if(y>water-70||Math.abs(groundY(state.terrain,x-18)-groundY(state.terrain,x+18))>28)continue;
-  if(state.worms?.some(w=>Math.abs(w.x-x)<45))continue;
+  if(state.worms?.some(w=>Math.abs(w.x-x)<45)||state.terrain.features?.some(f=>f.kind==='landmark'&&Math.abs(f.x-x)<80))continue;
   // Grand Expedition changes its props zone by zone: islands, jungle, industry, crystal atoll.
   const kinds=state.map===3?[ENV_KINDS[0],['palm','flowers','mushroom','sign','palm','flowers'],ENV_KINDS[1],ENV_KINDS[2]][Math.min(3,Math.floor(x/W*4))]:ENV_KINDS[state.map]??ENV_KINDS[0];spots.push({x,kind:kinds[Math.floor(rnd()*kinds.length)],s:.8+rnd()*.5,flip:rnd()<.5?-1:1,ph:rnd()*6.28});
  }
  // Undersides of floating rock and overhangs get hanging roots/vines (sampled once).
  const hang=[],m=state.terrain.mask,Hh=m.length/W;
  for(let x=40;x<W-40;x+=26){let y=state.terrain.top[x];if(y>=Hh)continue;while(y<Hh&&m[y*W+x])y++;if(y<Hh-4&&y<water-30&&!m[(y+40)*W+x])hang.push({x,y,len:18+rnd()*34,ph:rnd()*6.28})}
- return state.envCache={key,spots,hang};
+ // Ground cover along the whole surface: grass tufts, pebbles and sprouts in each theme's palette.
+ const tufts=[];for(let x=30;x<W-30;x+=16+rnd()*26){const y=state.terrain.top[Math.floor(x)];if(y>water-14||y>=Hh-2)continue;tufts.push({x,k:rnd(),s:.7+rnd()*.6,ph:rnd()*6.28})}
+ return state.envCache={key,spots,hang,tufts};
 }
 function palm(c,s,f,t){
  stroke(c,'#3b2418',9*s,[[0,0],[6*f*s,-40*s],[3*f*s,-86*s]]);stroke(c,'#8a5a34',6*s,[[0,0],[6*f*s,-40*s],[3*f*s,-86*s]]);
@@ -49,14 +51,84 @@ function crystal(c,s,t,ph){const glow=.6+.4*Math.sin(t*.003+ph);c.globalAlpha=.2
 function mushroom(c,s,t,ph){const glow=.6+.4*Math.sin(t*.0025+ph);stroke(c,'#161c3a',8*s,[[0,0],[1*s,-18*s]]);stroke(c,'#e8e4ff',5*s,[[0,0],[1*s,-18*s]]);c.globalAlpha=.3*glow;oval(c,0,-20*s,22*s,14*s,'#c58cff');c.globalAlpha=1;oval(c,0,-20*s,15*s,9*s,'#161c3a');oval(c,0,-21*s,13*s,7.4*s,'#b06cff');for(const [x,y] of [[-6,-23],[4,-25],[7,-20]])oval(c,x*s,y*s,1.8*s,1.6*s,'#f3e0ff')}
 function lantern(c,s,t,ph){stroke(c,'#161c3a',4*s,[[0,0],[0,-44*s],[10*s,-48*s]]);stroke(c,'#161c3a',1.5*s,[[10*s,-48*s],[10*s,-40*s]]);const glow=.65+.35*Math.sin(t*.005+ph);c.globalAlpha=.35*glow;oval(c,10*s,-34*s,16*s,16*s,'#ffd27a');c.globalAlpha=1;c.fillStyle='#161c3a';c.fillRect(5*s,-40*s,10*s,12*s);c.fillStyle=glow>.8?'#fff2a8':'#ffd27a';c.fillRect(7*s,-38*s,6*s,8*s)}
 function shard(c,s,f){c.save();c.scale(f,1);c.rotate(.5);c.fillStyle='#161c3a';c.fillRect(-5*s,-30*s,10*s,30*s);c.fillStyle='#6d7ea6';c.fillRect(-3*s,-28*s,6*s,27*s);c.restore()}
-export function drawEnvironment(c,state,groundY){
- if(!state.terrain)return;const {spots,hang}=envSpots(state,groundY),t=state.envClock=(state.envClock||0)+16;
+// ---- Map set pieces (engine.js createTerrain lists them in terrain.features). Pure decoration. ----
+// Lighthouse on the cove: striped tower, glowing lamp and a slow sweeping beam.
+function lighthouse(c,t){
+ c.save();c.globalAlpha=.16;c.fillStyle='#fff2b0';const a=Math.sin(t*.0007)*.9;c.beginPath();c.moveTo(0,-150);c.lineTo(Math.cos(a)*520,-150+Math.sin(a)*90-60);c.lineTo(Math.cos(a)*520,-150+Math.sin(a)*90+60);c.fill();c.restore();
+ c.fillStyle='#2b1a1c';c.beginPath();c.moveTo(-27,0);c.lineTo(-17,-132);c.lineTo(17,-132);c.lineTo(27,0);c.fill();
+ for(let k=0;k<5;k++){const y0=-k*26,y1=y0-26,w0=24-k*1.9,w1=24-(k+1)*1.9;c.fillStyle=k%2?'#f4efe2':'#d6453f';c.beginPath();c.moveTo(-w0,y0);c.lineTo(-w1,y1);c.lineTo(w1,y1);c.lineTo(w0,y0);c.fill()}
+ c.fillStyle='#2b1a1c';c.fillRect(-24,-138,48,8);c.fillRect(-14,-166,28,30);
+ const glow=.7+.3*Math.sin(t*.004);c.globalAlpha=.35*glow;oval(c,0,-150,34,30,'#fff2b0');c.globalAlpha=1;c.fillStyle=glow>.85?'#fffbe0':'#ffe27a';c.fillRect(-10,-162,20,22);
+ c.fillStyle='#2b1a1c';c.beginPath();c.moveTo(-18,-166);c.lineTo(0,-184);c.lineTo(18,-166);c.fill();c.fillStyle='#6a3f22';c.fillRect(-6,-28,12,28);
+}
+// Rust Ridge oil derrick: a lattice tower with a blinking beacon.
+function derrick(c,t){
+ for(const [w,col] of [[5,'#1e161e'],[2.6,'#c9603a']]){stroke(c,col,w,[[-34,0],[-6,-170],[6,-170],[34,0]]);for(let k=1;k<6;k++){const y=-k*28,x=34-k*28*28/170;stroke(c,col,w*.8,[[-x,y],[x,y]]);stroke(c,col,w*.6,[[-x-4.6,y+28],[x,y]])}}
+ c.fillStyle='#1e161e';c.fillRect(-44,-8,88,10);c.fillStyle='#5b4a5e';c.fillRect(-42,-6,84,6);
+ const on=Math.floor(t/600)%2;c.globalAlpha=on?.45:.15;oval(c,0,-176,16,16,'#ff4b3e');c.globalAlpha=1;oval(c,0,-176,4.5,4.5,on?'#ff8a6a':'#7a1d1a');
+}
+// Crystal Atoll spire: a towering crystal cluster with a pulsing glow.
+function spire(c,t,ph){crystal(c,2.7,t,ph);c.save();c.translate(-38,2);crystal(c,1.2,t,ph+1);c.restore();c.save();c.translate(40,2);crystal(c,1,t,ph+2);c.restore()}
+// Jungle ruin: a stepped stone temple with a dark doorway and creepers.
+function ruin(c){
+ for(const [w,h,y] of [[120,34,0],[92,30,-34],[64,30,-64],[36,24,-94]]){c.fillStyle='#2b1a1c';c.fillRect(-w/2-2,y-h-2,w+4,h+2);c.fillStyle='#8f8a78';c.fillRect(-w/2,y-h,w,h);c.fillStyle='#a8a390';c.fillRect(-w/2,y-h,w,5);for(let x=-w/2+14;x<w/2;x+=22)stroke(c,'#6f6a5a',1.4,[[x,y-h+6],[x,y-1]])}
+ c.fillStyle='#1c1420';c.fillRect(-12,-56,24,22);c.fillRect(-9,-60,18,4);
+ for(const [x,l] of [[-50,26],[-30,44],[28,40],[46,22]])stroke(c,'#2f6b2a',2.4,[[x,-34-(x<0?-x:x)*.2],[x+3,-34-(x<0?-x:x)*.2+l]]);
+}
+// Tunnel bores get a dark cave backdrop (drawn under the terrain, so only the open bore shows it).
+function caveBack(c,f,dark){c.fillStyle=dark;c.globalAlpha=.88;c.fillRect(f.x0-4,f.y-30,f.x1-f.x0+8,58);c.globalAlpha=1;for(let x=f.x0+40;x<f.x1-30;x+=110){stroke(c,'#1c1420',2,[[x,f.y-26],[x,f.y-6]]);oval(c,x,f.y-4,4.5,4.5,'#ffb02e');c.globalAlpha=.25;oval(c,x,f.y-4,14,14,'#ffd27a');c.globalAlpha=1}}
+function tri(c,p,col){c.fillStyle=col;c.beginPath();c.moveTo(...p[0]);c.lineTo(...p[1]);c.lineTo(...p[2]);c.fill()}
+const DARK=['#3a241c','#24141a','#161c3a','#2b2a20'];
+function drawFeatures(c,state,groundY,t){
+ const v=state.view,map=state.map,W=state.terrain.top.length;
+ for(const f of state.terrain.features||[]){
+  // Caverns read as dark hollows rather than holes onto the sky.
+  if(f.kind==='cave'){if(v&&(f.x1<v.x0||f.x0>v.x1||f.y-f.r>v.y1||f.y+f.r<v.y0))continue;c.globalAlpha=.9;oval(c,f.x0+f.r,f.y,f.r+3,f.r+3,DARK[map===3?Math.min(3,Math.floor(f.x0/W*4)):map]??DARK[0]);c.globalAlpha=1;
+   for(const k of [-.5,0,.45])tri(c,[[f.x0+f.r+k*f.r-6,f.y-f.r*.9],[f.x0+f.r+k*f.r+6,f.y-f.r*.9],[f.x0+f.r+k*f.r,f.y-f.r*.45]],'#00000055');continue}
+  if(f.kind==='tunnel'){if(v&&(f.x1<v.x0||f.x0>v.x1||f.y-40>v.y1||f.y+40<v.y0))continue;caveBack(c,f,DARK[map===3?Math.min(3,Math.floor((f.x0+f.x1)/2/W*4)):map]??DARK[0]);continue}
+  if(f.kind!=='landmark')continue;
+  if(v&&(f.x+140<v.x0||f.x-140>v.x1))continue;const y=groundY(state.terrain,f.x);if(v&&(y-260>v.y1||y+20<v.y0))continue;
+  c.save();c.translate(f.x,y+4);({lighthouse:()=>lighthouse(c,t),derrick:()=>derrick(c,t),spire:()=>spire(c,t,f.x*.01),ruin:()=>ruin(c)}[f.type]||(()=>{}))();c.restore();
+ }
+}
+// Bridges are painted over the terrain: planks or girders only where the deck is still standing.
+export function drawStructures(c,state){
+ const t=state.terrain;if(!t?.features)return;const v=state.view,W=t.top.length,m=t.mask,on=(x,y)=>{x=Math.floor(x);y=Math.floor(y);return x>=0&&x<W&&y>=0&&m[y*W+x]===1};
  c.save();c.lineCap='round';c.lineJoin='round';
+ for(const f of t.features){
+  if(f.kind!=='bridge'||f.style==='arch'||v&&(f.x1<v.x0-40||f.x0>v.x1+40))continue;const step=f.style==='girder'?24:12,n=Math.max(1,Math.round((f.x1-f.x0)/step)),pts=[];
+  for(let i=0;i<=n;i++){const x=f.x0+(f.x1-f.x0)*i/n,y=deckY(f,x);pts.push({x,y,up:on(x,y+3)})}
+  if(f.style==='girder'){
+   for(let i=0;i<n;i++){const a=pts[i],b=pts[i+1];if(!a.up||!b.up)continue;
+    for(const [w,col] of [[6,'#1e161e'],[3,'#c9603a']]){stroke(c,col,w,[[a.x,a.y-22],[b.x,b.y-22]]);stroke(c,col,w,[[a.x,a.y+1],[b.x,b.y+1]]);stroke(c,col,w*.8,[[a.x,a.y],[a.x,a.y-22]]);stroke(c,col,w*.7,[[a.x,a.y],[b.x,b.y-22]])}}
+  }else{
+   for(const [x,y] of [[f.x0,f.ya],[f.x1,f.yb]])if(on(x,y+2)){stroke(c,'#2b1a1c',8,[[x,y+2],[x,y-40]]);stroke(c,'#8a5a34',5,[[x,y+2],[x,y-40]]);oval(c,x,y-41,4,3,'#c98a4a')}
+   for(let i=0;i<n;i++){const a=pts[i],b=pts[i+1];if(!a.up||!b.up)continue;stroke(c,'#3b2418',3,[[a.x,a.y-30],[b.x,b.y-30]]);stroke(c,'#d9b27a',1.4,[[a.x,a.y-30],[b.x,b.y-30]]);if(i%2===0)stroke(c,'#3b2418',1.4,[[a.x,a.y-30],[a.x,a.y]])}
+   for(const p of pts)if(p.up){c.fillStyle='#2b1a1c';c.fillRect(p.x-6,p.y-2,12,9);c.fillStyle='#b07a4e';c.fillRect(p.x-4.6,p.y-.8,9.2,6.4);c.fillStyle='#d9a45a';c.fillRect(p.x-4.6,p.y-.8,9.2,1.6)}
+  }
+ }
+ c.restore();
+}
+// Ground cover palettes per theme: [blade dark, blade light, accent, pebble].
+const COVER=[['#2f7a24','#7fd64a','#ffd23f','#9a8f84'],['#8a5a1f','#e0b040','#ff7a3a','#5b4a52'],['#1f6f7a','#7ff0e0','#c58cff','#6d7ea6'],['#2f7a24','#9be84a','#ff8a5c','#a0958a']];
+function cover(c,p,y,pal,t){
+ const sw=Math.sin(t*.0015+p.ph)*1.6,s=p.s;
+ if(p.k<.18){oval(c,p.x,y+1,5*s,3.4*s,'#2b1a1c');oval(c,p.x,y,4*s,2.6*s,pal[3]);return}
+ for(let i=-1;i<=1;i++){const h=(7+(i===0?5:0))*s;stroke(c,pal[0],2.2,[[p.x+i*3*s,y+2],[p.x+i*4.5*s+sw,y-h]]);stroke(c,pal[1],1.1,[[p.x+i*3*s,y+1],[p.x+i*4.5*s+sw,y-h+1]])}
+ if(p.k>.86)oval(c,p.x+sw,y-11*s,2.4*s,2.4*s,pal[2]);
+}
+export function drawEnvironment(c,state,groundY){
+ if(!state.terrain)return;const {spots,hang,tufts}=envSpots(state,groundY),t=state.envClock=(state.envClock||0)+16;
+ c.save();c.lineCap='round';c.lineJoin='round';
+ drawFeatures(c,state,groundY,t);
  // Hanging roots / vines under floating rock, swaying a little.
  const vine=state.map===1?'#3a2a2a':state.map===2?'#2c3a66':'#2f5a26',leaf=state.map===2?'#8ff0d2':state.map===1?'#6a4a3a':'#6fbf3a';
  // st.view (set by render) is the camera's world rectangle; set dressing outside it is skipped.
  const v=state.view;
  for(const h of hang){if(v&&(h.x+10<v.x0||h.x-10>v.x1||h.y-4>v.y1||h.y+h.len+6<v.y0))continue;const sw=Math.sin(t*.0012+h.ph)*4;stroke(c,'#1c1420',4,[[h.x,h.y-2],[h.x+sw*.5,h.y+h.len*.5],[h.x+sw,h.y+h.len]]);stroke(c,vine,2,[[h.x,h.y-2],[h.x+sw*.5,h.y+h.len*.5],[h.x+sw,h.y+h.len]]);oval(c,h.x+sw,h.y+h.len,2.6,2,leaf)}
+ const Wd=state.terrain.top.length;
+ for(const p of tufts){if(v&&(p.x+12<v.x0||p.x-12>v.x1))continue;const y=state.terrain.top[Math.floor(p.x)];if(y>=(state.waterLevel??1e9)-10||v&&(y-20>v.y1||y+6<v.y0))continue;
+  cover(c,p,y,COVER[state.map===3?[0,3,1,2][Math.min(3,Math.floor(p.x/Wd*4))]:state.map]??COVER[0],t)}
  for(const p of spots){
   if(v&&(p.x+160<v.x0||p.x-160>v.x1))continue;
   const y=groundY(state.terrain,p.x);if(y>=(state.waterLevel??1e9)-8)continue;if(v&&(y-200>v.y1||y+40<v.y0))continue;
