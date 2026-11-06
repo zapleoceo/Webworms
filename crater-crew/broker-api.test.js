@@ -52,7 +52,7 @@ test('Subscription submit pins the route, omits unsupported controls, and polls 
 
 for(const [label,entry] of [
  ['unavailable',{available:false}],
- ['wrong route',{id:'api/other'}],['no chat capability',{capabilities:['structured']}],
+ ['wrong route',{id:'api/other'}],['no chat capability',{capabilities:['embedding']}],
  ['no JSON schema',{job_request:{response_format_types:['json_object']}}]
 ])test(`Catalog rejects ${label} without submitting a job`,async()=>configured(async()=>{
  const calls=[];globalThis.fetch=async input=>{calls.push(new URL(input).pathname);return response(catalog(entry))};
@@ -171,7 +171,7 @@ test('An API-billed job must still run on exactly the requested model',async()=>
  assert.equal(poll.status,502);
 }));
 
-for(const [label,entry] of [['unavailable',{available:false}],['no chat capability',{capabilities:['structured']}],['no JSON schema',{job_request:{response_format_types:['json_object']}}],['missing from the catalog',{id:'openai/not-this-one'}]])
+for(const [label,entry] of [['unavailable',{available:false}],['no chat capability',{capabilities:['embedding']}],['no JSON schema',{job_request:{response_format_types:['json_object']}}],['missing from the catalog',{id:'openai/not-this-one'}]])
  test(`A stored model that is ${label} is refused without a job`,async()=>configured(async()=>{
   storedModel(apiModel);const calls=[];
   globalThis.fetch=async input=>{calls.push(new URL(input).pathname);return response({data:[{...apiRow,...entry}]})};
@@ -196,3 +196,12 @@ test('A subscription model chosen in the panel keeps the subscription attestatio
  const ticket=(await (await turn.fetch(request('POST',body))).json()).ticket;
  assert.equal((await turn.fetch(request('GET',undefined,'?ticket='+encodeURIComponent(ticket)))).status,502);
 },'codex-sub/gpt-6.1-sol'));
+
+// Broker lists API models without "available" and with response_format_types null; they serve their own chat capability.
+test('An API model without chat:fast or a format list is usable and runs on its own chat capability',async()=>configured(async()=>{
+ storedModel(apiModel);const calls=[];
+ const row={id:apiModel,source:'broker',billing_type:'api',capabilities:['chat:smart','embedding'],job_request:{response_format_types:null}};
+ globalThis.fetch=async input=>{const u=new URL(input);calls.push(u.pathname+u.search);return u.pathname==='/v1/models'?response({data:[row]}):response({job_id:7,status:'pending',poll_after_s:1})};
+ const r=await turn.fetch(request('POST',body));assert.equal(r.status,202);
+ assert.deepEqual(calls,['/v1/models','/v1/jobs?capability=chat:smart']);
+}));

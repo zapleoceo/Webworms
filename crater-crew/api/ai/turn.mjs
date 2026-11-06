@@ -1,10 +1,10 @@
 import {createHmac,timingSafeEqual} from 'node:crypto';
 
-import {brokerKey as key,broker,activeModel,catalog,usableRow} from '../../lib/broker.mjs';
+import {brokerKey as key,broker,activeModel,catalog,usableRow,chatCapability} from '../../lib/broker.mjs';
 import {validModelId} from '../../settings.js';
 
 // The model is the admin's choice (settings ai.model) or else env BROKER_SUBSCRIPTION_MODEL; any Broker catalog model
-// that is available with chat:fast and json_schema qualifies (checked before every job).
+// that is not marked unavailable, serves a chat job capability and takes json_schema qualifies (API models included) (checked before every job).
 const validModel=s=>s!==''&&validModelId(s);
 const enabled=m=>process.env.BROKER_GAME_ENABLED==='true'&&Boolean(key())&&validModel(m);
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
@@ -75,7 +75,7 @@ export default {async fetch(request){
    // Broker's project-scoped unique key replays the same job even after completion.
    // A changed payload for the same turn gets 409 instead of a second subscription run.
    const idempotencyKey='ww_'+sign('idem:'+body.turnId);
-   const result=await broker('/v1/jobs?capability=chat:fast',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify(payload)});
+   const result=await broker('/v1/jobs?capability='+chatCapability(row),{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify(payload)});
    if(!Number.isInteger(result.job_id)||result.job_id<1)throw Error('invalid broker response');
    const ids=body.candidates.map(c=>c.id);
    if(result.status==='done')return complete(result,body.turnId,ids,model,billing);

@@ -203,8 +203,9 @@ function renderModels(){
  box.replaceChildren(...shown.slice(0,100).map(m=>{
   const meta=el('span',{class:'meta'},
    m.billing_type?badge(m.billing_type==='subscription'?'subscription':m.billing_type,m.billing_type==='subscription'?'sub':'api'):null,
-   m.usable?badge('usable','ok'):badge(!m.available?'unavailable':!m.chat_fast?'no fast chat':'no json schema','off'),
-   m.json_schema?badge('json',''):null,
+   m.usable?badge('usable','ok'):badge(!m.available?'unavailable':!m.chat?'no chat':'no json schema','off'),
+   m.chat&&m.chat!=='chat:fast'?badge(m.chat,''):null,
+   m.json_unverified?badge('json: test it',''):m.json_schema?badge('json',''):null,
    m.intelligence_index!=null?badge('IQ '+m.intelligence_index,''):null,
    m.price?badge(m.price,''):null);
   return el('button',{type:'button',class:'model',role:'option','aria-selected':String(m.id===selectedModel),'data-model':m.id,title:m.usable?'':'Not usable for the game right now'},
@@ -229,7 +230,7 @@ $('model-test').addEventListener('click',async()=>{
  if(!model){r.hidden=false;r.className='model-result bad';r.textContent='No model selected and no env default on the server.';return}
  $('model-test').disabled=true;r.hidden=false;r.className='model-result';r.replaceChildren(el('span',{class:'spinner','aria-hidden':'true'}),`Testing ${model}… (up to 25 s)`);
  try{
-  const t=await api('/api/admin/models/test',{method:'POST',json:{model}});
+  const t=await api('/api/admin/models/test',{method:'POST',json:{model,...(models.find(m=>m.id===model)?.chat?{capability:models.find(m=>m.id===model).chat}:{})}});
   r.className='model-result '+(t.ok?'ok':'bad');
   r.textContent=t.ok?`OK in ${t.latency_ms} ms${t.billing_type?' · '+t.billing_type:''} · reply: ${t.reply}`
    :`Failed (${t.status}) after ${t.latency_ms} ms: ${t.error||'unknown error'}${t.reply?' · reply: '+t.reply:''}`;
