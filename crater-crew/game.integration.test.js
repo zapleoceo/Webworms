@@ -521,3 +521,37 @@ test('PC Easy plays the move with the best simulated outcome: a punch into the w
  assert.equal(state.selected,'punch','sandbox picks the ring-out');for(let i=0;i<150&&foe.alive;i++)update(1/30);assert.equal(foe.alive,false,'the rival drowned');
  delete state.controllers;
 });
+test('the match journal records the action and the real outcome of a turn: a punch that drowns the rival',()=>{
+ newGame(0,2,4243);state.controllers=['human','easy'];flatten(state.terrain,PLAIN);for(let x=1100;x<W;x++){state.terrain.top[x]=H;for(let y=0;y<H;y++)state.terrain.mask[y*W+x]=0}
+ const me=state.worms[0],foe=state.worms[3];for(const w of state.worms)if(w!==me&&w!==foe)w.alive=false;
+ me.x=1030;me.y=PLAIN-R-1;foe.x=1075;foe.y=PLAIN-R-1;foe.hp=100;state.wind=17.4;beginTurn(0);assert.equal(state.active,me);assert.deepEqual(state.journal,[]);
+ state.selected='punch';state.dir=1;fire();for(let i=0;i<400&&!state.ended;i++)update(1/30);
+ assert.equal(state.ended,true);assert.equal(state.journal.length,1,'the finished turn is journaled once');
+ const e=state.journal[0];
+ assert.deepEqual({...e,wd:undefined},{r:1,t:0,w:0,a:'punch',d:1,wd:undefined,h:[[3,100]],k:[3],dr:[3],s:0});assert.ok(Math.abs(e.wd-17)<=2,'wind at the punch');
+ delete state.controllers;
+});
+
+test('PC GOD sends the journal after the snapshot and candidates; PC Ultra does not; the pending GOD turn survives a reload',async()=>{
+ const prior=globalThis.fetch,posts=[];
+ globalThis.fetch=async (_url,options)=>{if(options?.method==='POST'){posts.push(JSON.parse(options.body));return new Response(JSON.stringify({status:'pending',ticket:'god-ticket',pollAfter:5}),{status:202})}return new Response(JSON.stringify({status:'pending',pollAfter:5}))};
+ try{
+  const {chooseController}=window.__craterCrew;chooseController(0,'human');chooseController(1,'god');element('start').onclick();
+  assert.deepEqual(state.controllers,['human','god']);assert.equal(element('ai-level').textContent,'HUMAN vs PC GOD');
+  // Sky Squad's airstrike becomes the first journal entry, then the GOD turn is asked for.
+  state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
+  assert.equal(state.team,1);assert.equal(state.journal.length,1);assert.equal(state.journal[0].a,'airstrike');
+  aiAct();await new Promise(resolve=>setImmediate(resolve));
+  assert.match(element('message').textContent,/PC GOD IS THINKING/);
+  assert.equal(posts.length,1);const god=posts[0];
+  assert.deepEqual(Object.keys(god),['turnId','difficulty','snapshot','candidates','history']);
+  assert.equal(god.difficulty,3);assert.deepEqual(god.history,state.journal);assert.equal(state.difficulty,2,'the local profile stays at its sharpest');
+  const saved=readPendingTurn();assert.ok(saved,'a GOD request (difficulty 3) is a valid pending turn');assert.deepEqual(saved.game.controllers,['human','god']);assert.deepEqual(saved.game.journal,state.journal);
+  state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));
+  newGame(0,1,995,true);delete state.controllers;assert.equal(restorePendingBrokerTurn(readPendingTurn()),true);
+  assert.deepEqual(state.controllers,['human','god']);assert.equal(state.journal.length,1);
+  chooseController(1,'ultra');element('start').onclick();state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
+  aiAct();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(posts.length,2);assert.equal(posts[1].difficulty,2);assert.equal(Object.hasOwn(posts[1],'history'),false,'PC Ultra gets no history');
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,996)}
+});

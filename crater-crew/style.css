@@ -75,7 +75,7 @@ html,body{overflow-anchor:none}.weapon-options{min-height:44px}
 .team-pick{display:grid;gap:6px;padding:10px 12px;border:3px solid var(--ink);border-radius:14px;background:#211a36}
 .team-tag{font-size:11px;font-weight:900;letter-spacing:.14em}
 .team-sky .team-tag{color:#4aa8ff}.team-dirt .team-tag{color:#ff5d52}
-.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.seg{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
 .seg button{padding:9px 4px;border:2px solid var(--ink);border-radius:9px;background:#3d3160;color:#d8cdf7;font:inherit;font-size:11px;font-weight:900;letter-spacing:.04em;cursor:pointer;transition:transform .08s,background .15s}
 .seg button:hover:not(:disabled){background:#4d3f7a;transform:translateY(-1px)}
 .seg button.on{background:var(--gold);color:var(--ink);box-shadow:0 3px 0 #0a0712}
@@ -83,7 +83,7 @@ html,body{overflow-anchor:none}.weapon-options{min-height:44px}
 .seg button:focus-visible{outline:3px solid #fff;outline-offset:2px}
 .vs{justify-self:center;font-size:12px;font-weight:900;color:var(--gold);letter-spacing:.2em}
 .ai-hint{min-height:34px;margin:0 0 12px}
-@media(max-width:480px){.seg{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.seg{grid-template-columns:repeat(3,1fr)}}
 
 .weapon.empty{opacity:.45}
 #cam-target,#cam-view{white-space:nowrap}
