@@ -4,7 +4,7 @@
 
 export const CONTROLLERS=['human','easy','hard','ultra'];
 export const PLACEMENTS=['billboard','crate','banner'];
-export const MAP_COUNT=3;
+export const MAP_COUNT=4;
 export const MAX_SPONSORS=20;
 
 export const DEFAULT_SETTINGS=Object.freeze({
@@ -14,7 +14,7 @@ export const DEFAULT_SETTINGS=Object.freeze({
  // startMax: the wind at the start of a match is uniform in ±startMax; turnDrift: each turn it moves by up to
  // ±turnDrift; cap: it never exceeds ±cap.
  wind:{startMax:36,turnDrift:20,cap:80},
- maps:{enabled:[0,1,2]},
+ maps:{enabled:[0,1,2,3]},
  players:{defaults:['human','easy'],offerHard:true,offerUltra:true},
  audio:{music:true,musicVolume:42,effects:true,effectsVolume:65,voices:true},
  // ai.model: the Broker model for PC Hard/Ultra; '' uses the server's BROKER_SUBSCRIPTION_MODEL.

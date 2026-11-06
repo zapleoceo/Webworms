@@ -1,4 +1,4 @@
-import {W,R,data,groundY,solid,selectShot,selectLob,aimAngle,clamp,blastDamage} from './engine.js';
+import {W,H,R,data,groundY,solid,selectShot,selectLob,aimAngle,clamp,blastDamage} from './engine.js';
 import {planTeleport,planCrate,planRope} from './ai-utility.js';
 
 export const TERRAIN_SAMPLES=64;
@@ -55,7 +55,7 @@ export function brokerTurnOptions(state,{windBlind=false}={}){
 
 // Everything the model may reason about, compact. Terrain is the surface height every W/63 px.
 export function brokerSnapshot(state,{windBlind=false}={}){
- return {map:state.map,round:state.round,suddenDeath:state.round>=(state.suddenDeathRound??9),timer:Math.max(0,Math.ceil(state.timer)),wind:windBlind?0:Math.round(state.wind),water:Math.round(state.waterLevel),activeId:state.active.id,
+ return {map:state.map,size:[W,H],round:state.round,suddenDeath:state.round>=(state.suddenDeathRound??9),timer:Math.max(0,Math.ceil(state.timer)),wind:windBlind?0:Math.round(state.wind),water:Math.round(state.waterLevel),activeId:state.active.id,
   worms:state.worms.map(w=>({id:w.id,name:w.name,team:w.team,x:Math.round(w.x),y:Math.round(w.y),hp:Math.ceil(w.hp),alive:w.alive})),
   props:(state.props||[]).slice(0,60).map(p=>({kind:p.kind==='crate'?'health_crate':p.kind,x:Math.round(p.x),y:Math.round(p.y),...(p.kind==='mine'?{armed:Boolean(p.armed)}:{})})),
   terrain:Array.from({length:TERRAIN_SAMPLES},(_,i)=>Math.round(groundY(state.terrain,Math.round(i*(W-1)/(TERRAIN_SAMPLES-1)))))};

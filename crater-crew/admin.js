@@ -3,7 +3,7 @@
 import {defaultSettings,validateSettings,LIMITS,CONTROLLERS,PLACEMENTS,validLink} from './settings.js';
 
 const $=id=>document.getElementById(id);
-const MAP_NAMES=['Sunset Cove','Rust Ridge','Crystal Atoll'];
+const MAP_NAMES=['Sunset Cove · 3600×1400','Rust Ridge · 3600×1400','Crystal Atoll · 3600×1400','Grand Expedition · 6400×1800'];
 const CTRL_NAMES={human:'Human',easy:'PC Easy (local)',hard:'PC Hard (Broker LLM)',ultra:'PC Ultra (Broker LLM)'};
 const PLACE_NAMES={billboard:'Billboard',crate:'Crate',banner:'Banner'};
 const MAX_LOGO=512*1024;

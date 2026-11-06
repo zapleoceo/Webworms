@@ -8,7 +8,7 @@ const sponsor=(over={})=>({id:'abc123def456',name:'Acme',logoUrl:'https://x.publ
 test('defaults equal the built-in game behaviour',()=>{
  assert.deepEqual(defaultSettings(),{
   match:{turnTime:35,teleports:2},props:{mines:8,barrels:6,crateChance:.3,crateHeal:25},water:{suddenDeathRound:9,waterRise:12},
-  wind:{startMax:36,turnDrift:20,cap:80},maps:{enabled:[0,1,2]},players:{defaults:['human','easy'],offerHard:true,offerUltra:true},
+  wind:{startMax:36,turnDrift:20,cap:80},maps:{enabled:[0,1,2,3]},players:{defaults:['human','easy'],offerHard:true,offerUltra:true},
   audio:{music:true,musicVolume:42,effects:true,effectsVolume:65,voices:true},ai:{model:''},sponsors:[]});
  assert.ok(Object.isFrozen(DEFAULT_SETTINGS));
  const a=defaultSettings();a.match.turnTime=1;assert.equal(defaultSettings().match.turnTime,35);
@@ -36,7 +36,7 @@ test('validation rejects bad types, ranges and lengths',()=>{
   [{audio:{music:'yes'}},'audio.music: must be true or false'],
   [{maps:{enabled:[]}},'maps.enabled'],
   [{maps:{enabled:[0,0]}},'maps.enabled'],
-  [{maps:{enabled:[3]}},'maps.enabled'],
+  [{maps:{enabled:[4]}},'maps.enabled'],
   [{players:{defaults:['human']}},'players.defaults'],
   [{players:{defaults:['human','god']}},'players.defaults'],
   [{players:{offerUltra:false,defaults:['human','ultra']}},'players.defaults: ultra is not offered'],
@@ -60,7 +60,7 @@ test('merge keeps every valid stored value and falls back per field',()=>{
  assert.deepEqual(mergeSettings(null),defaultSettings());
  assert.deepEqual(mergeSettings('garbage'),defaultSettings());
  const m=mergeSettings({match:{turnTime:60,teleports:'lots'},props:{mines:0},maps:{enabled:[5]},players:{defaults:['easy','hard'],offerHard:false},sponsors:[sponsor(),{id:'bad'}],extra:true});
- assert.equal(m.match.turnTime,60);assert.equal(m.match.teleports,2);assert.equal(m.props.mines,0);assert.deepEqual(m.maps.enabled,[0,1,2]);
+ assert.equal(m.match.turnTime,60);assert.equal(m.match.teleports,2);assert.equal(m.props.mines,0);assert.deepEqual(m.maps.enabled,[0,1,2,3]);
  assert.deepEqual(m.players.defaults,['easy','easy'],'a level that is not offered falls back to easy');
  assert.equal(m.sponsors.length,1);assert.equal('extra' in m,false);
 });

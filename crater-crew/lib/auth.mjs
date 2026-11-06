@@ -48,14 +48,27 @@ export const recordFingerprint=(rec,secret=sessionSecret())=>createHmac('sha256'
 
 // ---------- auth state ----------
 // {mode:'env'} | {mode:'stored',record,etag,fp} | {mode:'none',setupPossible,reason}
-export async function resolveAuth(store){
+// Once an admin password has ever been stored, this marker (fixed path) keeps first-run setup closed for good:
+// rotating ADMIN_SESSION_SECRET or swapping the store must not hand the admin to the next visitor.
+// Recovery is then ADMIN_PASSWORD in the environment.
+export const INIT_MARKER='auth/initialized.json';
+// The state is cached briefly per function instance, so anonymous probes don't cost a Blob read each.
+let cached=null;
+export function invalidateAuthCache(){cached=null}
+export async function resolveAuth(store,now=Date.now()){
+ if(adminPassword()&&!envPasswordSet())return {mode:'none',setupPossible:false,reason:'env-short'};// a short env password closes the admin, it never opens setup
  if(envPasswordSet())return {mode:'env',fp:''};
  if(!store)return {mode:'none',setupPossible:false,reason:'storage'};
  if(!sessionSecret())return {mode:'none',setupPossible:false,reason:'secret'};
- const found=await store.readAuth(authPath());
- if(found&&validRecord(found.record))return {mode:'stored',record:found.record,etag:found.etag,fp:recordFingerprint(found.record)};
- if(found)return {mode:'none',setupPossible:false,reason:'record'};// present but unreadable: never offer setup over it
- return {mode:'none',setupPossible:true};
+ if(cached&&cached.store===store&&cached.secret===sessionSecret()&&now-cached.at<30_000)return cached.value;
+ const found=await store.readAuth(authPath());let value;
+ if(found&&validRecord(found.record)){
+  value={mode:'stored',record:found.record,etag:found.etag,fp:recordFingerprint(found.record)};
+  if(!await store.readAuth(INIT_MARKER))await store.createAuth(INIT_MARKER,{v:1,at:new Date(now).toISOString()});// installs from before the marker existed
+ }else if(found)value={mode:'none',setupPossible:false,reason:'record'};// present but unreadable: never offer setup over it
+ else value=await store.readAuth(INIT_MARKER)?{mode:'none',setupPossible:false,reason:'reset'}:{mode:'none',setupPossible:true};
+ cached={store,secret:sessionSecret(),at:now,value};
+ return value;
 }
 // Synchronous view for env-only callers (and the tests): sessions exist only while ADMIN_PASSWORD is set.
 const envAuth=()=>envPasswordSet()?{mode:'env',fp:''}:{mode:'none'};
