@@ -3,7 +3,7 @@
 import {defaultSettings,validateSettings,LIMITS,CONTROLLERS,PLACEMENTS,validLink} from './settings.js';
 
 const $=id=>document.getElementById(id);
-const MAP_NAMES=['Sunset Cove','Rust Ridge','Crystal Atoll'];
+const MAP_NAMES=['Sunset Cove · 3600×1400','Rust Ridge · 3600×1400','Crystal Atoll · 3600×1400','Grand Expedition · 6400×1800'];
 const CTRL_NAMES={human:'Human',easy:'PC Easy (local)',hard:'PC Hard (Broker LLM)',ultra:'PC Ultra (Broker LLM)'};
 const PLACE_NAMES={billboard:'Billboard',crate:'Crate',banner:'Banner'};
 const MAX_LOGO=512*1024;
@@ -42,7 +42,8 @@ const UI={
  },
 };
 
-let settings=defaultSettings(),storage=false,dirty=false;
+let settings=defaultSettings(),storage=false,dirty=false,passwordSource=null;
+let models=[],selectedModel='',envDefault=null;
 
 // ---------- API ----------
 async function api(path,{method='GET',json,form}={}){
@@ -52,12 +53,14 @@ async function api(path,{method='GET',json,form}={}){
  let response;try{response=await fetch(path,init)}catch{throw Object.assign(Error('Network error. Check your connection.'),{status:0})}
  let body=null;try{body=await response.json()}catch{}
  if(response.status===401&&path!=='/api/admin/login'){showLogin('Your session has ended. Please sign in again.');throw Object.assign(Error('Not signed in'),{status:401,silent:true})}
- if(!response.ok)throw Object.assign(Error(body?.error||`Request failed (${response.status})`),{status:response.status,errors:body?.errors||[]});
+ if(response.status===403&&body?.error==='setup required'){showSetup();throw Object.assign(Error('Setup required'),{status:403,silent:true})}
+ if(!response.ok)throw Object.assign(Error(body?.error||`Request failed (${response.status})`),{status:response.status,errors:body?.errors||[],detail:body?.detail});
  return body;
 }
 
 // ---------- views ----------
-function show(view){$('loading').hidden=true;$('login-view').hidden=view!=='login';$('config-view').hidden=view!=='config';$('bar-actions').hidden=view!=='config'}
+function show(view){$('loading').hidden=true;$('login-view').hidden=view!=='login';$('setup-view').hidden=view!=='setup';$('config-view').hidden=view!=='config';$('bar-actions').hidden=view!=='config'}
+function showSetup(){show('setup');$('setup-error').textContent='';$('setup-password').focus()}
 function showLogin(message=''){show('login');$('login-error').textContent=message;$('password').value='';$('password').focus()}
 let toastTimer=0;
 function toast(text,kind='ok'){const t=$('toast');t.textContent=text;t.className=`toast ${kind}`;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},kind==='error'?7000:3500)}
@@ -82,8 +85,8 @@ function buildFields(){
  }
  for(let i=0;i<MAP_NAMES.length;i++)$('maps').append(el('label',{class:'chip'},el('input',{type:'checkbox',value:String(i),'data-map':String(i)}),` ${i} · ${MAP_NAMES[i]}`));
  for(const t of [0,1])for(const c of CONTROLLERS)$('default-'+t).append(el('option',{value:c,text:CTRL_NAMES[c]}));
- $('settings-form').addEventListener('input',()=>{setDirty(true);validateLive()});
- $('settings-form').addEventListener('change',()=>{setDirty(true);validateLive()});
+ $('settings-form').addEventListener('input',e=>{if(e.target.dataset?.nodirty!==undefined)return;setDirty(true);validateLive()});
+ $('settings-form').addEventListener('change',e=>{if(e.target.dataset?.nodirty!==undefined)return;setDirty(true);validateLive()});
 }
 
 const input=path=>document.querySelector(`input[data-path="${path}"]`);
@@ -95,6 +98,7 @@ function fillForm(s){
  }
  for(const box of document.querySelectorAll('[data-map]'))box.checked=s.maps.enabled.includes(Number(box.dataset.map));
  $('default-0').value=s.players.defaults[0];$('default-1').value=s.players.defaults[1];
+ selectedModel=s.ai?.model||'';renderModels();
  renderSponsors(s.sponsors);
 }
 
@@ -108,6 +112,7 @@ function readForm(){
  }
  s.maps.enabled=[...document.querySelectorAll('[data-map]')].filter(b=>b.checked).map(b=>Number(b.dataset.map));
  s.players.defaults=[$('default-0').value,$('default-1').value];
+ s.ai.model=selectedModel;
  s.sponsors=readSponsors();
  return s;
 }
@@ -188,22 +193,121 @@ $('upload-form').addEventListener('submit',async e=>{
  finally{$('upload-button').disabled=!storage}
 });
 
+// ---------- AI model ----------
+function badge(text,cls){return el('span',{class:'badge '+cls,text})}
+function renderModels(){
+ const q=$('model-search').value.trim().toLowerCase(),box=$('model-list');
+ $('model-selected').textContent=selectedModel||(envDefault?`env default (${envDefault})`:'env default');
+ $('model-env').disabled=!selectedModel;
+ const shown=models.filter(m=>!q||m.id.toLowerCase().includes(q)||(m.name||'').toLowerCase().includes(q));
+ box.replaceChildren(...shown.slice(0,100).map(m=>{
+  const meta=el('span',{class:'meta'},
+   m.billing_type?badge(m.billing_type==='subscription'?'subscription':m.billing_type,m.billing_type==='subscription'?'sub':'api'):null,
+   m.usable?badge('usable','ok'):badge(!m.available?'unavailable':!m.chat_fast?'no fast chat':'no json schema','off'),
+   m.json_schema?badge('json',''):null,
+   m.intelligence_index!=null?badge('IQ '+m.intelligence_index,''):null,
+   m.price?badge(m.price,''):null);
+  return el('button',{type:'button',class:'model',role:'option','aria-selected':String(m.id===selectedModel),'data-model':m.id,title:m.usable?'':'Not usable for the game right now'},
+   el('span',{class:'id',text:m.id}),m.name?el('span',{class:'name',text:m.name}):null,meta);
+ }));
+ const note=$('model-list-note');
+ if(!models.length)return;
+ note.textContent=shown.length?(shown.length>100?`Showing 100 of ${shown.length} matches; type more to narrow.`:`${shown.length} of ${models.length} models.`):'No model matches.';
+ if(selectedModel&&!models.some(m=>m.id===selectedModel))note.textContent+=' The selected model is not in the Broker catalog right now.';
+}
+function selectModel(id){
+ if(id===selectedModel)return;
+ selectedModel=id;setDirty(true);validateLive();renderModels();
+ const r=$('model-result');r.hidden=true;
+}
+$('model-search').addEventListener('input',e=>{e.stopPropagation();renderModels()});
+$('model-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const first=$('model-list').querySelector('.model');if(first)selectModel(first.dataset.model)}});
+$('model-list').addEventListener('click',e=>{const b=e.target.closest?.('[data-model]');if(b)selectModel(b.dataset.model)});
+$('model-env').addEventListener('click',()=>selectModel(''));
+$('model-test').addEventListener('click',async()=>{
+ const model=selectedModel||envDefault,r=$('model-result');
+ if(!model){r.hidden=false;r.className='model-result bad';r.textContent='No model selected and no env default on the server.';return}
+ $('model-test').disabled=true;r.hidden=false;r.className='model-result';r.replaceChildren(el('span',{class:'spinner','aria-hidden':'true'}),`Testing ${model}… (up to 25 s)`);
+ try{
+  const t=await api('/api/admin/models/test',{method:'POST',json:{model}});
+  r.className='model-result '+(t.ok?'ok':'bad');
+  r.textContent=t.ok?`OK in ${t.latency_ms} ms${t.billing_type?' · '+t.billing_type:''} · reply: ${t.reply}`
+   :`Failed (${t.status}) after ${t.latency_ms} ms: ${t.error||'unknown error'}${t.reply?' · reply: '+t.reply:''}`;
+ }catch(err){if(!err.silent){r.className='model-result bad';r.textContent=err.message}}
+ finally{$('model-test').disabled=false}
+});
+async function loadModels(){
+ const note=$('model-list-note');note.textContent='Loading the Broker model list…';models=[];
+ try{
+  const r=await api('/api/admin/models');models=r.models;envDefault=r.envModel;
+  $('model-active').textContent=r.active.model||'none';
+  $('model-active-source').textContent=r.active.source==='settings'?'(saved here)':r.active.source==='env'?'(server default, BROKER_SUBSCRIPTION_MODEL)':'(no model configured)';
+  renderModels();
+ }catch(err){if(err.silent)return;note.textContent=err.message;$('model-active').textContent=selectedModel||'unknown';$('model-active-source').textContent=''}
+}
+
 // ---------- save / reset ----------
 $('settings-form').addEventListener('submit',async e=>{
  e.preventDefault();
  const r=validateLive();
  if(!r.ok){toast('Please fix the highlighted fields.','error');document.querySelector('.invalid')?.focus();return}
  $('save').disabled=true;
- try{const res=await api('/api/admin/settings',{method:'PUT',json:r.value});settings=res.settings;fillForm(settings);setDirty(false);toast('Settings saved. New matches use them.')}
+ try{const res=await api('/api/admin/settings',{method:'PUT',json:r.value});settings=res.settings;fillForm(settings);setDirty(false);toast('Settings saved. New matches use them.');loadModels()}
  catch(err){if(!err.silent){const general=showErrors(err.errors||[]);toast([err.message,...general].join(' · '),'error')}}
  finally{$('save').disabled=!storage}
 });
 $('reset').addEventListener('click',()=>{
  if(!confirm('Reset all game settings to the built-in defaults? Sponsors stay as they are. Nothing is saved until you press Save changes.'))return;
- const sponsors=readSponsors();fillForm({...defaultSettings(),sponsors});setDirty(true);validateLive();toast('Defaults loaded. Press Save changes to apply.');
+ const sponsors=readSponsors(),ai={model:selectedModel};fillForm({...defaultSettings(),sponsors,ai});setDirty(true);validateLive();toast('Defaults loaded. Press Save changes to apply.');
 });
 
 // ---------- auth ----------
+// Rough strength hint only (length and character variety); the server enforces 12 to 200 characters.
+function strength(pw){
+ if(!pw)return [0,''];
+ if(pw.length<12)return [1,`${12-pw.length} more character${pw.length===11?'':'s'} needed (at least 12).`];
+ const kinds=[/[a-z]/,/[A-Z]/,/\d/,/[^a-zA-Z\d]/].filter(r=>r.test(pw)).length,words=pw.trim().split(/\s+/).length;
+ const score=(pw.length>=16?1:0)+(pw.length>=24?1:0)+(kinds>=3||words>=4?1:0)+(/^(.)\1+$/.test(pw)?-2:0);
+ const level=Math.max(1,Math.min(4,2+score));
+ return [level,['','Weak: too short.','Fair. Longer is stronger.','Good.','Strong.'][level]+(level<4?' Add more words or characters.':'')];
+}
+function bindStrength(inputId,boxId,textId,base){
+ $(inputId).addEventListener('input',()=>{const [level,text]=strength($(inputId).value);$(boxId).dataset.level=String(level);$(textId).textContent=text||base});
+}
+bindStrength('setup-password','setup-strength','setup-strength-text','At least 12 characters. A few unrelated words make a strong, memorable password.');
+bindStrength('pw-next','pw-strength','pw-strength-text','At least 12 characters.');
+function newPasswordProblem(pw,repeat){
+ if(pw.length<12)return 'The password needs at least 12 characters.';
+ if(pw.length>200)return 'The password can be at most 200 characters.';
+ if(pw!==repeat)return 'The two passwords do not match.';
+ return '';
+}
+
+$('setup-form').addEventListener('submit',async e=>{
+ e.preventDefault();const out=$('setup-error'),pw=$('setup-password').value;out.textContent='';
+ const problem=newPasswordProblem(pw,$('setup-repeat').value);if(problem){out.textContent=problem;return}
+ $('setup-button').disabled=true;
+ try{
+  await api('/api/admin/setup',{method:'POST',json:{password:pw}});
+  $('setup-form').reset();passwordSource='stored';await loadConfig();toast('Admin password created. You are signed in.');
+ }catch(err){
+  if(err.silent)return;
+  if(err.status===409){showLogin('An admin password already exists on this server. Sign in with it.');return}
+  out.textContent=err.message;
+ }finally{$('setup-button').disabled=false}
+});
+
+$('password-form').addEventListener('submit',async e=>{
+ e.preventDefault();const out=$('password-error'),next=$('pw-next').value;out.textContent='';
+ const problem=newPasswordProblem(next,$('pw-repeat').value);if(problem){out.textContent=problem;return}
+ $('password-button').disabled=true;
+ try{
+  await api('/api/admin/password',{method:'POST',json:{current:$('pw-current').value,next}});
+  $('password-form').reset();$('pw-strength').dataset.level='0';toast('Password changed. Other browsers have been signed out.');
+ }catch(err){if(!err.silent)out.textContent=err.message==='current password is wrong'?'The current password is wrong.':err.message}
+ finally{$('password-button').disabled=false}
+});
+
 $('login-form').addEventListener('submit',async e=>{
  e.preventDefault();$('login-error').textContent='';$('login-button').disabled=true;
  try{await api('/api/admin/login',{method:'POST',json:{password:$('password').value}});$('password').value='';await loadConfig()}
@@ -213,19 +317,22 @@ $('login-form').addEventListener('submit',async e=>{
 $('logout').addEventListener('click',async()=>{if(dirty&&!confirm('Discard unsaved changes and sign out?'))return;try{await api('/api/admin/logout',{method:'POST'})}catch{}setDirty(false);showLogin()});
 
 async function loadConfig(){
+ if(!passwordSource){try{passwordSource=(await api('/api/admin/session')).passwordSource}catch{}}
  const r=await api('/api/admin/settings');settings=r.settings;storage=r.storage;
  $('storage-notice').hidden=storage;for(const id of ['save','upload-button'])$(id).disabled=!storage;
+ loadModels();
+ $('password-card').hidden=passwordSource!=='stored';$('env-password-note').hidden=passwordSource!=='env';
  fillForm(settings);setDirty(false);showErrors([]);show('config');
 }
 
 buildFields();
 (async()=>{
  try{
-  const s=await api('/api/admin/session');
-  if(s.authenticated)await loadConfig();else showLogin();
+  const s=await api('/api/admin/session');passwordSource=s.passwordSource;
+  if(s.setupRequired)showSetup();else if(s.authenticated)await loadConfig();else showLogin();
  }catch(err){
   if(err.silent)return;
   show('login');$('login-form').hidden=err.status===503;
-  $('login-error').textContent=err.status===503?(err.message==='admin not configured'?'The admin panel is not configured on this server (set ADMIN_PASSWORD).':err.message):err.status===404?'The admin API is not available here. Open this page from the game server.':err.message;
+  $('login-error').textContent=err.status===503?(err.message==='admin not configured'?`The admin panel is not configured on this server. ${err.detail||'Set ADMIN_PASSWORD.'}`.replace(/admin not configured: /,''):err.message):err.status===404?'The admin API is not available here. Open this page from the game server.':err.message;
  }
 })();

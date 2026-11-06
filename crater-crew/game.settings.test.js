@@ -97,5 +97,5 @@ test('sponsors: seeded billboards, crate sponsor and the presented-by strip',()=
 
 test('broken or hostile settings fall back to defaults',()=>{
  state.running=false;applySettings({match:{turnTime:'9999',teleports:-3},sponsors:[{...SPONSOR,logoUrl:'javascript:alert(1)'}],maps:{enabled:[]}});
- newGame(0,1,5);assert.equal(state.timer,35);assert.equal(state.ammo[0].teleport,2);assert.deepEqual(rules.maps,[0,1,2]);assert.deepEqual(rules.sponsors,[]);
+ newGame(0,1,5);assert.equal(state.timer,35);assert.equal(state.ammo[0].teleport,2);assert.deepEqual(rules.maps,[0,1,2,3]);assert.deepEqual(rules.sponsors,[]);
 });

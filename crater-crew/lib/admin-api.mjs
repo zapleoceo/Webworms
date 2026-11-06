@@ -3,16 +3,21 @@
 //   GET    /api/settings                public, merged defaults + stored settings (enabled sponsors only)
 //   POST   /api/admin/login             {password} -> session cookie
 //   POST   /api/admin/logout
-//   GET    /api/admin/session           {authenticated, storage}
+//   GET    /api/admin/session           {authenticated, setupRequired, storage, passwordSource: 'env'|'stored'|null}
+//   POST   /api/admin/setup             {password} first run only: stores the admin password, signs in
+//   POST   /api/admin/password          (auth) {current, next} changes the stored password (not the env one)
 //   GET    /api/admin/settings          (auth) full settings + storage flag
 //   PUT    /api/admin/settings          (auth) validated save
 //   POST   /api/admin/sponsors          (auth) multipart: logo file + name, link, weight, placements, enabled
 //   DELETE /api/admin/sponsors/:id      (auth)
+//   GET    /api/admin/models            (auth) Broker catalog, trimmed, plus the active model
+//   POST   /api/admin/models/test       (auth) {model} runs one tiny JSON job on that model (rate-limited)
 import {randomBytes} from 'node:crypto';
-import {adminConfigured,passwordMatches,issueSession,isAuthenticated,sessionCookie,clearCookie,clientIp,loginBlocked,recordFailure,clearFailures} from './auth.mjs';
+import {resolveAuth,checkPassword,recordMatches,hashPassword,recordFingerprint,authPath,validNewPassword,MIN_PASSWORD,MAX_PASSWORD,issueSession,isAuthenticated,sessionCookie,clearCookie,clientIp,loginBlocked,recordFailure,clearFailures,INIT_MARKER,invalidateAuthCache} from './auth.mjs';
 import {getStore} from './store.mjs';
+import {broker,brokerKey,catalog,trimModel,activeModel,envModel,resetModelCache} from './broker.mjs';
 import {validateLogo,MAX_LOGO_BYTES} from './images.mjs';
-import {mergeSettings,validateSettings,MAX_SPONSORS,PLACEMENTS} from '../settings.js';
+import {mergeSettings,validateSettings,validModelId,MAX_SPONSORS,PLACEMENTS} from '../settings.js';
 
 const MAX_JSON_BYTES=64*1024,MAX_UPLOAD_BYTES=MAX_LOGO_BYTES+64*1024;
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers}});
@@ -39,16 +44,58 @@ async function publicSettings(request){
  return json(publicView(settings),200,{'cache-control':'public, max-age=30, s-maxage=30, stale-while-revalidate=60'});
 }
 
-async function login(request){
+async function login(request,auth){
  if(request.method!=='POST')return err(405,'method not allowed');
  const ip=clientIp(request);
  if(loginBlocked(ip))return err(429,'too many failed attempts, try again later',{});
  // Count the attempt before the first await, so a burst of parallel guesses cannot all pass the check; a success clears it.
  recordFailure(ip);
  const {body,error}=await readJson(request);if(error)return error;
- if(!passwordMatches(body?.password))return err(401,'wrong password');
+ if(!await checkPassword(auth,body?.password))return err(401,'wrong password');
  clearFailures(ip);
- return json({ok:true},200,{'set-cookie':sessionCookie(request,issueSession())});
+ return json({ok:true},200,{'set-cookie':sessionCookie(request,issueSession(Date.now(),auth.fp))});
+}
+
+const PASSWORD_RULE=`password must be ${MIN_PASSWORD} to ${MAX_PASSWORD} characters`;
+const NOT_CONFIGURED={
+ storage:'admin not configured: connect a Blob store (BLOB_READ_WRITE_TOKEN) or set ADMIN_PASSWORD',
+ secret:'admin not configured: set ADMIN_SESSION_SECRET (random, 32+ characters) to choose the admin password here, or set ADMIN_PASSWORD',
+ record:'admin not configured: the stored admin password record is unreadable; set ADMIN_PASSWORD or delete the auth blob',
+ 'env-short':'admin closed: ADMIN_PASSWORD is shorter than 12 characters',
+ reset:'admin closed: a password was set before but its record is gone (secret rotated or store changed); set ADMIN_PASSWORD to regain access',
+};
+
+// First run: whoever completes this first becomes the admin. Allowed only while no password exists anywhere.
+async function setup(request,store,auth){
+ if(request.method!=='POST')return err(405,'method not allowed');
+ if(auth.mode==='env')return err(409,'admin password is set by ADMIN_PASSWORD on the server');
+ if(auth.mode==='stored')return err(409,'admin password already set');
+ if(!auth.setupPossible){console.error(NOT_CONFIGURED[auth.reason]||'admin not configured');return err(503,'admin not configured')}
+ const {body,error}=await readJson(request);if(error)return error;
+ if(!validNewPassword(body?.password))return err(422,PASSWORD_RULE);
+ const record=await hashPassword(body.password),path=authPath();
+ // Re-check right before writing (hashing took a while); createAuth itself refuses to overwrite an existing record.
+ if(await store.readAuth(path))return err(409,'admin password already set');
+ if(!await store.createAuth(path,record))return err(409,'admin password already set');
+ await store.createAuth(INIT_MARKER,{v:1,at:new Date().toISOString()});invalidateAuthCache();
+ return json({ok:true},200,{'set-cookie':sessionCookie(request,issueSession(Date.now(),recordFingerprint(record)))});
+}
+
+async function changePassword(request,store,auth){
+ if(request.method!=='POST')return err(405,'method not allowed');
+ if(auth.mode==='env')return err(409,'the admin password comes from ADMIN_PASSWORD on the server; change it there and redeploy');
+ const ip=clientIp(request);
+ if(loginBlocked(ip))return err(429,'too many failed attempts, try again later',{});
+ recordFailure(ip);
+ const {body,error}=await readJson(request);if(error)return error;
+ if(!await recordMatches(auth.record,body?.current))return err(403,'current password is wrong');
+ clearFailures(ip);
+ if(!validNewPassword(body?.next))return err(422,PASSWORD_RULE);
+ const record=await hashPassword(body.next);
+ try{await store.writeAuth(authPath(),record,auth.etag);invalidateAuthCache()}
+ catch(e){if(e?.name==='BlobPreconditionFailedError'||/precondition failed/i.test(String(e?.message)))return err(409,'the password was changed meanwhile; sign in again');throw e}
+ // The new record has a new fingerprint: every other session ends, this browser gets a fresh one.
+ return json({ok:true},200,{'set-cookie':sessionCookie(request,issueSession(Date.now(),recordFingerprint(record)))});
 }
 
 async function putSettings(request,store){
@@ -64,9 +111,11 @@ async function putSettings(request,store){
  const result=validateSettings(body);
  if(!result.ok)return err(422,'invalid settings',{errors:result.errors});
  const value=result.value;
+ // A save without an ai section keeps the chosen model (older admin pages do not send it).
+ if(body.ai===undefined)value.ai=current.ai;
  if(!Array.isArray(body.sponsors))value.sponsors=current.sponsors;
  else{const listed=new Set(value.sponsors.map(s=>s.id));value.sponsors.push(...current.sponsors.filter(s=>!listed.has(s.id)))}// removal only via DELETE
- await store.writeSettings(value);
+ await store.writeSettings(value);resetModelCache();
  return json({ok:true,settings:value});
 }
 
@@ -106,14 +155,75 @@ async function deleteSponsor(id,store){
  return json({ok:true,settings:next});
 }
 
+// ---------- Broker model picker ----------
+const BROKER_OFF='Broker is not configured on this server (BROKER_PROJECT_KEY)';
+// Broker errors are reduced to status and code ("broker 503 on /v1/models: unavailable"); the key is never in them.
+const brokerError=e=>{const m=/^broker (\d+) on [^:]+: ([a-z0-9_.-]+)$/.exec(e?.message||'');return m?`Broker answered ${m[1]} (${m[2]})`:/timeout|abort/i.test(String(e?.name)+String(e?.message))?'Broker did not answer in time':'Broker is unreachable'};
+async function listModels(request){
+ if(request.method!=='GET')return err(405,'method not allowed');
+ if(!brokerKey())return err(503,BROKER_OFF);
+ resetModelCache();const active=await activeModel();
+ let rows;try{rows=await catalog()}catch(e){console.error('broker catalog failed:',String(e?.message).slice(0,200));return err(502,brokerError(e))}
+ const models=rows.slice(0,500).map(trimModel).sort((a,b)=>Number(b.usable)-Number(a.usable)||a.id.localeCompare(b.id));
+ return json({models,active:{model:active.model||null,source:active.source},envModel:envModel()||null});
+}
+
+// A connectivity test runs a real job, so it is capped per function instance.
+export const MODEL_TESTS=6,MODEL_TEST_WINDOW_MS=10*60_000,MODEL_TEST_DEADLINE_MS=25_000;
+export const testClock={now:()=>Date.now(),sleep:ms=>new Promise(r=>setTimeout(r,ms))};
+let testRuns=[];
+export const resetModelTests=()=>{testRuns=[]};
+const TEST_SCHEMA={type:'object',properties:{ok:{type:'boolean'}},required:['ok'],additionalProperties:false};
+async function testModel(request){
+ if(request.method!=='POST')return err(405,'method not allowed');
+ if(!brokerKey())return err(503,BROKER_OFF);
+ const {body,error}=await readJson(request);if(error)return error;
+ const model=body?.model;
+ if(typeof model!=='string'||model===''||!validModelId(model))return err(422,'model: a Broker model ID like provider/model');
+ const start=testClock.now();testRuns=testRuns.filter(t=>start-t<MODEL_TEST_WINDOW_MS);
+ if(testRuns.length>=MODEL_TESTS)return err(429,`at most ${MODEL_TESTS} model tests per ${MODEL_TEST_WINDOW_MS/60_000} minutes`);
+ testRuns.push(start);
+ const payload={model,messages:[{role:'system',content:'You are a connectivity check. Reply with JSON only.'},{role:'user',content:'Reply with {"ok": true}.'}],
+  response_format:{type:'json_schema',json_schema:{name:'connectivity_check',strict:true,schema:TEST_SCHEMA}},workflow:'webworms-model-test'};
+ const out=(fields)=>json({model,latency_ms:testClock.now()-start,...fields});
+ let job;
+ try{
+  // A fresh random key: every test is its own job, never a replay of an earlier one.
+  job=await broker('/v1/jobs?capability=chat:fast',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':'wwt_'+randomBytes(16).toString('hex')},body:JSON.stringify(payload)});
+  while(job&&(job.status===undefined||job.status==='pending'||job.status==='running'||job.status==='queued')){
+   if(!Number.isInteger(job.job_id)||job.job_id<1)throw Error('invalid broker response');
+   const left=MODEL_TEST_DEADLINE_MS-(testClock.now()-start);
+   if(left<=0)return out({ok:false,status:'timeout',error:'No answer within 25 s; the job may still finish in Broker.',job_id:job.job_id});
+   await testClock.sleep(Math.min(left,Math.min(3000,Math.max(500,(Number(job.poll_after_s)||1)*1000))));
+   const id=job.job_id;job=await broker(`/v1/jobs/${id}`);if(job&&job.job_id===undefined)job.job_id=id;
+  }
+ }catch(e){console.error('model test failed:',String(e?.message).slice(0,200));return out({ok:false,status:'error',error:brokerError(e)})}
+ const reply=String(job?.text??'').slice(0,200);
+ if(job?.status!=='done')return out({ok:false,status:String(job?.status||'error').slice(0,20),error:String(job?.error??'Broker could not complete the job').slice(0,200),billing_type:job?.billing_type??null});
+ let parsed=null;try{parsed=JSON.parse(job.text)}catch{}
+ const sameModel=job.model===undefined||job.model===model;
+ return out({ok:parsed?.ok===true&&sameModel,status:'done',reply,billing_type:job.billing_type??null,ran_on:typeof job.model==='string'?job.model.slice(0,120):null,
+  ...(parsed?.ok===true?{}:{error:'The reply was not the requested JSON.'}),...(sameModel?{}:{error:'Broker ran a different model.'})});
+}
+
 async function admin(request,path){
- if(!adminConfigured())return err(503,'admin not configured');
  if(request.method!=='GET'&&request.method!=='HEAD'&&foreignOrigin(request))return err(403,'cross-origin request refused');
- if(path==='/api/admin/login')return login(request);
+ const store=getStore(),auth=await resolveAuth(store);
+ if(path==='/api/admin/setup')return setup(request,store,auth);
+ if(auth.mode==='none'){
+  // Anonymous callers only learn that the admin is closed; the reason goes to the server log.
+  if(!auth.setupPossible){console.error(NOT_CONFIGURED[auth.reason]||'admin not configured');return err(503,'admin not configured')}
+  if(path==='/api/admin/session')return json({authenticated:false,setupRequired:true,storage:true,passwordSource:null});
+  return err(403,'setup required');
+ }
+ if(path==='/api/admin/login')return login(request,auth);
  if(path==='/api/admin/logout'){if(request.method!=='POST')return err(405,'method not allowed');return json({ok:true},200,{'set-cookie':clearCookie(request)})}
- const store=getStore(),authed=isAuthenticated(request);
- if(path==='/api/admin/session')return json({authenticated:authed,storage:Boolean(store)});
+ const authed=isAuthenticated(request,auth);
+ if(path==='/api/admin/session')return json({authenticated:authed,setupRequired:false,storage:Boolean(store),passwordSource:auth.mode});
  if(!authed)return err(401,'not signed in');
+ if(path==='/api/admin/password')return changePassword(request,store,auth);
+ if(path==='/api/admin/models')return listModels(request);
+ if(path==='/api/admin/models/test')return testModel(request);
  if(path==='/api/admin/settings'){
   if(request.method==='GET')return json({settings:await loadSettings(store),storage:Boolean(store)});
   if(request.method==='PUT')return putSettings(request,store);

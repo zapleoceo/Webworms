@@ -29,6 +29,6 @@ test('local server routes the settings and admin API',async()=>{
  assert.equal(settings.status,200);assert.equal(settings.headers['content-type'],'application/json; charset=utf-8');
  assert.equal(JSON.parse(settings.body.toString()).match.turnTime,35);
  const admin=await request('/api/admin/session');
- assert.equal(admin.status,503);assert.deepEqual(JSON.parse(admin.body.toString()),{error:'admin not configured'});
+ assert.equal(admin.status,503);assert.equal(JSON.parse(admin.body.toString()).error,'admin not configured');
  const page=await request('/admin.html');assert.equal(page.status,200);assert.equal(page.headers['content-type'],'text/html');
 });

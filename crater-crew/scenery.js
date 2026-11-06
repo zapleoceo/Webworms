@@ -29,7 +29,7 @@ export function bakeBackground(makeCanvas,map,th,W,H){
  const layers=[];
  for(let k=0;k<3;k++){
   const [cv,g]=mk(W+80);g.translate(40,0);const base=[470,520,575][k],col=th.ridge[k];
-  if(map===0){
+  if(map===0||map===3){
    ridge(g,W,H,base,[46,38,22][k],[.0045,.0062,.009][k],[.011,.014,.02][k],k*1.7+.4,col);
    if(k===1)for(let i=0;i<5;i++){const x=150+i*330+40,y=base-Math.sin(x*.0062+3.8)*38+6;tri(g,[[x-22,y+10],[x-14,y-48-i%2*16],[x-3,y-24],[x+7,y-62-i%3*8],[x+24,y+10]],col)}
    if(k===2)for(let i=0;i<4;i++){const x=90+i*420+i%2*60;palm(g,x,base-Math.sin(x*.009+3.8)*22+10,1.1-i%2*.2,col)}
@@ -59,12 +59,12 @@ export function drawBackdrop(c,st,bg,W,t,dt){
 export function drawAmbient(c,st,th,W,H,t,dt){
  const m=st.map,wind=st.wind||0,v=st.view;
  for(const d of st.decor){
-  d.y+=(m===2?10+d.r*3:m===1?22+d.r*5:30+d.r*7)*dt;d.x+=(wind*(.9+d.r*.12)+Math.sin(t*.001+d.phase)*(m===0?22:10))*dt;
+  d.y+=(m===2?10+d.r*3:m===1?22+d.r*5:30+d.r*7)*dt;d.x+=(wind*(.9+d.r*.12)+Math.sin(t*.001+d.phase)*(m===0||m===3?22:10))*dt;
   if(d.y>H-60){d.y=-8;d.x=(d.x*7+d.phase*500)%W}
   if(d.x<-20)d.x+=W+40;else if(d.x>W+20)d.x-=W+40;
   if(v&&(d.x+10<v.x0||d.x-10>v.x1||d.y+10<v.y0||d.y-10>v.y1))continue;
   const al=.3+d.r*.14;c.globalAlpha=al;
-  if(m===0){c.save();c.translate(d.x,d.y);c.rotate(t*.002+d.phase);oval(c,0,0,d.r*1.3+1.2,d.r*.65+.6,th.fx[(d.phase*10|0)%3]);c.restore()}
+  if(m===0||m===3){c.save();c.translate(d.x,d.y);c.rotate(t*.002+d.phase);oval(c,0,0,d.r*1.3+1.2,d.r*.65+.6,th.fx[(d.phase*10|0)%3]);c.restore()}
   else if(m===1){oval(c,d.x,d.y,d.r*.5+.5,d.r*.5+.5,d.phase>3.4?'#ff9a4a':'#b8a6b4')}
   else{const s=(.7+d.r*.48)*(.6+.4*Math.sin(t*.004+d.phase*3));c.fillStyle='#e8f6ff';c.fillRect(d.x-s,d.y-.6,s*2,1.2);c.fillRect(d.x-.6,d.y-s,1.2,s*2)}
   c.globalAlpha=1;

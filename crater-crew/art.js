@@ -15,7 +15,8 @@ function envSpots(state,groundY){
  for(let x=90;x<W-90;x+=100+rnd()*80){
   const y=groundY(state.terrain,x);if(y>water-70||Math.abs(groundY(state.terrain,x-18)-groundY(state.terrain,x+18))>28)continue;
   if(state.worms?.some(w=>Math.abs(w.x-x)<45))continue;
-  const kinds=ENV_KINDS[state.map]??ENV_KINDS[0];spots.push({x,kind:kinds[Math.floor(rnd()*kinds.length)],s:.8+rnd()*.5,flip:rnd()<.5?-1:1,ph:rnd()*6.28});
+  // Grand Expedition changes its props zone by zone: islands, jungle, industry, crystal atoll.
+  const kinds=state.map===3?[ENV_KINDS[0],['palm','flowers','mushroom','sign','palm','flowers'],ENV_KINDS[1],ENV_KINDS[2]][Math.min(3,Math.floor(x/W*4))]:ENV_KINDS[state.map]??ENV_KINDS[0];spots.push({x,kind:kinds[Math.floor(rnd()*kinds.length)],s:.8+rnd()*.5,flip:rnd()<.5?-1:1,ph:rnd()*6.28});
  }
  // Undersides of floating rock and overhangs get hanging roots/vines (sampled once).
  const hang=[],m=state.terrain.mask,Hh=m.length/W;

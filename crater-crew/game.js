@@ -29,7 +29,7 @@ const names=[['Pip','Bubbles','Mochi'],['Grub','Maverick','Nibbles']],TEAM_NAMES
 const ctrl=t=>state.controllers?.[t]??(t?(state.aiDriver==='broker'?'ultra':'local'):'human');
 const isHuman=t=>ctrl(t)==='human',isBot=t=>!isHuman(t),usesBroker=t=>ctrl(t)==='hard'||ctrl(t)==='ultra';
 export const CONTROLLER_LABELS={human:'HUMAN',easy:'PC EASY',hard:'PC HARD',ultra:'PC ULTRA'};
-const mapNames=['SUNSET COVE','CINDER PEAKS','MOONLIT ATOLL'];
+const mapNames=['SUNSET COVE','RUST RIDGE','CRYSTAL ATOLL','GRAND EXPEDITION'];
 const state={running:false,ended:false,map:0,difficulty:1,aiDriver:'local',brokerController:null,brokerTicket:null,brokerTurnId:null,brokerRequest:null,brokerSavedAt:null,brokerSequence:0,brokerOptions:[],brokerError:'',terrain:null,terrainCanvas:null,worms:[],projectiles:[],particles:[],blasts:[],decor:[],team:0,active:null,lastActiveId:[-1,-1],selected:'bazooka',playerWeapon:'bazooka',phase:'ready',timer:35,round:1,waterLevel:WATER,wind:0,windTarget:0,aim:-0.75,dir:1,power:.5,charging:false,chargeDir:1,used:false,shotgunLeft:0,grenadeFuse:3,grenadeBounce:'high',strikeDir:1,playerGrenadeFuse:3,playerGrenadeBounce:'high',playerStrikeDir:1,jetDropped:false,keys:{},aiTimer:0,aiMoves:0,aiTarget:0,aiMoveTime:0,aiRetreat:0,resolveTimer:0,message:'',messageTimer:0,shake:0,sound:false,musicEnabled:false,fxVolume:.65,musicVolume:.42,audioUnlocked:false,musicStep:0,musicNextTime:0,jetTime:0};
 let simRand=seeded(77421),visualRand=seeded(19031);
 const simRandom=()=>{state.simDraws=(state.simDraws||0)+1;return simRand()};
@@ -58,7 +58,7 @@ function say(text,time=2,color=''){if(state.sim)return;state.message=text;state.
 function buildTerrain(rect=null){if(state.sim)return;
  const t=state.terrain,th=themes[state.map],key=state.seed+':'+state.map;
  if(!state.soil||state.soil.key!==key)state.soil={key,...bakeSoil(state.map,state.seed,W,H,th)};
- if(!state.terrainBuf){const off=document.createElement('canvas');off.width=W;off.height=H;const c=off.getContext('2d');state.terrainBuf={off,c,run:new Uint16Array(W),grass:grassDepths(W)}}
+ if(!state.terrainBuf||state.terrainBuf.off.width!==W||state.terrainBuf.off.height!==H){const off=document.createElement('canvas');off.width=W;off.height=H;const c=off.getContext('2d');state.terrainBuf={off,c,run:new Uint16Array(W),grass:grassDepths(W)}}
  const {off,c,run,grass}=state.terrainBuf;
  // Painted in column strips the size of the changed area, so no full W x H RGBA copy stays in memory.
  const x0=rect?Math.max(0,rect.x0):0,x1=rect?Math.min(W-1,rect.x1):W-1,y0=rect?Math.max(0,rect.y0):0;
@@ -73,7 +73,8 @@ function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePend
  const spots=spawnSpots(state.terrain,seed);
  for(let team=0;team<2;team++)for(let i=0;i<3;i++){const s=spots[i*2+team]??{x:400+(i*2+team)*500,y:groundY(state.terrain,400+(i*2+team)*500)-R-2};let x=s.x,y=s.y;state.worms.push({id:team*3+i,team,name:names[team][i],x,y,vx:0,vy:0,hp:100,alive:true,face:team? -1:1,grounded:true,flash:0,active:false});}
  for(let i=0;i<42;i++)state.decor.push({x:visualRand()*W,y:visualRand()*H*.55,r:visualRand()*3+1,phase:visualRand()*6.28});
- state.props=placeProps(state.terrain,state.worms,seed,scheme);state.billboards=placeBillboards(state.terrain,seed,rules.sponsors,state.worms);state.crateSponsor=pickSponsors(rules.sponsors,'crate',1,seeded((seed^0x3c6ef372)>>>0))[0]||null;state.stats=newStats();state.propWait=0;music.next();music.setMood('battle');state.active=state.worms[0];state.active.active=true;state.cam={x:0,y:0,zoom:1,tz:1,free:false,auto:true};state.camTargetId=null;state.ammo=[{teleport:rules.teleports},{teleport:rules.teleports}];centerCamera();updateUI();say('YOUR TURN · TAKE AIM',2.5);
+ // Bigger maps get proportionally more mines and barrels.
+ const area=W*H/(3600*1400);state.props=placeProps(state.terrain,state.worms,seed,{...scheme,mines:Math.round(scheme.mines*area),barrels:Math.round(scheme.barrels*area)});state.billboards=placeBillboards(state.terrain,seed,rules.sponsors,state.worms);state.crateSponsor=pickSponsors(rules.sponsors,'crate',1,seeded((seed^0x3c6ef372)>>>0))[0]||null;state.stats=newStats();state.propWait=0;music.next();music.setMood('battle');state.active=state.worms[0];state.active.active=true;state.cam={x:0,y:0,zoom:1,tz:1,free:false,auto:true};state.camTargetId=null;state.ammo=[{teleport:rules.teleports},{teleport:rules.teleports}];centerCamera();updateUI();say('YOUR TURN · TAKE AIM',2.5);
 }
 function living(team){return state.worms.filter(w=>w.team===team&&w.alive)}
 function beginTurn(team){
@@ -388,11 +389,12 @@ function updateWeaponSettings(){
 }
 function updateUI(){if(state.sim)return;
  // Teleport tile shows the charges left for the team on turn.
- const tpKey=document.querySelector?.('.weapon[data-weapon="teleport"] .key'),tpLeft=state.ammo?.[state.team]?.teleport;if(tpKey&&tpLeft!=null){setText(tpKey,`9 · ${tpLeft} LEFT`);tpKey.parentElement.classList.toggle('empty',!tpLeft)}const p=living(0),e=living(1);setText($('p-count'),`${p.length} WORM${p.length===1?'':'IES'}`);setText($('e-count'),`${e.length} WORM${e.length===1?'':'IES'}`);setWidth($('p-health'),`${p.reduce((s,w)=>s+w.hp,0)/3}%`);setWidth($('e-health'),`${e.reduce((s,w)=>s+w.hp,0)/3}%`);setText($('timer'),Math.ceil(state.timer));setText($('turn-label'),isBot(state.team)?(usesBroker(state.team)&&(state.phase==='broker-wait'||state.phase==='broker-error')?'LLM THINKING':'AI TURN'):(isBot(1-state.team)?'YOUR TURN':TEAM_NAMES[state.team]));setText($('active-name'),state.active?.alive?state.active.name.toUpperCase():'K.O.');setText($('wind'),`WIND · ${Math.abs(Math.round(state.wind))} ${state.wind<0?'←':'→'}`);setWidth($('power'),`${Math.round(state.power*100)}%`);setText($('power-text'),`${Math.round(state.power*100)}%`);setText($('map-name'),mapNames[state.map]);setText($('round'),`ROUND ${state.round}`);setText($('ai-level'),state.controllers?state.controllers.map(c=>CONTROLLER_LABELS[c]).join(' vs '):AI_PROFILES[state.difficulty].name+(usesBroker(state.team)?' · BROKER LLM':' · LOCAL'));document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===state.selected));setProp($('fire'),'disabled',!state.running||!isHuman(state.team)||state.phase!=='ready');setProp($('end-turn'),'disabled',!state.running||!isHuman(state.team)||state.phase==='resolving');updateWeaponSettings()}
+ const tpKey=document.querySelector?.('.weapon[data-weapon="teleport"] .key'),tpLeft=state.ammo?.[state.team]?.teleport;if(tpKey&&tpLeft!=null){setText(tpKey,`9 · ${tpLeft} LEFT`);tpKey.parentElement.classList.toggle('empty',!tpLeft)}const p=living(0),e=living(1);setText($('p-count'),`${p.length} WORM${p.length===1?'':'IES'}`);setText($('e-count'),`${e.length} WORM${e.length===1?'':'IES'}`);setWidth($('p-health'),`${p.reduce((s,w)=>s+w.hp,0)/3}%`);setWidth($('e-health'),`${e.reduce((s,w)=>s+w.hp,0)/3}%`);setText($('timer'),Math.ceil(state.timer));setText($('turn-label'),isBot(state.team)?(usesBroker(state.team)&&(state.phase==='broker-wait'||state.phase==='broker-error')?'LLM THINKING':'AI TURN'):(isBot(1-state.team)?'YOUR TURN':TEAM_NAMES[state.team]));setText($('active-name'),state.active?.alive?state.active.name.toUpperCase():'K.O.');setText($('wind'),`WIND · ${Math.abs(Math.round(state.wind))} ${state.wind<0?'←':'→'}`);setWidth($('power'),`${Math.round(state.power*100)}%`);setText($('power-text'),`${Math.round(state.power*100)}%`);setText($('map-name'),`${mapNames[state.map]} · ${W}×${H}`);setText($('round'),`ROUND ${state.round}`);setText($('ai-level'),state.controllers?state.controllers.map(c=>CONTROLLER_LABELS[c]).join(' vs '):AI_PROFILES[state.difficulty].name+(usesBroker(state.team)?' · BROKER LLM':' · LOCAL'));document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===state.selected));setProp($('fire'),'disabled',!state.running||!isHuman(state.team)||state.phase!=='ready');setProp($('end-turn'),'disabled',!state.running||!isHuman(state.team)||state.phase==='resolving');updateWeaponSettings()}
 let lastFrame=0,frameDt=.016;
 function graveY(w){const gy=groundY(state.terrain,w.x);if(w.y>state.waterLevel-6||gy>state.waterLevel-6)return null;if(w.gy==null)w.gy=Math.min(w.y+14,gy);if(w.gy<gy)w.gy=Math.min(gy,w.gy+420*frameDt);return w.gy}
 // Sky and far ridges live in screen space and scroll slower than the battlefield (parallax).
-const SKY_W=VIEW_W+800,MIN_ZOOM=Math.max(VIEW_W/W,VIEW_H/H);
+// The widest zoom shows the whole map; it depends on the map's size, so it is worked out each time.
+const SKY_W=VIEW_W+800,minZoom=()=>Math.max(VIEW_W/W,VIEW_H/H);
 function drawSky(now){
  const th=themes[state.map];
  if(!state.bg||state.bg.map!==state.map)state.bg={map:state.map,...bakeBackground(()=>document.createElement('canvas'),state.map,th,SKY_W,VIEW_H)};
@@ -413,14 +415,14 @@ function updateCamera(dt){
   if(tgt){
    // Frame the active worm with its target, zooming out as far as needed; past the widest view keep
    // our worm on screen and lean toward the target so its direction and the aim line stay readable.
-   const dx=tgt.x-a.x,dy=tgt.y-a.y;c.tz=clamp(Math.min(VIEW_W/(Math.abs(dx)+560),VIEW_H/(Math.abs(dy)+460)),MIN_ZOOM,1);
+   const dx=tgt.x-a.x,dy=tgt.y-a.y;c.tz=clamp(Math.min(VIEW_W/(Math.abs(dx)+560),VIEW_H/(Math.abs(dy)+460)),minZoom(),1);
    const vw=VIEW_W/c.zoom;cx=(a.x+tgt.x)/2;cy=(a.y+tgt.y)/2-20;if(Math.abs(dx)+560>vw)cx=a.x+Math.sign(dx)*(vw/2-280);k=Math.min(1,dt*3);
   }
   if(f){c.x+=(cx-VIEW_W/c.zoom/2-c.x)*k;c.y+=(cy-VIEW_H/c.zoom*.55-c.y)*k}
  }
  clampCam(c);
 }
-function zoomBy(factor){const c=state.cam;if(c){c.auto=false;c.tz=clamp(c.tz*factor,MIN_ZOOM,1.25)}}
+function zoomBy(factor){const c=state.cam;if(c){c.auto=false;c.tz=clamp(c.tz*factor,minZoom(),1.25)}}
 function followAgain(){if(state.cam){state.cam.free=false}}
 // Who the camera frames with the active worm: a picked target (T or an edge arrow), else the nearest rival.
 function frameTarget(){
@@ -529,7 +531,7 @@ canvas.addEventListener('pointermove',aimAt);canvas.addEventListener('pointerdow
 $('fire').addEventListener('pointerdown',e=>{e.preventDefault();chargeStart()});$('fire').addEventListener('pointerup',e=>{e.preventDefault();chargeEnd();$('fire').blur?.()});$('fire').addEventListener('focus',()=>{const y=window.scrollY;requestAnimationFrame?.(()=>window.scrollTo?.(0,y))});$('fire').addEventListener('pointerleave',chargeEnd);
 document.addEventListener?.('click',e=>{const b=e.target?.closest?.('button');if(b&&!b.closest('.modal')&&e.detail>0)b.blur()});
 $('end-turn').onclick=endTurn;
-$('cam-target').onclick=()=>cycleTarget();$('cam-view').onclick=()=>{if(!state.cam)return;followAgain();state.cam.auto=false;state.cam.tz=state.cam.tz>MIN_ZOOM+.01?MIN_ZOOM:1};$('touch-switch').onclick=cycle;
+$('cam-target').onclick=()=>cycleTarget();$('cam-view').onclick=()=>{if(!state.cam)return;followAgain();state.cam.auto=false;state.cam.tz=state.cam.tz>minZoom()+.01?minZoom():1};$('touch-switch').onclick=cycle;
 for(const b of document.querySelectorAll('[data-hold]')){const k=b.dataset.hold;b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);state.keys[k]=true});for(const event of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(event,()=>state.keys[k]=false)}
 window.addEventListener('keydown',e=>{
  // Menus, dialogs and form fields keep their own keys; the battlefield takes them only in play.
@@ -541,7 +543,7 @@ window.addEventListener('keydown',e=>{
  if(e.code==='Space')chargeStart();if(e.code==='Tab')cycle();if(e.code==='Enter')endTurn();
  if(e.code==='KeyX')dropDynamite();
  if(e.code==='KeyC'&&state.cam){pickTarget(null);state.cam.tz=1}
- if(e.code==='KeyZ'&&state.cam){followAgain();state.cam.auto=false;state.cam.tz=state.cam.tz>MIN_ZOOM+.01?MIN_ZOOM:1}
+ if(e.code==='KeyZ'&&state.cam){followAgain();state.cam.auto=false;state.cam.tz=state.cam.tz>minZoom()+.01?minZoom():1}
  if(e.code==='KeyT')cycleTarget();
  if(e.code==='KeyR')toggleStrikeDirection();
  if(e.code==='Minus'||e.code==='Equal')toggleGrenadeBounce();
