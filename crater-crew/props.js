@@ -1,6 +1,7 @@
 // Map props that make the landscape interactive: proximity mines, fuel barrels and parachute health crates.
 // They use the same body physics as grenades, so they settle, roll, and drop when the ground is blasted away.
 import {W,R,WATER,groundY,stepBody,clamp,seeded} from './engine.js';
+import {drawFitted} from './sponsors.js';
 
 const BODY={
  mine:{restitution:.25,impactFriction:.5,rollDrag:6,restOnSlope:true},
@@ -47,7 +48,7 @@ export function updateProps(state,dt,api){
    if(!p.armed&&state.worms.some(w=>w.alive&&Math.hypot(w.x-p.x,w.y-p.y)<MINE_TRIGGER)){p.armed=true;p.fuse=MINE_FUSE;api.beep?.()}
    if(p.armed){p.fuse-=dt;if(p.fuse<=0){p.dead=true;api.explode(p.x,p.y,PROP_BLAST.mine.radius,PROP_BLAST.mine.damage)}}
   }else if(p.boom){p.boom-=dt;if(p.boom<=0){p.dead=true;api.explode(p.x,p.y,PROP_BLAST[p.kind].radius,PROP_BLAST[p.kind].damage)}}
-  else if(p.kind==='crate'&&!p.parachute){const w=state.worms.find(w=>w.alive&&Math.hypot(w.x-p.x,w.y-p.y)<PICKUP+R*.5);if(w){p.dead=true;api.heal?.(w,CRATE_HEAL)}}
+  else if(p.kind==='crate'&&!p.parachute){const w=state.worms.find(w=>w.alive&&Math.hypot(w.x-p.x,w.y-p.y)<PICKUP+R*.5);if(w){p.dead=true;api.heal?.(w,state.crateHeal??CRATE_HEAL)}}
  }
  state.props=state.props.filter(p=>!p.dead);
 }
@@ -57,7 +58,8 @@ export const propsBusy=state=>state.props.some(p=>p.armed||p.boom>0||(!p.parachu
 
 const INK='#1c1420';
 const oval=(c,x,y,rx,ry,col)=>{c.fillStyle=col;c.beginPath();c.ellipse(x,y,rx,ry,0,0,Math.PI*2);c.fill()};
-export function drawProps(c,props,now){
+// opts.crateLogo: a loaded sponsor image shown on crates instead of the green cross.
+export function drawProps(c,props,now,{crateLogo=null}={}){
  for(const p of props){
   c.save();c.translate(p.x,p.y);c.lineJoin='round';
   if(p.kind==='mine'){
@@ -77,7 +79,8 @@ export function drawProps(c,props,now){
     c.fillStyle='#ff9f3a';c.beginPath();c.ellipse(0,-46,9,14,0,Math.PI,0);c.fill()}
    c.fillStyle=INK;c.fillRect(-p.r-2,-p.r-2,p.r*2+4,p.r*2+4);c.fillStyle='#c88a4a';c.fillRect(-p.r,-p.r,p.r*2,p.r*2);
    c.fillStyle='#a76c34';c.fillRect(-p.r,-p.r,p.r*2,3);c.fillRect(-p.r,p.r-3,p.r*2,3);
-   c.fillStyle='#3fa55c';c.fillRect(-6,-6,12,12);c.fillStyle='#ffffff';c.fillRect(-1.6,-4.5,3.2,9);c.fillRect(-4.5,-1.6,9,3.2);
+   if(crateLogo){c.fillStyle='#fff6e0';c.fillRect(-8,-8,16,16);drawFitted(c,crateLogo,0,0,14,14)}
+   else{c.fillStyle='#3fa55c';c.fillRect(-6,-6,12,12);c.fillStyle='#ffffff';c.fillRect(-1.6,-4.5,3.2,9);c.fillRect(-4.5,-1.6,9,3.2)}
   }
   c.restore();
  }

@@ -25,3 +25,16 @@ The model receives map, round, wind, water, fighters, terrain samples and bounde
 ## Current status
 
 The Broker project, actual subscription model availability, scopes, policy and quota have not been verified for this game. No live model call was made while preparing this adapter. Mocked tests verify its request contract and fail-closed behavior, not live account authorization. A ChatGPT or Claude subscription is not automatically a Broker credential.
+
+# Admin panel and sponsors
+
+`/admin.html` edits the game settings (turn time, teleports, props, sudden death and water, wind, maps, default players and offered AI levels, audio defaults) and sponsor placements (billboards on the terrain, logo on health crates, "Presented by" strip). The game reads `GET /api/settings` once at startup and falls back to its built-in defaults if that fails, so it still works from a file or without the API.
+
+Vercel setup:
+
+1. Storage → create a **Blob** store and connect it to this project; Vercel then sets `BLOB_READ_WRITE_TOKEN`. Settings live in `settings/game.json` and logos in `sponsors/<id>.<ext>` (both public, no secrets).
+2. Set `ADMIN_PASSWORD` (long, random) and, optionally, `ADMIN_SESSION_SECRET` (random, 32+ characters). Redeploy.
+
+Without `ADMIN_PASSWORD` the admin API answers 503; without the Blob token it shows the defaults and refuses to save (503). Sessions are a signed HttpOnly, SameSite=Strict cookie valid 12 h; logout clears the cookie (a copied cookie stays valid until it expires; changing the secret or the password, when no secret is set, ends all sessions). Login is limited to 5 failures per IP per 10 minutes per function instance (best effort). Logos: PNG, JPEG, WebP or plain SVG (no scripts, links or external resources), up to 512 KB, checked by content.
+
+Local dev: `ADMIN_PASSWORD=... node server.mjs` keeps settings and logos in `./.local-store` (git-ignored) when no Blob token is set.
