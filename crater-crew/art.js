@@ -63,12 +63,18 @@ function heldWeapon(c,weapon,face,aim,phase,now){
   // Three-stick bundle, tied with a band, sparking fuse.
   for(const dx of [0,6,12])box(c,(face>0?10:-28)+dx,-14,6,22,'#d6453f',2);box(c,face>0?9:-29,-5,20,4,'#f1dcb6',1);
   stroke(c,INK,2,[[face*19,-14],[face*22,-19],[face*20,-23]]);spark(c,face*20,-24,now);
+ }else if(weapon==='teleport'){
+  // Handheld beacon with a glowing violet tip.
+  box(c,face>0?10:-22,-12,12,20,'#5b4a8a',3);box(c,face>0?12:-20,-9,8,6,'#c9a2ff',2);stroke(c,INK,2,[[face*16,-12],[face*16,-20]]);oval(c,face*16,-22,4+Math.sin(now*.012)*1.2,4+Math.sin(now*.012)*1.2,'#e6d4ff');
  }else if(weapon==='punch'){
   // A padded red glove with a white cuff.
   box(c,face>0?8:-14,-6,6,13,'#f4efe2',2);blob(c,face*20,0,9.5,8.5,'#e2413b',0,1.8);oval(c,face*22,-3,3.6,2.4,'#ff8a80');stroke(c,OUT,1.4,[[face*15,4],[face*24,5]]);
  }else{
   c.rotate(Math.atan2(Math.sin(aim),Math.cos(aim)*face));
-  if(weapon==='bazooka'){
+  if(weapon==='rope'){
+   // Grapple launcher: stubby barrel with a three-prong hook loaded at the muzzle.
+   box(c,0,-6,26,12,'#7a6a52',4);box(c,4,4,7,9,'#3a2a2a',2);stroke(c,STEEL,2.6,[[26,0],[34,0]]);stroke(c,STEEL,2.2,[[34,0],[40,-6]]);stroke(c,STEEL,2.2,[[34,0],[40,6]]);stroke(c,STEEL,2.2,[[34,0],[41,0]]);stroke(c,'#e8d7a8',1.6,[[2,-2],[22,-2]]);
+  }else if(weapon==='bazooka'){
    // Teal launch tube, orange warning band, flared exhaust and a brass sight.
    box(c,-8,-8,8,16,TEAL_D,3);box(c,-2,-7,44,14,TEAL,7);box(c,14,-7,6,14,ORANGE,1);box(c,40,-9,8,18,TEAL_D,3);
    box(c,22,-13,9,6,'#ffd27a',2);box(c,10,6,7,9,'#3a2a2a',2);stroke(c,'#8fd6cc',2,[[0,-3],[12,-3]]);

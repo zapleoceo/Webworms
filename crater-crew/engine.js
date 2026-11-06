@@ -1,5 +1,5 @@
 // World size; the canvas is a VIEW_W x VIEW_H window onto it.
-export const W=3600,H=1400,WATER=1355,VIEW_W=1600,VIEW_H=800,R=15,GRAVITY=620,WEAPONS=['bazooka','grenade','shotgun','dynamite','airstrike','punch','jetpack'];
+export const W=3600,H=1400,WATER=1355,VIEW_W=1600,VIEW_H=800,R=15,GRAVITY=620,WEAPONS=['bazooka','grenade','shotgun','dynamite','airstrike','punch','jetpack','rope','teleport'];
 export const AIM_MIN=-Math.PI/2+0.025,AIM_MAX=Math.PI/2-0.025;
 export const AI_PROFILES=[
   {name:'EASY',angleStep:9,powerStep:.15,aimError:.18,airError:150,friendWeight:1.3,reposition:false,shotgunRange:115,grenadeThreshold:32},
@@ -7,7 +7,7 @@ export const AI_PROFILES=[
   {name:'HARD',angleStep:3,powerStep:.07,aimError:.008,airError:12,friendWeight:2.2,reposition:true,shotgunRange:260,grenadeThreshold:15}
 ];
 export function aimAngle(dx,dy){return clamp(Math.atan2(dy,Math.abs(dx)),AIM_MIN,AIM_MAX)}
-export const data={bazooka:{name:'BAZOOKA',short:'Wind-bent rocket',icon:'🚀',radius:77,damage:58},grenade:{name:'GRENADE',short:'Bounce + 3 s fuse',icon:'💣',radius:84,damage:66},shotgun:{name:'SHOTGUN',short:'Close-range spread',icon:'▰',radius:0,damage:10},dynamite:{name:'DYNAMITE',short:'Drop + 3 s fuse',icon:'🧨',radius:102,damage:82},airstrike:{name:'AIRSTRIKE',short:'Five wind-proof missiles',icon:'✈',radius:56,damage:40},punch:{name:'PUNCH',short:'Melee knockback',icon:'✊',radius:0,damage:30},jetpack:{name:'JETPACK',short:'Fly for 4 seconds',icon:'♨',radius:0,damage:0}};
+export const data={bazooka:{name:'BAZOOKA',short:'Wind-bent rocket',icon:'🚀',radius:77,damage:58},grenade:{name:'GRENADE',short:'Bounce + 3 s fuse',icon:'💣',radius:84,damage:66},shotgun:{name:'SHOTGUN',short:'Close-range spread',icon:'▰',radius:0,damage:10},dynamite:{name:'DYNAMITE',short:'Drop + 3 s fuse',icon:'🧨',radius:102,damage:82},airstrike:{name:'AIRSTRIKE',short:'Five wind-proof missiles',icon:'✈',radius:56,damage:40},punch:{name:'PUNCH',short:'Melee knockback',icon:'✊',radius:0,damage:30},jetpack:{name:'JETPACK',short:'Fly for 4 seconds',icon:'♨',radius:0,damage:0},rope:{name:'NINJA ROPE',short:'Swing across the map; keeps your turn',icon:'➰',radius:0,damage:0},teleport:{name:'TELEPORT',short:'Click a free spot · 2 per match',icon:'✦',radius:0,damage:0}};
 export function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 export function seeded(seed){let x=seed>>>0;return()=>{x=(1664525*x+1013904223)>>>0;return x/4294967296}}
 // Maps are about 120 worm heights wide, like the classic landscapes; the camera shows a 1600x800 window.

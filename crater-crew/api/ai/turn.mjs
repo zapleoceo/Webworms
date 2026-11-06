@@ -57,5 +57,10 @@ export default {async fetch(request){
    return complete(result,p.turnId,p.ids,p.model);
   }
   return json({error:'method not allowed'},405);
- }catch(error){console.error('broker turn failed:',error?.message);return json({status:'unavailable',error:'Broker is unavailable. Retry this turn later.'},503)}
+ }catch(error){
+  console.error('broker turn failed:',error?.message);
+  // Tell the player the parsed Broker code (never the key): a refusal needs a Broker setting, not a retry.
+  const m=/^broker (\d+) on [^:]+: ([a-z0-9_.-]+)$/.exec(error?.message||''),status=Number(m?.[1]),code=m?.[2];
+  if(status===401||status===403)return json({status:'unavailable',code,error:`Broker refused this game project (${code}). Enable agent runs for it in Broker.`},503);
+  return json({status:'unavailable',code,error:'Broker is unavailable. Retry this turn later.'},503)}
 }};
