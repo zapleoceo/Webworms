@@ -39,99 +39,118 @@ function rrect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.ar
 function blob(c,x,y,rx,ry,fill,rot=0,line=2.7){oval(c,x,y,rx+line,ry+line,OUT,rot);oval(c,x,y,rx,ry,fill,rot)}
 function box(c,x,y,w,h,fill,r=2){rrect(c,x,y,w,h,r);c.fillStyle=fill;c.fill();c.strokeStyle=INK;c.lineWidth=1.6;c.lineJoin='round';c.stroke()}
 
-function heldWeapon(c,weapon,face,aim,phase){
+// Weapons held by the active worm. Coordinates are in the worm's local frame; aimed weapons rotate.
+const TEAL='#2f8f86',TEAL_D='#1f5c57',ORANGE='#ff9f3a',STEEL='#8796a3',WOOD='#9a5b32';
+function poly(c,points,fill){c.beginPath();c.moveTo(...points[0]);for(const p of points.slice(1))c.lineTo(...p);c.lineTo(...points[0]);c.fillStyle=fill;c.fill();c.strokeStyle=INK;c.lineWidth=1.6;c.lineJoin='round';c.stroke()}
+function spark(c,x,y,now){const r=2.4+Math.sin(now*.05)*1.1;oval(c,x,y,r+2,r+2,'#ffb02e88');oval(c,x,y,r,r,'#fff2a8')}
+function heldWeapon(c,weapon,face,aim,phase,now){
  if(!weapon)return;
  c.save();c.lineJoin='round';
  if(weapon==='jetpack'){
-  box(c,-face*25-(face>0?0:0),-12,13,27,'#5c7d96',5);box(c,-face*24,-13,11,7,'#9fc4d2',3);box(c,-face*23,6,9,9,'#2b4254',2);
-  if(phase==='jetpack'){c.fillStyle='#ffd45e';c.beginPath();c.moveTo(-face*21,15);c.lineTo(-face*28,36);c.lineTo(-face*14,15);c.fill();c.fillStyle='#ff7b2b';c.beginPath();c.moveTo(-face*21,15);c.lineTo(-face*25,28);c.lineTo(-face*17,15);c.fill()}
+  // Twin pressure tanks with orange fins strapped to the back.
+  for(const dx of [-27,-17]){const x=face>0?dx:-dx-9;box(c,x,-14,9,26,'#9fb4c6',4);box(c,x+1,-12,7,4,'#d8e6f0',2)}
+  poly(c,[[-face*31,8],[-face*35,15],[-face*27,12]],ORANGE);poly(c,[[-face*13,8],[-face*9,15],[-face*17,12]],ORANGE);
+  if(phase==='jetpack'){for(const dx of [-22.5,-12.5]){const x=face*dx,fl=10+Math.random()*8;c.fillStyle='#ffd45e';c.beginPath();c.moveTo(x-3.5,13);c.lineTo(x,13+fl);c.lineTo(x+3.5,13);c.fill();c.fillStyle='#ff6a2b';c.beginPath();c.moveTo(x-2,13);c.lineTo(x,13+fl*.6);c.lineTo(x+2,13);c.fill()}}
  }else if(weapon==='airstrike'){
-  box(c,face>0?9:-25,-5,16,17,'#3d6a8e',3);box(c,face>0?12:-22,-1,10,7,'#a6e0e2',2);stroke(c,INK,2.4,[[face*19,-5],[face*22,-19]]);oval(c,face*22,-20,3.6,3.6,'#ffd75e');
+  // Field radio with a blinking antenna light.
+  box(c,face>0?8:-24,-9,16,21,'#3b4f7a',3);for(const y of [-5,-2,1])stroke(c,'#9fb3dc',1.4,[[face*11,y],[face*21,y]]);box(c,face>0?11:-21,5,10,4,ORANGE,1);
+  stroke(c,INK,2.2,[[face*20,-9],[face*24,-25]]);oval(c,face*24,-26,2.8,2.8,Math.floor(now/260)%2?'#ff4b3e':'#7a1d1a');
  }else if(weapon==='grenade'){
-  blob(c,face*19,-5,8,9.5,'#5b9a54',0,1.6);stroke(c,'#b7e0a6',1.6,[[face*15,-7],[face*23,-7]]);stroke(c,'#b7e0a6',1.6,[[face*15,-2],[face*23,-2]]);box(c,face>0?17:-22,-17,5,5,'#d5d2af',1);
+  // Round teal charge with an orange band and a pull ring.
+  blob(c,face*25,1,8.5,8.5,TEAL,0,1.6);stroke(c,ORANGE,2.6,[[face*17.5,2],[face*32.5,2]]);oval(c,face*22,-3,2.4,2,'#9fe0d6');
+  box(c,face>0?22:-28,-11,6,5,'#c9cfd6',1);c.strokeStyle=INK;c.lineWidth=1.6;c.beginPath();c.arc(face*32,-10,3.4,0,Math.PI*2);c.stroke();
  }else if(weapon==='dynamite'){
-  box(c,face>0?12:-25,-15,13,23,'#d24b49',3);box(c,face>0?13:-24,-12,11,4,'#f1dcb6',1);stroke(c,INK,2.4,[[face*18,-15],[face*21,-21]]);oval(c,face*21,-22,2.8,2.8,'#ffd75e');
+  // Three-stick bundle, tied with a band, sparking fuse.
+  for(const dx of [0,6,12])box(c,(face>0?10:-28)+dx,-14,6,22,'#d6453f',2);box(c,face>0?9:-29,-5,20,4,'#f1dcb6',1);
+  stroke(c,INK,2,[[face*19,-14],[face*22,-19],[face*20,-23]]);spark(c,face*20,-24,now);
  }else if(weapon==='punch'){
-  blob(c,face*21,1,11,9,'#f7a8bb',0,1.8);stroke(c,OUT,1.6,[[face*17,-4],[face*17,6]]);stroke(c,OUT,1.6,[[face*22,-5],[face*22,6]]);
+  // A padded red glove with a white cuff.
+  box(c,face>0?8:-14,-6,6,13,'#f4efe2',2);blob(c,face*20,0,9.5,8.5,'#e2413b',0,1.8);oval(c,face*22,-3,3.6,2.4,'#ff8a80');stroke(c,OUT,1.4,[[face*15,4],[face*24,5]]);
  }else{
   c.rotate(Math.atan2(Math.sin(aim),Math.cos(aim)*face));
   if(weapon==='bazooka'){
-   box(c,1,-8,40,16,'#4f7a5a',6);box(c,0,-10,9,20,'#2f4a40',3);box(c,34,-10,10,20,'#e0b26a',3);box(c,12,7,11,9,'#2b3f3c',2);stroke(c,'#a9d3a0',2,[[13,-4],[31,-4]]);
+   // Teal launch tube, orange warning band, flared exhaust and a brass sight.
+   box(c,-8,-8,8,16,TEAL_D,3);box(c,-2,-7,44,14,TEAL,7);box(c,14,-7,6,14,ORANGE,1);box(c,40,-9,8,18,TEAL_D,3);
+   box(c,22,-13,9,6,'#ffd27a',2);box(c,10,6,7,9,'#3a2a2a',2);stroke(c,'#8fd6cc',2,[[0,-3],[12,-3]]);
   }else{
-   box(c,4,-6,40,11,'#5d6b72',3);box(c,5,3,23,8,'#c9945a',3);box(c,12,9,9,8,'#2b3f4c',2);box(c,38,-7,8,13,'#d9c78f',2);
+   // Blunderbuss: wooden stock, steel barrel, brass bell mouth.
+   box(c,-6,-3,17,10,WOOD,4);box(c,8,-4,32,8,STEEL,3);poly(c,[[38,-5],[49,-9],[49,9],[38,5]],'#d2a94c');box(c,12,4,8,8,'#3a2a2a',2);stroke(c,'#cdd8e0',1.6,[[11,-1.5],[34,-1.5]]);
   }
  }
  c.restore();
 }
+// Grave: a little wooden marker on a mound, with a ribbon in the team colour.
 function grave(c,x,y,team){
- c.save();c.translate(x,y);oval(c,0,1,15,4.5,'#6b4a35');
- c.lineJoin='round';c.beginPath();c.moveTo(-9,0);c.lineTo(-9,-17);c.arc(0,-17,9,Math.PI,0);c.lineTo(9,0);c.lineTo(-9,0);c.fillStyle='#b9bfc7';c.fill();c.strokeStyle=INK;c.lineWidth=2;c.stroke();
- stroke(c,'#7c838d',2,[[0,-24],[0,-10]]);stroke(c,'#7c838d',2,[[-4,-19],[4,-19]]);
- stroke(c,TEAM_COLORS[team?1:0],3,[[-9,-3],[9,-3]]);
+ c.save();c.translate(x,y);oval(c,0,1,16,5,'#6b4a35');oval(c,0,-1,12,3.6,'#8a6446');
+ box(c,-2.6,-30,5.2,30,'#b98652',1.5);box(c,-10,-24,20,5.2,'#b98652',1.5);stroke(c,'#7c5534',1.2,[[-1,-28],[-1,-4]]);
+ stroke(c,OUT,4.5,[[2,-21],[8,-14]]);stroke(c,TEAM_COLORS[team?1:0],2.6,[[2,-21],[8,-14]]);
  c.restore();
 }
 
 export function drawCharacter(c,w,{active=false,weapon=null,aim=0,phase='ready',now=0,graveY=null}={}){
  const team=TEAM_COLORS[w.team?1:0];
  if(!w.alive){if(graveY!=null)grave(c,w.x,graveY,w.team);return}
- // Inchworm crawl: the body bunches and stretches with distance travelled, as in the original.
+ // Inchworm crawl: the body bunches and stretches with distance travelled.
  const f=w.face||1,walking=Boolean(w.walking)||w.grounded&&Math.abs(w.vx)>24,cp=(w.crawl||0)*.2,hump=walking?Math.max(0,Math.sin(cp)):0,reach=walking?Math.cos(cp):0,air=!w.grounded&&w.alive?clamp(-w.vy/400,-1,1):0;
- const br=Math.sin(now*.004+w.id*1.3),bounce=hump*2.4,hurt=w.flash>0;
- c.save();c.translate(w.x,w.y-4-bounce*.8);c.scale(1.107,1.107);
+ const br=Math.sin(now*.004+w.id*1.3),hurt=w.flash>0;
+ c.save();c.translate(w.x,w.y-4);c.scale(1.1,1.1);
  if(hurt&&Math.sin(w.flash*30)>0)c.globalAlpha=.65;
- oval(c,0,20+bounce,19,4.5,'#10284466');
- // Curled tail, then four chubby segments stacked toward the head, lighter belly on the facing side.
- blob(c,-f*(12+reach*3-hump*3),15-hump*2+air*2,6.5+reach,4.2,SKIN_SHADE,-.4*f);
- const hy=-13+br*.7-bounce*.4,hx=f*2.5;
- const seg=[[-f*(1+hump*3),12-hump*3+air*2,10.2],[f*hump,3.5-hump*4+air,10.8],[f*(1+reach*1.2),-4.5-hump*2,11.2]];
- for(const [x,y,r] of seg)oval(c,x,y,r+2.9,r+2.9,OUT);
- oval(c,hx,hy,14+br*.25,14.4,OUT);
- for(const [x,y,r] of seg)oval(c,x,y,r,r,SKIN);
- oval(c,hx,hy,11.6+br*.25,12,SKIN);
- for(const [x,y,r] of seg)oval(c,x+f*3.2,y+2.2,r*.6,r*.55,BELLY);
- stroke(c,SKIN_SHADE,1.6,[[-f*8,7.8],[0,10],[f*9,7.8]]);stroke(c,SKIN_SHADE,1.6,[[-f*9,-.3],[0,2],[f*10,-.3]]);stroke(c,SKIN_SHADE,1.6,[[-f*8,-8],[0,-6.4],[f*9,-8]]);
- oval(c,hx-f*5,hy-2,5.5,7,SKIN_SHADE,.3*f);oval(c,hx-f*3,hy-4,3,4,SKIN);
- // Team sweatband with a knot at the back.
- stroke(c,OUT,6,[[hx-f*10,hy-5],[hx,hy-9],[hx+f*10,hy-6]]);stroke(c,team,3.4,[[hx-f*10,hy-5],[hx,hy-9],[hx+f*10,hy-6]]);
- blob(c,hx-f*12,hy-3,3.6,2.2,team,-.6*f,1.2);blob(c,hx-f*13,hy+1,3.2,2,team,.7*f,1.2);
- // Big white eyes, pupils follow the aim, periodic blink.
- const vx=active?Math.cos(aim)*f:f*.8,vy=active?Math.sin(aim):.12,blink=((now+w.id*911)%3600)<140;
- for(const ex of [hx-f*.5,hx+f*8]){
-  if(blink){stroke(c,INK,2,[[ex-4,hy+1],[ex+4,hy+1]]);continue}
-  blob(c,ex,hy+.5,6,7.6,'#ffffff',0,1.8);oval(c,ex+vx*2.4,hy+.8+vy*3,3.2,3.7,INK);oval(c,ex+vx*2.4-1,hy-.5+vy*3,1.2,1.2,'#ffffff');
-  stroke(c,OUT,1.7,hurt||w.hp<35?[[ex-5,hy-11],[ex+5,hy-9]]:[[ex-5,hy-10],[ex+5,hy-10.8]]);
+ oval(c,0,20,17,4,'#10284455');
+ // One tapered body traced along a spine from tail tip to neck, so it reads as a single worm.
+ const sp=[[-f*(16+reach*3),18+air*3],[-f*(8-hump*2),18-hump*4+air*2],[f*hump*2,14-hump*8+air],[f*3,4-hump*4],[f*2.5,-5-hump*2+br*.6]],wd=[6,12,17,19];
+ for(let i=0;i<4;i++)stroke(c,OUT,wd[i]+5,[sp[i],sp[i+1]]);
+ for(let i=0;i<4;i++)stroke(c,SKIN,wd[i],[sp[i],sp[i+1]]);
+ for(let i=1;i<4;i++)stroke(c,BELLY,wd[i]*.32,[[sp[i][0]+f*wd[i]*.28,sp[i][1]],[sp[i+1][0]+f*wd[i]*.28,sp[i+1][1]]]);
+ for(const i of [1,2]){const [x,y]=sp[i+1];stroke(c,SKIN_SHADE,1.5,[[x-wd[i]*.42,y+1],[x,y+2.6],[x+wd[i]*.42,y+1]])}
+ const hx=f*3,hy=-15+br*.7-hump*2;
+ oval(c,hx,hy,14,14.2,OUT);oval(c,hx,hy,11.6,11.8,SKIN);oval(c,hx+f*4,hy+5,5,3.6,BELLY);
+ // Crater Crew signature: team goggles pushed up on the forehead, strap round the back.
+ stroke(c,OUT,6,[[hx-f*12,hy-6],[hx+f*11,hy-10]]);stroke(c,team,3.4,[[hx-f*12,hy-6],[hx+f*11,hy-10]]);
+ for(const gx of [hx-f*1,hx+f*7.5]){oval(c,gx,hy-10,5,4.4,OUT);oval(c,gx,hy-10,3.6,3,'#bfe9ff');oval(c,gx-1,hy-11,1.2,.9,'#ffffff')}
+ // Eyes follow the aim and blink now and then.
+ const vx=active?Math.cos(aim)*f:f*.8,vy=active?Math.sin(aim):.12,blink=((now+w.id*911)%3600)<140,worried=hurt||w.hp<35;
+ for(const ex of [hx-f*.5,hx+f*7.5]){
+  if(blink){stroke(c,INK,2,[[ex-3.5,hy+1],[ex+3.5,hy+1]]);continue}
+  oval(c,ex,hy+1,5.6,6.6,OUT);oval(c,ex,hy+1,4.4,5.4,'#ffffff');oval(c,ex+vx*2,hy+1.4+vy*2.4,2.6,3,INK);oval(c,ex+vx*2-.8,hy+.4+vy*2.4,.9,.9,'#ffffff');
+  stroke(c,OUT,1.7,worried?[[ex-4,hy-5.2],[ex+4,hy-3.6]]:[[ex-4,hy-4.4],[ex+4,hy-5.4]]);
  }
- if(hurt)oval(c,hx+f*5,hy+9,2.6,3,OUT);else stroke(c,OUT,1.8,[[hx+f*2,hy+8.5],[hx+f*5,hy+10.2],[hx+f*9,hy+8.2]]);
- oval(c,hx-f*1,hy+6,2.4,1.6,'#ff8fa6aa');
- // No feet: the lowest segment rests on a flattened belly that slides along the ground.
- oval(c,-f*hump*2,19-hump,11-hump*3,3.2,SKIN_SHADE);
- if(active){heldWeapon(c,weapon,f,aim,phase);blob(c,f*10,3,4.4,4.2,SKIN,0,1.4)}
+ // Cheeky grin with one buck tooth, or an "o" when hit.
+ if(hurt)oval(c,hx+f*4,hy+8.5,2.6,3,OUT);else{stroke(c,OUT,1.8,[[hx+f*1,hy+7.5],[hx+f*4.5,hy+9.6],[hx+f*9,hy+7]]);c.fillStyle='#ffffff';c.fillRect(hx+f*4-(f>0?0:2.4),hy+8.8,2.4,2.4)}
+ oval(c,hx-f*3.5,hy+5.5,2.4,1.5,'#ff8fa6aa');
+ if(active){heldWeapon(c,weapon,f,aim,phase,now);blob(c,f*10,1,4.2,4,SKIN,0,1.4)}
  c.restore();
  // Name and HP in team colour with a dark outline, bold rounded face.
  c.save();c.textAlign='center';c.lineJoin='round';c.font='bold 15px '+FONT;c.lineWidth=4.2;c.strokeStyle=INK;c.fillStyle=team;
- const nm=w.name.toUpperCase();c.strokeText(nm,w.x,w.y-58);c.fillText(nm,w.x,w.y-58);
- rrect(c,w.x-17,w.y-53,34,16,6);c.fillStyle=team;c.fill();c.lineWidth=2;c.strokeStyle=INK;c.stroke();
- c.font='bold 13px '+FONT;c.fillStyle='#fff';c.lineWidth=2;c.strokeStyle='#00000066';c.strokeText(String(Math.max(0,Math.ceil(w.hp))),w.x,w.y-40.5);c.fillText(String(Math.max(0,Math.ceil(w.hp))),w.x,w.y-40.5);
- if(active){const by=w.y-80+Math.sin(now*.008)*3;c.beginPath();c.moveTo(w.x-8,by-9);c.lineTo(w.x+8,by-9);c.lineTo(w.x,by+3);c.lineTo(w.x-8,by-9);c.fillStyle=team;c.fill();c.lineWidth=2.4;c.strokeStyle=INK;c.stroke()}
+ const nm=w.name.toUpperCase();c.strokeText(nm,w.x,w.y-60);c.fillText(nm,w.x,w.y-60);
+ rrect(c,w.x-17,w.y-55,34,16,6);c.fillStyle=team;c.fill();c.lineWidth=2;c.strokeStyle=INK;c.stroke();
+ c.font='bold 13px '+FONT;c.fillStyle='#fff';c.lineWidth=2;c.strokeStyle='#00000066';c.strokeText(String(Math.max(0,Math.ceil(w.hp))),w.x,w.y-42.5);c.fillText(String(Math.max(0,Math.ceil(w.hp))),w.x,w.y-42.5);
+ if(active){const by=w.y-82+Math.sin(now*.008)*3;c.beginPath();c.moveTo(w.x-8,by-9);c.lineTo(w.x+8,by-9);c.lineTo(w.x,by+3);c.lineTo(w.x-8,by-9);c.fillStyle=team;c.fill();c.lineWidth=2.4;c.strokeStyle=INK;c.stroke()}
  c.restore();
 }
 
 export function drawOrdnance(c,p){
  c.save();
  // Smoke-puff trail: older points are bigger and fainter.
- const n=p.trail.length,fire=p.type==='bazooka'||p.type==='airstrike';
+ const n=p.trail.length,fire=p.type==='bazooka'||p.type==='airstrike',now=globalThis.performance?.now?.()??0;
  for(let k=0;k<n;k+=2){const q=k/n,pt=p.trail[k];c.globalAlpha=.15+.55*q;oval(c,pt.x,pt.y,(p.type==='airstrike'?5:3.5)*(.5+q),(p.type==='airstrike'?5:3.5)*(.5+q),fire?(q>.8?'#ffd37a':'#f1ece0'):'#ffffffcc')}
- c.globalAlpha=1;
- c.translate(p.x,p.y);c.rotate(Math.atan2(p.vy,p.vx));c.lineJoin='round';c.lineWidth=2;c.strokeStyle='#26181f';
- if(p.type==='grenade'){oval(c,0,0,9,10,'#26181f');oval(c,0,0,7.4,8.4,'#5b9a54');stroke(c,'#b7e0a6',1.6,[[-5,-2],[5,-2]]);stroke(c,'#b7e0a6',1.6,[[-5,3],[5,3]]);c.fillStyle='#d5cfaa';c.fillRect(4,-12,5,5);c.strokeRect?.(4,-12,5,5)}
- else if(p.type==='dynamite'){c.fillStyle='#d24b49';c.fillRect(-9,-8,18,16);c.strokeRect?.(-9,-8,18,16);c.fillStyle='#f1dcb6';c.fillRect(4,-8,4,16);stroke(c,'#26181f',2.2,[[0,-8],[3,-14]]);oval(c,3,-15,3.2,3.2,'#ffd75e')}
- else{
-  const big=p.type==='airstrike';const s=big?1.15:1;
-  c.fillStyle='#ffb02e';c.beginPath();c.moveTo(-10*s,-4);c.lineTo(-20*s-Math.random()*5,0);c.lineTo(-10*s,4);c.fill();
-  c.fillStyle='#26181f';c.beginPath();c.moveTo(-11*s,-6);c.lineTo(-15*s,-10);c.lineTo(-5*s,-6);c.lineTo(-5*s,6);c.lineTo(-15*s,10);c.lineTo(-11*s,6);c.fill();
-  c.fillStyle='#e03d3a';c.beginPath();c.moveTo(-12*s,-5);c.lineTo(-14*s,-9);c.lineTo(-6*s,-5);c.fill();c.beginPath();c.moveTo(-12*s,5);c.lineTo(-14*s,9);c.lineTo(-6*s,5);c.fill();
-  oval(c,-1*s,0,11*s,5.4,'#26181f');oval(c,-1*s,0,9.6*s,4,'#f4efe2');
-  c.fillStyle='#26181f';c.beginPath();c.moveTo(14*s,0);c.lineTo(5*s,-6);c.lineTo(5*s,6);c.fill();c.fillStyle='#e03d3a';c.beginPath();c.moveTo(12.5*s,0);c.lineTo(6.5*s,-4);c.lineTo(6.5*s,4);c.fill();
+ c.globalAlpha=1;c.translate(p.x,p.y);c.lineJoin='round';
+ if(p.type==='grenade'){
+  // Spins with travel; resting grenades keep still.
+  c.rotate((p.x+p.y)*.06);blob(c,0,0,7.5,7.5,TEAL,0,1.6);stroke(c,ORANGE,2.4,[[-7,0],[7,0]]);oval(c,-2.5,-3.5,2,1.6,'#9fe0d6');box(c,-2.5,-12,5,4.5,'#c9cfd6',1);
+  oval(c,0,0,1.6,1.6,Math.floor(now/(p.fuse<1.2?90:220))%2?'#ff4b3e':'#5a1714');
+ }else if(p.type==='dynamite'){
+  c.rotate(Math.atan2(p.vy,p.vx)*.25);for(const dx of [-8,-2,4])box(c,dx,-9,5.5,18,'#d6453f',2);box(c,-9,-2,19,4,'#f1dcb6',1);stroke(c,INK,2,[[0,-9],[3,-14],[1,-18]]);spark(c,1,-19,now);
+ }else if(p.type==='airstrike'){
+  // Teardrop bomb with fins and a warning stripe, nose down along its path.
+  c.rotate(Math.atan2(p.vy,p.vx));poly(c,[[-14,0],[-20,-7],[-11,-4],[-11,4],[-20,7]],TEAL_D);
+  oval(c,0,0,13,7,OUT);oval(c,0,0,11.2,5.4,'#3b4f7a');box(c,-4,-5.4,3.5,10.8,ORANGE,1);oval(c,4,-2,3,1.4,'#8ea3cf');
+ }else{
+  // Rocket: teal body, orange nose, dark fins and a flickering exhaust.
+  c.rotate(Math.atan2(p.vy,p.vx));
+  c.fillStyle='#ffb02e';c.beginPath();c.moveTo(-11,-4);c.lineTo(-22-Math.random()*6,0);c.lineTo(-11,4);c.fill();c.fillStyle='#fff2a8';c.beginPath();c.moveTo(-11,-2);c.lineTo(-16-Math.random()*3,0);c.lineTo(-11,2);c.fill();
+  poly(c,[[-12,-5],[-16,-10],[-6,-5]],TEAL_D);poly(c,[[-12,5],[-16,10],[-6,5]],TEAL_D);
+  oval(c,-1,0,11,5.6,OUT);oval(c,-1,0,9.6,4.2,TEAL);stroke(c,'#8fd6cc',1.4,[[-7,-1.6],[4,-1.6]]);
+  poly(c,[[15,0],[6,-5.4],[6,5.4]],ORANGE);
  }
  c.restore();
 }
