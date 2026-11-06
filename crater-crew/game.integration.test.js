@@ -424,9 +424,9 @@ test('AI selects bazooka at range and airstrike when terrain blocks fire',()=>{
 });
 
 test('AI takes a bounded safer walking position for a better shot',()=>{
- // x=250 is now a beach at the water's edge (the AI rightly jetpacks out); x=350 is the analogous
- // inland slope on the big map, with the player ~900 px to the right as before.
- flatDuel(1250);state.terrain=createTerrain(0,42);state.wind=0;state.windTarget=0;state.difficulty=1;const ai=state.active,player=state.worms[0];ai.x=350;ai.y=groundY(state.terrain,350)-17;player.y=groundY(state.terrain,1250)-17;
+ // x=300 sits on the low coastal terraces of Sunset Cove (below 225 the AI rightly jetpacks off the beach),
+ // with the player ~950 px to the right on the inland ridge.
+ flatDuel(1250);state.terrain=createTerrain(0,42);state.wind=0;state.windTarget=0;state.difficulty=1;const ai=state.active,player=state.worms[0];ai.x=300;ai.y=groundY(state.terrain,300)-17;player.y=groundY(state.terrain,1250)-17;
  aiAct();assert.equal(state.phase,'reposition');assert.equal(state.aiMoves,1);const initial=ai.x;
  for(let i=0;i<100;i++)update(.04);
  assert.ok(ai.x>initial+15);assert.notEqual(state.phase,'reposition');
@@ -520,4 +520,13 @@ test('PC Easy plays the move with the best simulated outcome: a punch into the w
  me.x=1030;me.y=PLAIN-R-1;foe.x=1075;foe.y=PLAIN-R-1;foe.hp=100;beginTurn(1);state.active=me;me.active=true;aiAct();
  assert.equal(state.selected,'punch','sandbox picks the ring-out');for(let i=0;i<150&&foe.alive;i++)update(1/30);assert.equal(foe.alive,false,'the rival drowned');
  delete state.controllers;
+});
+// Fresh matches on every map: nobody slides, falls or drowns while the first turn is still idle.
+test('worms start on stable ground on every map and stay put for the first seconds',()=>{
+ for(let map=0;map<4;map++)for(const seed of [11,4242,90001,777777]){
+  delete state.controllers;state.aiDriver='local';newGame(map,1,seed);const start=state.worms.map(w=>({x:w.x,y:w.y}));
+  for(let i=0;i<240;i++)update(1/60);
+  state.worms.forEach((w,i)=>{assert.ok(w.alive,`map ${map} seed ${seed}: ${w.name} died`);assert.ok(w.grounded,`map ${map} seed ${seed}: ${w.name} airborne`);
+   assert.ok(Math.abs(w.x-start[i].x)<2&&Math.abs(w.y-start[i].y)<4,`map ${map} seed ${seed}: ${w.name} moved`);assert.ok(w.y<WATER-100,`map ${map} seed ${seed}: ${w.name} near the sea`)});
+ }
 });

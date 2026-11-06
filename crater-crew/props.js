@@ -14,7 +14,7 @@ const MINE_TRIGGER=46,MINE_FUSE=1.1,CRATE_HEAL=25,PICKUP=30;
 // Scatter mines and barrels on dry, level ground, away from the worms' starting spots.
 export function placeProps(t,worms,seed,{mines=8,barrels=6}={}){
  const rand=seeded((seed^0x2c1b3c6d)>>>0),props=[],taken=worms.map(w=>w.x);
- const spot=()=>{for(let tries=0;tries<300;tries++){const x=120+rand()*(W-240),g=groundY(t,x);if(g>WATER-150||Math.abs(groundY(t,x+10)-groundY(t,x-10))>8)continue;if(taken.some(o=>Math.abs(o-x)<90))continue;taken.push(x);return {x,g}}return null};
+ const spot=()=>{for(let tries=0;tries<300;tries++){const x=120+rand()*(W-240),g=groundY(t,x);if(g>WATER-110||Math.abs(groundY(t,x+10)-groundY(t,x-10))>8)continue;if(taken.some(o=>Math.abs(o-x)<90))continue;taken.push(x);return {x,g}}return null};
  for(let i=0;i<mines+barrels;i++){const s=spot();if(!s)break;const kind=i<mines?'mine':'barrel',r=kind==='mine'?7:12;
   props.push({kind,x:s.x,y:s.g-r-1,vx:0,vy:0,r,resting:false,fuse:0,armed:false,hp:kind==='barrel'?30:1,boom:0})}
  return props;
