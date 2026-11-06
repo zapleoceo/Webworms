@@ -87,6 +87,27 @@
     <p class="error" data-error="players.defaults"></p>
    </section>
 
+   <section class="card" aria-labelledby="h-ai">
+    <h2 id="h-ai">AI model</h2>
+    <p class="hint">The Broker model that plays PC Hard and PC Ultra. Any model marked <b>usable</b> works (available, fast chat, JSON schema). Saved with <b>Save changes</b>; running games pick it up within about 30 s.</p>
+    <p class="model-active">Active now: <code id="model-active">…</code> <span class="muted" id="model-active-source"></span></p>
+    <div class="model-pick">
+     <label class="field"><span class="label">Search models</span>
+      <input type="search" id="model-search" placeholder="Type to filter by ID or name" autocomplete="off" spellcheck="false" aria-controls="model-list" data-nodirty>
+     </label>
+     <div class="model-list" id="model-list" role="listbox" aria-label="Broker models"></div>
+     <p class="muted" id="model-list-note"></p>
+    </div>
+    <div class="model-selected">
+     <span class="label">Selected</span>
+     <code id="model-selected">env default</code>
+     <button type="button" class="ghost" id="model-env">Use env default</button>
+     <button type="button" class="ghost" id="model-test">Test</button>
+    </div>
+    <p class="model-result" id="model-result" role="status" aria-live="polite" hidden></p>
+    <p class="error" data-error="ai.model"></p>
+   </section>
+
    <section class="card" aria-labelledby="h-audio">
     <h2 id="h-audio">Audio defaults</h2>
     <p class="hint">Starting values on the setup screen; each player can still change them in the ♫ panel.</p>

@@ -21,6 +21,8 @@ export const DEFAULT_SETTINGS=Object.freeze({
  maps:{enabled:[0,1,2,3]},
  players:{defaults:['human','easy'],offerHard:true,offerUltra:true},
  audio:{music:true,musicVolume:42,effects:true,effectsVolume:65,voices:true},
+ // ai.model: the Broker model for PC Hard/Ultra; '' uses the server's BROKER_SUBSCRIPTION_MODEL.
+ ai:{model:''},
  sponsors:[],
 });
 
@@ -46,6 +48,10 @@ function checkField(value,[kind,min,max]){
  if(value<min||value>max)return `must be between ${min} and ${max}`;
  return null;
 }
+
+// A Broker catalog model ID ("provider/model"); '' means the server default.
+export const MODEL_ID=/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]{1,80}$/i;
+export const validModelId=s=>typeof s==='string'&&s.length<=160&&(s===''||MODEL_ID.test(s));
 
 const SPONSOR_ID=/^[a-z0-9]{8,32}$/;
 // Logos are only ever written by the server: an https URL (Vercel Blob) or a same-origin local-dev path.
@@ -101,6 +107,10 @@ export function validateSettings(input){
   if(!Array.isArray(d)||d.length!==2||!d.every(c=>CONTROLLERS.includes(c)))errors.push(`players.defaults: two of ${CONTROLLERS.join(', ')}`);
   else value.players.defaults=[...d];
  }
+ if(input.ai!==undefined){
+  if(!isObj(input.ai))errors.push('ai: must be an object');
+  else if(input.ai.model!==undefined){if(validModelId(input.ai.model))value.ai.model=input.ai.model;else errors.push('ai.model: a Broker model ID like provider/model, or empty for the server default')}
+ }
  if(input.sponsors!==undefined){
   if(!Array.isArray(input.sponsors)||input.sponsors.length>MAX_SPONSORS)errors.push(`sponsors: a list of at most ${MAX_SPONSORS}`);
   else{const ids=new Set();value.sponsors=[];input.sponsors.forEach((s,i)=>{const v=checkSponsor(s,i,errors);if(!v)return;if(ids.has(v.id)){errors.push(`sponsors[${i}].id: duplicate`);return}ids.add(v.id);value.sponsors.push(v)})}
@@ -121,6 +131,7 @@ export function mergeSettings(stored){
  }
  if(stored.maps!==undefined){const r=validateSettings({maps:stored.maps});if(r.ok)out.maps=r.value.maps}
  if(isObj(stored.players)&&stored.players.defaults!==undefined){const r=validateSettings({players:{defaults:stored.players.defaults}});if(r.ok)out.players.defaults=r.value.players.defaults}
+ if(isObj(stored.ai)&&validModelId(stored.ai.model))out.ai.model=stored.ai.model;
  if(Array.isArray(stored.sponsors)){const errs=[],ids=new Set();out.sponsors=stored.sponsors.slice(0,MAX_SPONSORS).map((s,i)=>checkSponsor(s,i,errs)).filter(s=>s&&!ids.has(s.id)&&ids.add(s.id))}
  if(out.wind.startMax>out.wind.cap)out.wind.startMax=out.wind.cap;
  if(!out.players.offerHard||!out.players.offerUltra)out.players.defaults=out.players.defaults.map(c=>c==='hard'&&!out.players.offerHard||c==='ultra'&&!out.players.offerUltra?'easy':c);

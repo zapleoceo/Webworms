@@ -43,6 +43,7 @@ const UI={
 };
 
 let settings=defaultSettings(),storage=false,dirty=false,passwordSource=null;
+let models=[],selectedModel='',envDefault=null;
 
 // ---------- API ----------
 async function api(path,{method='GET',json,form}={}){
@@ -84,8 +85,8 @@ function buildFields(){
  }
  for(let i=0;i<MAP_NAMES.length;i++)$('maps').append(el('label',{class:'chip'},el('input',{type:'checkbox',value:String(i),'data-map':String(i)}),` ${i} · ${MAP_NAMES[i]}`));
  for(const t of [0,1])for(const c of CONTROLLERS)$('default-'+t).append(el('option',{value:c,text:CTRL_NAMES[c]}));
- $('settings-form').addEventListener('input',()=>{setDirty(true);validateLive()});
- $('settings-form').addEventListener('change',()=>{setDirty(true);validateLive()});
+ $('settings-form').addEventListener('input',e=>{if(e.target.dataset?.nodirty!==undefined)return;setDirty(true);validateLive()});
+ $('settings-form').addEventListener('change',e=>{if(e.target.dataset?.nodirty!==undefined)return;setDirty(true);validateLive()});
 }
 
 const input=path=>document.querySelector(`input[data-path="${path}"]`);
@@ -97,6 +98,7 @@ function fillForm(s){
  }
  for(const box of document.querySelectorAll('[data-map]'))box.checked=s.maps.enabled.includes(Number(box.dataset.map));
  $('default-0').value=s.players.defaults[0];$('default-1').value=s.players.defaults[1];
+ selectedModel=s.ai?.model||'';renderModels();
  renderSponsors(s.sponsors);
 }
 
@@ -110,6 +112,7 @@ function readForm(){
  }
  s.maps.enabled=[...document.querySelectorAll('[data-map]')].filter(b=>b.checked).map(b=>Number(b.dataset.map));
  s.players.defaults=[$('default-0').value,$('default-1').value];
+ s.ai.model=selectedModel;
  s.sponsors=readSponsors();
  return s;
 }
@@ -190,19 +193,72 @@ $('upload-form').addEventListener('submit',async e=>{
  finally{$('upload-button').disabled=!storage}
 });
 
+// ---------- AI model ----------
+function badge(text,cls){return el('span',{class:'badge '+cls,text})}
+function renderModels(){
+ const q=$('model-search').value.trim().toLowerCase(),box=$('model-list');
+ $('model-selected').textContent=selectedModel||(envDefault?`env default (${envDefault})`:'env default');
+ $('model-env').disabled=!selectedModel;
+ const shown=models.filter(m=>!q||m.id.toLowerCase().includes(q)||(m.name||'').toLowerCase().includes(q));
+ box.replaceChildren(...shown.slice(0,100).map(m=>{
+  const meta=el('span',{class:'meta'},
+   m.billing_type?badge(m.billing_type==='subscription'?'subscription':m.billing_type,m.billing_type==='subscription'?'sub':'api'):null,
+   m.usable?badge('usable','ok'):badge(!m.available?'unavailable':!m.chat_fast?'no fast chat':'no json schema','off'),
+   m.json_schema?badge('json',''):null,
+   m.intelligence_index!=null?badge('IQ '+m.intelligence_index,''):null,
+   m.price?badge(m.price,''):null);
+  return el('button',{type:'button',class:'model',role:'option','aria-selected':String(m.id===selectedModel),'data-model':m.id,title:m.usable?'':'Not usable for the game right now'},
+   el('span',{class:'id',text:m.id}),m.name?el('span',{class:'name',text:m.name}):null,meta);
+ }));
+ const note=$('model-list-note');
+ if(!models.length)return;
+ note.textContent=shown.length?(shown.length>100?`Showing 100 of ${shown.length} matches; type more to narrow.`:`${shown.length} of ${models.length} models.`):'No model matches.';
+ if(selectedModel&&!models.some(m=>m.id===selectedModel))note.textContent+=' The selected model is not in the Broker catalog right now.';
+}
+function selectModel(id){
+ if(id===selectedModel)return;
+ selectedModel=id;setDirty(true);validateLive();renderModels();
+ const r=$('model-result');r.hidden=true;
+}
+$('model-search').addEventListener('input',e=>{e.stopPropagation();renderModels()});
+$('model-search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const first=$('model-list').querySelector('.model');if(first)selectModel(first.dataset.model)}});
+$('model-list').addEventListener('click',e=>{const b=e.target.closest?.('[data-model]');if(b)selectModel(b.dataset.model)});
+$('model-env').addEventListener('click',()=>selectModel(''));
+$('model-test').addEventListener('click',async()=>{
+ const model=selectedModel||envDefault,r=$('model-result');
+ if(!model){r.hidden=false;r.className='model-result bad';r.textContent='No model selected and no env default on the server.';return}
+ $('model-test').disabled=true;r.hidden=false;r.className='model-result';r.replaceChildren(el('span',{class:'spinner','aria-hidden':'true'}),`Testing ${model}… (up to 25 s)`);
+ try{
+  const t=await api('/api/admin/models/test',{method:'POST',json:{model}});
+  r.className='model-result '+(t.ok?'ok':'bad');
+  r.textContent=t.ok?`OK in ${t.latency_ms} ms${t.billing_type?' · '+t.billing_type:''} · reply: ${t.reply}`
+   :`Failed (${t.status}) after ${t.latency_ms} ms: ${t.error||'unknown error'}${t.reply?' · reply: '+t.reply:''}`;
+ }catch(err){if(!err.silent){r.className='model-result bad';r.textContent=err.message}}
+ finally{$('model-test').disabled=false}
+});
+async function loadModels(){
+ const note=$('model-list-note');note.textContent='Loading the Broker model list…';models=[];
+ try{
+  const r=await api('/api/admin/models');models=r.models;envDefault=r.envModel;
+  $('model-active').textContent=r.active.model||'none';
+  $('model-active-source').textContent=r.active.source==='settings'?'(saved here)':r.active.source==='env'?'(server default, BROKER_SUBSCRIPTION_MODEL)':'(no model configured)';
+  renderModels();
+ }catch(err){if(err.silent)return;note.textContent=err.message;$('model-active').textContent=selectedModel||'unknown';$('model-active-source').textContent=''}
+}
+
 // ---------- save / reset ----------
 $('settings-form').addEventListener('submit',async e=>{
  e.preventDefault();
  const r=validateLive();
  if(!r.ok){toast('Please fix the highlighted fields.','error');document.querySelector('.invalid')?.focus();return}
  $('save').disabled=true;
- try{const res=await api('/api/admin/settings',{method:'PUT',json:r.value});settings=res.settings;fillForm(settings);setDirty(false);toast('Settings saved. New matches use them.')}
+ try{const res=await api('/api/admin/settings',{method:'PUT',json:r.value});settings=res.settings;fillForm(settings);setDirty(false);toast('Settings saved. New matches use them.');loadModels()}
  catch(err){if(!err.silent){const general=showErrors(err.errors||[]);toast([err.message,...general].join(' · '),'error')}}
  finally{$('save').disabled=!storage}
 });
 $('reset').addEventListener('click',()=>{
  if(!confirm('Reset all game settings to the built-in defaults? Sponsors stay as they are. Nothing is saved until you press Save changes.'))return;
- const sponsors=readSponsors();fillForm({...defaultSettings(),sponsors});setDirty(true);validateLive();toast('Defaults loaded. Press Save changes to apply.');
+ const sponsors=readSponsors(),ai={model:selectedModel};fillForm({...defaultSettings(),sponsors,ai});setDirty(true);validateLive();toast('Defaults loaded. Press Save changes to apply.');
 });
 
 // ---------- auth ----------
@@ -264,6 +320,7 @@ async function loadConfig(){
  if(!passwordSource){try{passwordSource=(await api('/api/admin/session')).passwordSource}catch{}}
  const r=await api('/api/admin/settings');settings=r.settings;storage=r.storage;
  $('storage-notice').hidden=storage;for(const id of ['save','upload-button'])$(id).disabled=!storage;
+ loadModels();
  $('password-card').hidden=passwordSource!=='stored';$('env-password-note').hidden=passwordSource!=='env';
  fillForm(settings);setDirty(false);showErrors([]);show('config');
 }

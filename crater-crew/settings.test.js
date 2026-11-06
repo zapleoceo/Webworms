@@ -9,7 +9,7 @@ test('defaults equal the built-in game behaviour',()=>{
  assert.deepEqual(defaultSettings(),{
   match:{turnTime:35,teleports:2},props:{mines:8,barrels:6,crateChance:.3,crateHeal:25},water:{suddenDeathRound:9,waterRise:12},
   wind:{startMax:36,turnDrift:20,cap:80},maps:{enabled:[0,1,2,3]},players:{defaults:['human','easy'],offerHard:true,offerUltra:true},
-  audio:{music:true,musicVolume:42,effects:true,effectsVolume:65,voices:true},sponsors:[]});
+  audio:{music:true,musicVolume:42,effects:true,effectsVolume:65,voices:true},ai:{model:''},sponsors:[]});
  assert.ok(Object.isFrozen(DEFAULT_SETTINGS));
  const a=defaultSettings();a.match.turnTime=1;assert.equal(defaultSettings().match.turnTime,35);
 });
@@ -103,4 +103,16 @@ test('in-battle placements: schema accepts the new keys, rejects unknown ones, u
  assert.deepEqual(mergeSettings({sponsors:[sponsor({placements:undefined})]}).sponsors[0].placements,all);
  assert.deepEqual(mergeSettings(mergeSettings({sponsors:[sponsor({placements:['billboard'],placementsV:2})]})).sponsors[0].placements,['billboard']);
  assert.deepEqual(pickSponsors(old.sponsors,'blimp',2,seeded(1)).map(s=>s.id),['olda00000001']);
+});
+
+test('ai.model: a Broker model ID or empty; merge drops a bad stored value',()=>{
+ for(const model of ['claude-sub/claude-sonnet-5-5','openai/gpt-5.5-mini','openrouter/meta-llama:free','',' A1/b.c_d-e'.trim()]){
+  const r=validateSettings({ai:{model}});assert.equal(r.ok,true,model);assert.equal(r.value.ai.model,model);
+ }
+ for(const model of ['no-slash','/x','a/','a/b c','a/'+'x'.repeat(90),'../etc/passwd','a/b"',5,null]){
+  const r=validateSettings({ai:{model}});assert.equal(r.ok,false,String(model));assert.match(r.errors[0],/^ai\.model: /);
+ }
+ assert.equal(validateSettings({ai:'x'}).ok,false);
+ assert.equal(mergeSettings({ai:{model:'bad id'}}).ai.model,'');
+ assert.equal(mergeSettings({ai:{model:'openai/gpt-5.5-mini'}}).ai.model,'openai/gpt-5.5-mini');
 });
