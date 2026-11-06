@@ -34,7 +34,8 @@ function placeBeside(shooter,target,near,far){
 // The duel plain keeps its old height above the sea (600 vs water 755), since AI jetpack/walk rules key off the water line.
 const PLAIN=WATER-155;
 function flatDuel(enemyX,difficulty=2,seed=807){
- newGame(0,difficulty,seed);beginTurn(1);const t=state.terrain;
+ // The duel scenarios check the step-by-step local algorithm per difficulty, not the PC Easy sandbox player.
+ delete state.controllers;state.aiDriver='local';newGame(0,difficulty,seed);beginTurn(1);const t=state.terrain;
  flatten(t,PLAIN);
  const ai=state.active,player=state.worms[0];ai.x=800;ai.y=PLAIN-17;ai.vx=ai.vy=0;ai.hp=100;player.x=enemyX;player.y=PLAIN-17;player.hp=100;
  for(const w of state.worms)if(w!==ai&&w!==player)w.alive=false;
@@ -500,4 +501,23 @@ test('the camera frames the active worm with a distant rival, zooming out as nee
  const foe=state.worms.find(w=>w.team!==a.team);for(const w of state.worms)if(w!==a&&w!==foe)w.alive=false;foe.x=1700;foe.y=PLAIN-R-1;
  for(let i=0;i<120;i++)render?.(),update(.03);const c=state.cam,inView=w=>w.x>=c.x&&w.x<=c.x+VIEW_W/c.zoom&&w.y>=c.y&&w.y<=c.y+VIEW_H/c.zoom;
  assert.ok(c.zoom<1,'zoomed out');assert.ok(inView(a)&&inView(foe),'both in view');
+});
+
+test('the AI sandbox plays a move on a copy, sees a punch into the water as a kill, and restores the match exactly',()=>{
+ newGame(0,2,4242);flatten(state.terrain,PLAIN);for(let x=1100;x<W;x++){state.terrain.top[x]=H;for(let y=0;y<H;y++)state.terrain.mask[y*W+x]=0}
+ const me=state.worms.find(w=>w.team===1),foe=state.worms.find(w=>w.team===0);for(const w of state.worms)if(w!==me&&w!==foe)w.alive=false;
+ me.x=1030;me.y=PLAIN-R-1;foe.x=1075;foe.y=PLAIN-R-1;foe.hp=100;state.team=1;state.active=me;state.phase='ready';
+ const mask=state.terrain.mask.slice(),pos=state.worms.map(w=>[w.x,w.y,w.hp,w.alive]),draws=state.simDraws;
+ const r=window.__craterCrew.simulateAction({weapon:'punch',dir:1});
+ assert.ok(r.kills.includes(foe.name)&&r.drowned.includes(foe.name),`punch should drown: ${r.summary}`);assert.ok(r.value>=70);
+ assert.deepEqual(state.worms.map(w=>[w.x,w.y,w.hp,w.alive]),pos,'worms restored');assert.equal(state.projectiles.length,0);
+ assert.equal(state.simDraws,draws);assert.ok(state.terrain.mask.every((v,i)=>v===mask[i]),'terrain restored');assert.equal(state.phase,'ready');assert.equal(state.sim,undefined);
+});
+
+test('PC Easy plays the move with the best simulated outcome: a punch into the water beats a shot',()=>{
+ newGame(0,2,4242);state.controllers=['human','easy'];flatten(state.terrain,PLAIN);for(let x=1100;x<W;x++){state.terrain.top[x]=H;for(let y=0;y<H;y++)state.terrain.mask[y*W+x]=0}
+ const me=state.worms.find(w=>w.team===1),foe=state.worms.find(w=>w.team===0);for(const w of state.worms)if(w!==me&&w!==foe)w.alive=false;
+ me.x=1030;me.y=PLAIN-R-1;foe.x=1075;foe.y=PLAIN-R-1;foe.hp=100;beginTurn(1);state.active=me;me.active=true;aiAct();
+ assert.equal(state.selected,'punch','sandbox picks the ring-out');for(let i=0;i<150&&foe.alive;i++)update(1/30);assert.equal(foe.alive,false,'the rival drowned');
+ delete state.controllers;
 });
