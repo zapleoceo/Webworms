@@ -31,7 +31,7 @@ const UI={
  },
  players:{
   offerHard:{label:'Offer PC Hard',hint:'Broker LLM without wind information. Needs Broker configured on the server.'},
-  offerUltra:{label:'Offer PC Ultra',hint:'Broker LLM with full information. Needs Broker configured on the server.'},
+  offerUltra:{label:'Offer PC Ultra and PC God',hint:'Broker LLM with full information; PC God also gets the match history. Needs Broker configured on the server.'},
  },
  audio:{
   music:{label:'Music on'},
