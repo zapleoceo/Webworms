@@ -40,11 +40,14 @@ async function verifiedSubscriptionModel(){
  if(!ok)console.error('broker model rejected:',JSON.stringify(row?{id:row.id,source:row.source,billing_type:row.billing_type,available:row.available,capabilities:row.capabilities,job_request:row.job_request}:{id:model(),found:false}));
  return ok;
 }
+// Server-side diagnostics for a failed job: Broker's own status, error text and route, and the head of the model
+// reply. None of these carry the project key.
+function logJob(what,r){console.error('broker '+what+':',JSON.stringify({job:r?.job_id,status:r?.status,error:String(r?.error??'').slice(0,200),error_class:r?.result_meta?.error_class,model:r?.model,provider:r?.provider,billing:r?.billing_type,text:String(r?.text??'').slice(0,160)}))}
 function attestedSubscription(result,pinned){return result.billing_type==='subscription'&&result.provider===pinned.split('/')[0]&&result.model===pinned&&result.requested_model===pinned&&result.cost_usd===null}
 function complete(result,turnId,ids,pinned){
- if(!attestedSubscription(result,pinned))return json({status:'error',error:'Broker did not attest the approved subscription route.'},502);
- let plan;try{plan=JSON.parse(result.text)}catch{return json({status:'error',error:'Broker returned invalid JSON.'},502)}
- if(!plan||plan.turn_id!==turnId||!ids.includes(plan.candidate_id))return json({status:'error',error:'Broker returned an invalid move.'},502);
+ if(!attestedSubscription(result,pinned)){logJob('route not attested',result);return json({status:'error',error:'Broker did not attest the approved subscription route.'},502)}
+ let plan;try{plan=JSON.parse(result.text)}catch{logJob('invalid JSON',result);return json({status:'error',error:'Broker returned invalid JSON.'},502)}
+ if(!plan||plan.turn_id!==turnId||!ids.includes(plan.candidate_id)){logJob('invalid move',result);return json({status:'error',error:'Broker returned an invalid move.'},502)}
  return json({status:'done',turnId,candidateId:plan.candidate_id});
 }
 export default {async fetch(request){
@@ -66,14 +69,14 @@ export default {async fetch(request){
    if(!Number.isInteger(result.job_id)||result.job_id<1)throw Error('invalid broker response');
    const ids=body.candidates.map(c=>c.id);
    if(result.status==='done')return complete(result,body.turnId,ids,model());
-   if(result.status==='error'||result.status==='cancelled')return json({status:'error',error:'Broker could not complete this turn.'},502);
+   if(result.status==='error'||result.status==='cancelled'){logJob('job ended',result);return json({status:'error',error:'Broker could not complete this turn.'},502)}
    return json({status:'pending',ticket:ticketFor({jobId:result.job_id,turnId:body.turnId,ids,model:model(),exp:Date.now()+8*60*60_000}),pollAfter:Math.min(10,Math.max(1,Number(result.poll_after_s)||2))},202);
   }
   if(request.method==='GET'){
    const p=parseTicket(new URL(request.url).searchParams.get('ticket'));if(!p)return json({error:'invalid or expired ticket'},400);
    const result=await broker(`/v1/jobs/${p.jobId}`);
    if(result.status==='pending'||result.status==='running')return json({status:'pending',pollAfter:Math.min(10,Math.max(1,Number(result.poll_after_s)||2))});
-   if(result.status!=='done')return json({status:'error',error:'Broker could not complete this turn.'},502);
+   if(result.status!=='done'){logJob('job ended',result);return json({status:'error',error:'Broker could not complete this turn.'},502)}
    return complete(result,p.turnId,p.ids,p.model);
   }
   return json({error:'method not allowed'},405);
