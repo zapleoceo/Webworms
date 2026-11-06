@@ -33,7 +33,7 @@ test('startup fetches /api/settings once and applies it before the first match',
  beginTurn(1);assert.equal(state.timer,50,'every turn uses the configured time');
  assert.equal(state.crateHeal,40);assert.equal(state.props.length,0,'mines 0, barrels 0');
  // Setup screen: default players and audio come from the settings when the player has not chosen yet.
- assert.match(elements.get('ai-hint').textContent,/SKY SQUAD · PC EASY.*DIRT DEVILS · PC EASY/);
+ elements.get('start').onclick();assert.deepEqual(state.controllers,['easy','easy'],'default players from the settings');
  assert.equal(elements.get('music-on').checked,false);assert.equal(elements.get('effects-volume').value,'80');
 });
 
