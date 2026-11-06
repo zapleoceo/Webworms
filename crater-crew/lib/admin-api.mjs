@@ -14,7 +14,7 @@ import {randomBytes} from 'node:crypto';
 import {resolveAuth,checkPassword,recordMatches,hashPassword,recordFingerprint,authPath,validNewPassword,MIN_PASSWORD,MAX_PASSWORD,issueSession,isAuthenticated,sessionCookie,clearCookie,clientIp,loginBlocked,recordFailure,clearFailures,INIT_MARKER,invalidateAuthCache} from './auth.mjs';
 import {getStore} from './store.mjs';
 import {validateLogo,MAX_LOGO_BYTES} from './images.mjs';
-import {mergeSettings,validateSettings,MAX_SPONSORS,PLACEMENTS} from '../settings.js';
+import {mergeSettings,validateSettings,MAX_SPONSORS,PLACEMENTS,PLACEMENTS_VERSION} from '../settings.js';
 
 const MAX_JSON_BYTES=64*1024,MAX_UPLOAD_BYTES=MAX_LOGO_BYTES+64*1024;
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers}});
@@ -32,7 +32,7 @@ function foreignOrigin(request){
  try{return new URL(origin).host!==new URL(request.url).host}catch{return true}
 }
 async function loadSettings(store){return mergeSettings(store?await store.readSettings():null)}
-const publicView=s=>({...s,sponsors:s.sponsors.filter(x=>x.enabled).map(({id,name,logoUrl,link,weight,placements})=>({id,name,logoUrl,link,weight,placements}))});
+const publicView=s=>({...s,sponsors:s.sponsors.filter(x=>x.enabled).map(({id,name,logoUrl,link,weight,placements,placementsV})=>({id,name,logoUrl,link,weight,placements,placementsV}))});
 
 async function publicSettings(request){
  if(request.method!=='GET'&&request.method!=='HEAD')return err(405,'method not allowed');
@@ -131,7 +131,7 @@ async function addSponsor(request,store){
  const weightRaw=field(form,'weight'),enabledRaw=field(form,'enabled');
  const sponsor={id:randomBytes(6).toString('hex'),name:field(form,'name')??'',logoUrl:'/pending.png',link:(field(form,'link')??'').trim(),
   weight:weightRaw===undefined||weightRaw===''?1:Number(weightRaw),enabled:enabledRaw===undefined?true:enabledRaw==='true'||enabledRaw==='on'||enabledRaw==='1',
-  placements:placementsRaw.length?[...new Set(placementsRaw)]:[...PLACEMENTS]};
+  placements:placementsRaw.length?[...new Set(placementsRaw)]:[...PLACEMENTS],placementsV:PLACEMENTS_VERSION};
  const probe=validateSettings({sponsors:[sponsor]});
  if(!probe.ok)return err(422,'invalid sponsor',{errors:probe.errors.map(e=>e.replace(/^sponsors\[0\]\./,''))});
  const url=await store.putLogo(sponsor.id,check.ext,bytes,check.contentType);

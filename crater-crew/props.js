@@ -58,8 +58,9 @@ export const propsBusy=state=>state.props.some(p=>p.armed||p.boom>0||(!p.parachu
 
 const INK='#1c1420';
 const oval=(c,x,y,rx,ry,col)=>{c.fillStyle=col;c.beginPath();c.ellipse(x,y,rx,ry,0,0,Math.PI*2);c.fill()};
-// opts.crateLogo: a loaded sponsor image shown on crates instead of the green cross.
-export function drawProps(c,props,now,{crateLogo=null}={}){
+// opts.crateLogo: a loaded sponsor image shown on crates instead of the green cross; opts.chuteLogo: one shown on
+// a panel of the parachute canopy (a slightly bigger canopy then). Visual only: the crate's body is unchanged.
+export function drawProps(c,props,now,{crateLogo=null,chuteLogo=null}={}){
  for(const p of props){
   c.save();c.translate(p.x,p.y);c.lineJoin='round';
   if(p.kind==='mine'){
@@ -74,7 +75,10 @@ export function drawProps(c,props,now,{crateLogo=null}={}){
    c.fillStyle='#55702c';c.fillRect(-p.r,-p.r+3,p.r*2,2);c.fillRect(-p.r,p.r-4,p.r*2,2);c.fillStyle='#9fbd5e';c.fillRect(-p.r+3,-p.r,3,p.r*2-2);
   }else{
    // Wooden crate with a white-on-green cross; a striped canopy while it floats down.
-   if(p.parachute){c.strokeStyle=INK;c.lineWidth=1.4;c.beginPath();c.moveTo(-p.r,-p.r);c.lineTo(-22,-44);c.moveTo(p.r,-p.r);c.lineTo(22,-44);c.stroke();
+   if(p.parachute&&chuteLogo){c.strokeStyle=INK;c.lineWidth=1.4;c.beginPath();c.moveTo(-p.r,-p.r);c.lineTo(-28,-46);c.moveTo(p.r,-p.r);c.lineTo(28,-46);c.stroke();
+    c.beginPath();c.ellipse(0,-48,32,20,0,Math.PI,0);c.closePath();c.fillStyle='#ff9f3a';c.fill();c.lineWidth=2;c.stroke();
+    c.fillStyle=INK;c.fillRect(-19,-64,38,16);c.fillStyle='#fff6e0';c.fillRect(-17.5,-62.5,35,13);drawFitted(c,chuteLogo,0,-56,32,11)}
+   else if(p.parachute){c.strokeStyle=INK;c.lineWidth=1.4;c.beginPath();c.moveTo(-p.r,-p.r);c.lineTo(-22,-44);c.moveTo(p.r,-p.r);c.lineTo(22,-44);c.stroke();
     c.beginPath();c.ellipse(0,-46,26,14,0,Math.PI,0);c.fillStyle='#f4efe2';c.fill();c.lineWidth=2;c.stroke();
     c.fillStyle='#ff9f3a';c.beginPath();c.ellipse(0,-46,9,14,0,Math.PI,0);c.fill()}
    c.fillStyle=INK;c.fillRect(-p.r-2,-p.r-2,p.r*2+4,p.r*2+4);c.fillStyle='#c88a4a';c.fillRect(-p.r,-p.r,p.r*2,p.r*2);

@@ -28,7 +28,7 @@ The Broker project, actual subscription model availability, scopes, policy and q
 
 # Admin panel and sponsors
 
-`/admin.html` edits the game settings (turn time, teleports, props, sudden death and water, wind, maps, default players and offered AI levels, audio defaults) and sponsor placements (billboards on the terrain, logo on health crates, "Presented by" strip). The game reads `GET /api/settings` once at startup and falls back to its built-in defaults if that fails, so it still works from a file or without the API.
+`/admin.html` edits the game settings (turn time, teleports, props, sudden death and water, wind, maps, default players and offered AI levels, audio defaults) and sponsor placements (billboards on the terrain, logo on health crates, "Presented by" strip, and in battle: blimp, crate parachute canopy, flags, airstrike plane, water buoy; sponsors saved before the in-battle placements existed get them all when they show on billboards). The game reads `GET /api/settings` once at startup and falls back to its built-in defaults if that fails, so it still works from a file or without the API.
 
 Vercel setup:
 
