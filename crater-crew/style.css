@@ -113,3 +113,5 @@ html,body{overflow-anchor:none}.weapon-options{min-height:44px}
 /* Sponsor strip on the setup and results screens (shown only once its logo has loaded). */
 .sponsor-banner{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px auto 0;padding:7px 12px;max-width:280px;border:2px solid var(--ink);border-radius:10px;background:#fff6e0;color:var(--ink);text-decoration:none;font-size:9px;font-weight:900;letter-spacing:1.4px}
 .sponsor-banner[hidden]{display:none}.sponsor-banner img{max-height:30px;max-width:150px;object-fit:contain}.sponsor-banner[href]:hover,.sponsor-banner[href]:focus-visible{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold)}
+
+.ai-hint:empty{display:none}

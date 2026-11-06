@@ -537,7 +537,9 @@ let setupCtrls=['human','easy'];try{const saved=JSON.parse(localStorage.getItem(
 function updateAiHint(){
  for(const pick of document.querySelectorAll?.('.team-pick')??[]){const t=Number(pick.dataset.team);for(const b of pick.querySelectorAll('button')){const on=b.dataset.ctrl===setupCtrls[t];b.classList.toggle('on',on);b.setAttribute('aria-checked',String(on))}}
  const lines=[0,1].filter(t=>setupCtrls[t]!=='human').map(t=>`${TEAM_NAMES[t]} · ${CONTROLLER_LABELS[setupCtrls[t]]}: ${CTRL_HINTS[setupCtrls[t]]}`);
- $('ai-hint').textContent=lines.length?lines.join(' '):'Two players share this screen and take turns.';
+ // The setup screen stays clean: what each level means lives in the buttons' tooltips, not in a paragraph.
+ $('ai-hint').textContent='';void lines;
+ for(const b of document.querySelectorAll?.('.seg button[data-ctrl]')??[])if(!b.disabled)b.title=CTRL_HINTS[b.dataset.ctrl]||'';
 }
 for(const pick of document.querySelectorAll?.('.team-pick')??[])pick.addEventListener('click',e=>{const b=e.target.closest?.('button[data-ctrl]');if(!b||b.disabled)return;chooseController(Number(pick.dataset.team),b.dataset.ctrl)});
 function chooseController(team,c){if(!(c in CONTROLLER_LABELS))return;setupCtrls[team]=c;ctrlsSaved=true;try{localStorage.setItem('craterCrew.controllers',JSON.stringify(setupCtrls))}catch{}updateAiHint()}

@@ -120,7 +120,7 @@ test('AI selector has three strategic profiles and rematch preserves the chosen 
  assert.equal(AI_PROFILES[0].reposition,false);assert.equal(AI_PROFILES[2].reposition,true);
  // Setup screen: each team gets a player; the choice reaches the battle and survives rematch and new map.
  const {chooseController}=window.__craterCrew,hint=element('ai-hint');chooseController(0,'human');chooseController(1,'ultra');
- assert.match(hint.textContent,/PC ULTRA/);
+ assert.equal(hint.textContent,'','no explanatory paragraph under the player buttons');
  element('music-on').checked=false;element('effects-on').checked=false;
  element('start').onclick();assert.deepEqual(state.controllers,['human','ultra']);assert.equal(element('ai-level').textContent,'HUMAN vs PC ULTRA');
  element('result').classList.add('open');element('rematch').onclick();assert.deepEqual(state.controllers,['human','ultra']);
