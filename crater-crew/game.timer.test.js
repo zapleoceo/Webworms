@@ -64,6 +64,8 @@ test('USE LOCAL AI after a Broker outage plays the turn locally instead of askin
   newGame(0,1,980);state.controllers=['human','hard'];beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));
   assert.equal(state.phase,'broker-error');assert.equal(posts,1);
   element('broker-local').onclick();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.difficulty,2,'the first local turn uses the same sharp profile as PC EASY');
+  assert.equal(element('ai-level').textContent,'HUMAN vs PC EASY','HUD shows the effective controller');
   assert.equal(posts,1,'no second Broker request');assert.notEqual(state.phase,'broker-wait');assert.notEqual(state.phase,'broker-error');
   run(15,()=>state.team===0);assert.equal(state.team,0,'the local AI finished the turn');
  }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;newGame(0,1,981)}
@@ -118,4 +120,30 @@ test('with localStorage blocked the setup and sound controls still work',()=>{
 test('a new match never inherits the rope of the previous one',()=>{
  newGame(0,1,62);state.rope={state:'attached',pivots:[{x:10,y:10}],fixed:0};state.aiRope={t:0};
  newGame(0,1,63);assert.equal(state.rope,null);assert.equal(state.aiRope,null);
+});
+
+// The explicit fallback belongs to this match, not to the player's next match or saved setup.
+for(const restart of ['rematch','new-map'])test(`local fallback lasts through later turns but ${restart} restores the chosen Broker levels`,async()=>{
+ const prior=globalThis.fetch;let posts=0;
+ globalThis.fetch=async()=>{posts++;return new Response(JSON.stringify({status:'unavailable',error:'mock offline'}),{status:503})};
+ try{
+  newGame(0,2,4545);state.controllers=['ultra','god'];state.aiDriver='broker';beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.phase,'broker-error');assert.equal(posts,1);element('broker-local').onclick();
+  assert.deepEqual(state.controllers,['ultra','god'],'setup choice is not overwritten');
+  assert.equal(element('ai-level').textContent,'PC ULTRA vs PC EASY','only the fallback team changes in the HUD');
+  beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,1,'later turns still run locally');
+  beginTurn(0);aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,2,'the other team still uses the Broker');
+  element(restart).onclick();beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(posts,3,'a new match uses the original GOD selection again');assert.equal(state.phase,'broker-error');
+  assert.equal(element('ai-level').textContent,'PC ULTRA vs PC GOD','new match restores the original HUD label');
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,4546)}
+});
+
+test('legacy Broker fallback also resets on rematch',async()=>{
+ const prior=globalThis.fetch;let posts=0;globalThis.fetch=async()=>{posts++;return new Response(JSON.stringify({status:'unavailable',error:'mock offline'}),{status:503})};
+ try{
+  delete state.controllers;newGame(0,1,4646);state.aiDriver='broker';beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));
+  element('broker-local').onclick();assert.equal(state.difficulty,2);beginTurn(1);aiAct();assert.equal(posts,1);
+  element('rematch').onclick();beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,2);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;state.aiDriver='local';newGame(0,1,4647)}
 });

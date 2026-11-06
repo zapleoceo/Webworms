@@ -625,3 +625,21 @@ test('PC GOD sends the journal after the snapshot and candidates; PC Ultra does 
   assert.equal(posts.length,2);assert.equal(posts[1].difficulty,2);assert.equal(Object.hasOwn(posts[1],'history'),false,'PC Ultra gets no history');
  }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,996)}
 });
+
+test('a recovered Broker turn keeps the other team local only until the next match',async()=>{
+ const prior=globalThis.fetch;let posts=0;
+ globalThis.fetch=async()=>{posts++;return new Response(JSON.stringify({status:'unavailable',error:'mock offline'}),{status:503})};
+ try{
+  newGame(0,2,5050);state.controllers=['hard','god'];beginTurn(0);aiAct();await new Promise(resolve=>setImmediate(resolve));
+  element('broker-local').onclick();assert.deepEqual(state.localAiTeams,[true,false]);
+  for(let i=0;i<1500&&state.team===0;i++)update(1/30);assert.equal(state.team,1);
+  aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,2);
+  const saved=readPendingTurn();assert.ok(saved);assert.deepEqual(saved.game.localAiTeams,[true,false]);
+  const raw=JSON.parse(sessionItems.get(PENDING_KEY));
+  for(const invalid of [[true,true],[1,false],[false],{}]){sessionItems.set(PENDING_KEY,JSON.stringify({...raw,game:{...raw.game,localAiTeams:invalid}}));assert.equal(readPendingTurn(),null)}
+  const old={...raw,game:{...raw.game}};delete old.game.localAiTeams;sessionItems.set(PENDING_KEY,JSON.stringify(old));assert.ok(readPendingTurn(),'old pending records remain readable');
+  newGame(0,2,5051,true);assert.equal(restorePendingBrokerTurn(saved),true);assert.deepEqual(state.localAiTeams,[true,false]);
+  beginTurn(0);aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,2,'recovered fallback does not call Broker');
+  element('rematch').onclick();beginTurn(0);aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,3,'new match restores HARD');
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,5052)}
+});
