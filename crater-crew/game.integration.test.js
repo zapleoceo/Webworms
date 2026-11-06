@@ -33,6 +33,8 @@ function placeBeside(shooter,target,near,far){
 }
 // The duel plain keeps its old height above the sea (600 vs water 755), since AI jetpack/walk rules key off the water line.
 const PLAIN=WATER-155;
+// A match started from the setup screen tosses a coin for the opening turn; scripted human turns need team 0 to open.
+function humanOpens(){for(let seed=1;state.team!==0;seed++)newGame(state.map,state.difficulty,seed)}
 function flatDuel(enemyX,difficulty=2,seed=807){
  // The duel scenarios check the step-by-step local algorithm per difficulty, not the PC Easy sandbox player.
  delete state.controllers;state.aiDriver='local';newGame(0,difficulty,seed);beginTurn(1);const t=state.terrain;
@@ -240,7 +242,7 @@ test('music and effects unlock only on a gesture, separate controls persist, and
  const prior=globalThis.__audioStarts;element('music-on').checked=false;element('music-on').onchange();
  globalThis.__audioContext.currentTime+=.3;update(.04);assert.equal(globalThis.__audioStarts,prior,'music off schedules nothing');
  element('effects-on').checked=true;element('effects-on').onchange();assert.equal(state.sound,true);assert.equal(state.musicEnabled,false);
- state.sound=false;state.musicEnabled=false;
+ state.sound=false;state.musicEnabled=false;delete state.controllers;
 });
 
 test('ordnance launch rules: wind-proof airstrike, dropped dynamite and downward fire',()=>{
@@ -454,7 +456,7 @@ test('complete autoplay battles terminate across maps, difficulties and seeds',(
   for(let frame=0;frame<18000&&!state.ended;frame++){
    if(state.team===0&&state.phase==='ready'){
     const opponents=state.worms.filter(w=>w.team===1&&w.alive);
-    if(opponents.length){state.selected='airstrike';state.airTarget=opponents.reduce((a,b)=>a.hp<b.hp?a:b).x;fire();turns++}
+    if(opponents.length){state.ammo[0].airstrike=1;state.selected='airstrike';state.airTarget=opponents.reduce((a,b)=>a.hp<b.hp?a:b).x;fire();turns++}
    }
    update(.04);
   }
@@ -606,7 +608,7 @@ test('PC GOD sends the journal after the snapshot and candidates; PC Ultra does 
  const prior=globalThis.fetch,posts=[];
  globalThis.fetch=async (_url,options)=>{if(options?.method==='POST'){posts.push(JSON.parse(options.body));return new Response(JSON.stringify({status:'pending',ticket:'god-ticket',pollAfter:5}),{status:202})}return new Response(JSON.stringify({status:'pending',pollAfter:5}))};
  try{
-  const {chooseController}=window.__craterCrew;chooseController(0,'human');chooseController(1,'god');element('start').onclick();
+  const {chooseController}=window.__craterCrew;chooseController(0,'human');chooseController(1,'god');element('start').onclick();humanOpens();
   assert.deepEqual(state.controllers,['human','god']);assert.equal(element('ai-level').textContent,'HUMAN vs PC GOD');
   // Sky Squad's airstrike becomes the first journal entry, then the GOD turn is asked for.
   state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
@@ -620,7 +622,7 @@ test('PC GOD sends the journal after the snapshot and candidates; PC Ultra does 
   state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));
   newGame(0,1,995,true);delete state.controllers;assert.equal(restorePendingBrokerTurn(readPendingTurn()),true);
   assert.deepEqual(state.controllers,['human','god']);assert.equal(state.journal.length,1);
-  chooseController(1,'ultra');element('start').onclick();state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
+  chooseController(1,'ultra');element('start').onclick();humanOpens();state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
   aiAct();await new Promise(resolve=>setImmediate(resolve));
   assert.equal(posts.length,2);assert.equal(posts[1].difficulty,2);assert.equal(Object.hasOwn(posts[1],'history'),false,'PC Ultra gets no history');
  }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,996)}
