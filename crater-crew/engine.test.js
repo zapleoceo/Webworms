@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {W,H,R,WATER,createTerrain,solid,carve,groundY,blastDamage,trajectory,selectShot,stepBody,crawl,wormFits,BODIES} from './engine.js';
+import {W,H,R,WATER,createTerrain,spawnSpots,solid,carve,groundY,blastDamage,trajectory,selectShot,stepBody,crawl,wormFits,BODIES,BODY_STEP} from './engine.js';
 
 // A flat island with an optional profile: top(x) gives the surface height of each column.
 function shaped(top){const t=createTerrain(0,1);for(let x=0;x<W;x++){t.top[x]=Math.floor(top(x));for(let y=0;y<H;y++)t.mask[y*W+x]=y>=t.top[x]?1:0}return t}
@@ -9,7 +9,9 @@ test('all maps form solid, varying islands above water',()=>{
  for(let map=0;map<3;map++){
   const t=createTerrain(map,42);
   assert.equal(t.mask.length,W*H);
-  for(const x of [170,340,730,780,1270,1450]){
+  // Spawns are no longer fixed columns: check the six spots newGame() actually uses.
+  const spots=spawnSpots(t,42);assert.equal(spots.length,6,`map ${map} spots`);
+  for(const {x} of spots){
    assert.ok(groundY(t,x)<WATER-20,`map ${map}, spawn ${x}`);
    assert.equal(solid(t,x,groundY(t,x)+2),true);
    assert.equal(solid(t,x,groundY(t,x)-2),false);
@@ -58,7 +60,20 @@ test('the AI grenade forecast matches live flight at any frame rate',()=>{
  const t=createTerrain(0,4242);
  for(const a of [-60,-25,15])for(const p of [.4,1]){
   const th=a*Math.PI/180,s=300+280*p,x=500,y=groundY(t,500)-30,f=trajectory(t,x,y,Math.cos(th)*s,Math.sin(th)*s,0,{fuse:3,bounce:true});
-  for(const dt of [1/144,1/60,.04]){const b={x,y,vx:Math.cos(th)*s,vy:Math.sin(th)*s,r:8};let time=0;while(time<3-1e-9&&b.y<=WATER){stepBody(t,b,dt);time+=dt}
-   assert.ok(Math.hypot(b.x-f.x,b.y-f.y)<6,`angle ${a}, power ${p}, dt ${dt}`)}
+  // Same throw with the sea switched off: the whole 3 s flight path (bounces included) must agree.
+  const full=trajectory(t,x,y,Math.cos(th)*s,Math.sin(th)*s,0,{fuse:3,bounce:true,water:Infinity});
+  for(const dt of [1/144,1/60,.04]){const b={x,y,vx:Math.cos(th)*s,vy:Math.sin(th)*s,r:8},c={...b};let time=0,prev={x,y};while(time<3-1e-9&&b.y<=WATER){prev={x:b.x,y:b.y};stepBody(t,b,dt);time+=dt}
+   if(f.y>WATER){
+    // On the big map many of these throws end in a sea channel. The forecast stops at the first
+    // 1/120 s body step below WATER; the live loop (like updateProjectile) only checks water once
+    // per frame, so it sinks up to one frame further (~20 px at 25 fps). The forecast splash point must
+    // lie on the live path within the frame that crossed the water line (same 6 px tolerance).
+    assert.ok(b.y>WATER,`drowns live too: angle ${a}, power ${p}, dt ${dt}`);
+    const sx=b.x-prev.x,sy=b.y-prev.y,k=Math.max(0,Math.min(1,((f.x-prev.x)*sx+(f.y-prev.y)*sy)/(sx*sx+sy*sy||1)));
+    assert.ok(Math.hypot(prev.x+sx*k-f.x,prev.y+sy*k-f.y)<6,`splash (${f.x.toFixed(1)},${f.y.toFixed(1)}) off live frame (${prev.x.toFixed(1)},${prev.y.toFixed(1)})->(${b.x.toFixed(1)},${b.y.toFixed(1)}): angle ${a}, power ${p}, dt ${dt}`);
+    assert.ok(Math.abs(time-f.time)<=dt+BODY_STEP+1e-9,`splash time ${time} vs ${f.time}: angle ${a}, power ${p}, dt ${dt}`);
+   }else assert.ok(Math.hypot(b.x-f.x,b.y-f.y)<6,`angle ${a}, power ${p}, dt ${dt}`);
+   let ct=0;while(ct<3-1e-9){stepBody(t,c,dt);ct+=dt}
+   assert.ok(Math.hypot(c.x-full.x,c.y-full.y)<6,`no-water path: angle ${a}, power ${p}, dt ${dt}`)}
  }
 });
