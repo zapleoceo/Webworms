@@ -91,3 +91,21 @@ html,body{overflow-anchor:none}.weapon-options{min-height:44px}
 .cam-button{height:38px;padding:0 12px;border:3px solid var(--ink);border-radius:12px;background:var(--panel2);color:#fff6e0;font:inherit;font-size:11px;font-weight:900;letter-spacing:.05em;cursor:pointer;box-shadow:0 3px 0 #0a0712}
 .cam-button:hover{background:#4d3f7a}
 @media(max-width:700px){.cam-button{height:32px;padding:0 8px;font-size:10px}}
+
+/* Results: who won and who lost at a glance, then the match numbers. */
+.result-card{width:min(600px,100%)}
+#result.team-sky #result-title{color:#4aa8ff}#result.team-dirt #result-title{color:#ff5d52}
+.result-teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin:14px 0}
+.result-teams i{font-style:normal;font-weight:900;color:var(--gold);letter-spacing:.2em;font-size:12px}
+.rt{display:grid;gap:3px;padding:12px 10px;border:3px solid var(--ink);border-radius:14px;background:#211a36}
+.rt b{font-size:14px;letter-spacing:.08em}.rt.sky b{color:#4aa8ff}.rt.dirt b{color:#ff5d52}
+.rt span{font-size:20px;font-weight:1000;letter-spacing:.06em}
+.rt.won{background:linear-gradient(#5b4a1a,#2b2242);border-color:var(--gold);box-shadow:0 0 0 2px var(--ink),0 6px 18px #ffd23f55}
+.rt.won span{color:var(--gold)}.rt.won span::before{content:'🏆 '}
+.rt.lost{opacity:.75}.rt.lost span{color:#c9bfe6}
+.rt small{font-size:10px;color:#d8cdf7;letter-spacing:.06em}
+.result-stats{width:100%;border-collapse:collapse;margin:4px 0 10px;font-size:13px}
+.result-stats th,.result-stats td{padding:6px 8px;border-bottom:1px solid #ffffff1c;text-align:center}
+.result-stats td:first-child{text-align:left;color:#d8cdf7}
+.result-stats th.sky,.sky{color:#4aa8ff}.result-stats th.dirt,.dirt{color:#ff5d52}
+.result-meta{font-size:12px;color:#d8cdf7;margin:0 0 14px}

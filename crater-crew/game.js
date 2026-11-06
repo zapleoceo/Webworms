@@ -16,7 +16,7 @@ import {planTeleport,planCrate,planRope,executeRopeInputs} from './ai-utility.js
 // Match settings, like a classic scheme: map props and how often a health crate drops at turn start.
 const scheme={mines:8,barrels:6,crateChance:.3};
 const $=id=>document.getElementById(id), canvas=$('game'),ctx=canvas.getContext('2d');
-const names=[['Pip','Bubbles','Mochi'],['Grub','Maverick','Nibbles']],TEAM_NAMES=['SKY SQUAD','DIRT DEVILS'];
+const names=[['Pip','Bubbles','Mochi'],['Grub','Maverick','Nibbles']],TEAM_NAMES=['SKY SQUAD','DIRT DEVILS'],TEAM_TITLES=['Sky Squad','Dirt Devils'];
 // Who plays each team: 'human', 'easy' (the local algorithm at its sharpest), 'hard' (Broker LLM that ignores
 // the wind) or 'ultra' (Broker LLM with every game parameter). Without a setup choice the legacy
 // single-player defaults apply: humans are team 0, the AI is team 1 driven by state.aiDriver.
@@ -46,7 +46,7 @@ function weaponSound(id){
  else if(id==='punch'){noise(.12,.09,400);tone(140,.15,'triangle',.07,55)}
  else if(id==='jetpack'){noise(.55,.07,2400);tone(280,.4,'sawtooth',.025,470)}
 }
-function say(text,time=2){state.message=text;state.messageTimer=time;$('message').textContent=text}
+function say(text,time=2,color=''){state.message=text;state.messageTimer=time;$('message').textContent=text;$('message').style.color=color}
 function buildTerrain(rect=null){
  const t=state.terrain,th=themes[state.map],key=state.seed+':'+state.map;
  if(!state.soil||state.soil.key!==key)state.soil={key,...bakeSoil(state.map,state.seed,W,H,th)};
@@ -63,7 +63,7 @@ function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePend
  const spots=spawnSpots(state.terrain,seed);
  for(let team=0;team<2;team++)for(let i=0;i<3;i++){const s=spots[i*2+team]??{x:400+(i*2+team)*500,y:groundY(state.terrain,400+(i*2+team)*500)-R-2};let x=s.x,y=s.y;state.worms.push({id:team*3+i,team,name:names[team][i],x,y,vx:0,vy:0,hp:100,alive:true,face:team? -1:1,grounded:true,flash:0,active:false});}
  for(let i=0;i<42;i++)state.decor.push({x:visualRand()*W,y:visualRand()*H*.55,r:visualRand()*3+1,phase:visualRand()*6.28});
- state.props=placeProps(state.terrain,state.worms,seed,scheme);state.propWait=0;music.next();music.setMood('battle');state.active=state.worms[0];state.active.active=true;state.cam={x:0,y:0,zoom:1,tz:1,free:false,auto:true};state.camTargetId=null;state.ammo=[{teleport:2},{teleport:2}];centerCamera();updateUI();say('YOUR TURN · TAKE AIM',2.5);
+ state.props=placeProps(state.terrain,state.worms,seed,scheme);state.stats=newStats();state.propWait=0;music.next();music.setMood('battle');state.active=state.worms[0];state.active.active=true;state.cam={x:0,y:0,zoom:1,tz:1,free:false,auto:true};state.camTargetId=null;state.ammo=[{teleport:2},{teleport:2}];centerCamera();updateUI();say('YOUR TURN · TAKE AIM',2.5);
 }
 function living(team){return state.worms.filter(w=>w.team===team&&w.alive)}
 function beginTurn(team){
@@ -73,25 +73,51 @@ function beginTurn(team){
  // Bots: the local algorithm always plays its sharpest profile; Broker levels name themselves in the prompt.
  if(state.controllers&&isBot(team))state.difficulty=ctrl(team)==='hard'?1:2;
  const prior=state.lastActiveId[team];state.active=alive.find(w=>w.id>prior)||alive[0];state.active.active=true;state.lastActiveId[team]=state.active.id;state.dir=team? -1:1;state.aim=-.78;state.power=.55;
- updateUI();say(isBot(team)?TEAM_NAMES[team]+' ARE THINKING...':(isBot(1-team)?'YOUR TURN · TAKE AIM':TEAM_NAMES[team]+' · YOUR TURN'),1.8);voice(state.active,'turn');
+ updateUI();say(isBot(team)?thinkingText():(isBot(1-team)?'YOUR TURN · TAKE AIM':TEAM_NAMES[team]+' · YOUR TURN'),1.8,TEAM_COLORS[team]);voice(state.active,'turn');
  // The Broker model needs several seconds, so its request leaves the moment the AI turn starts.
  state.aiTimer=team?(usesBroker(state.team)?0:1.1):0;pickTarget(null);state.rope=null;state.aiRope=null;state.aiUtilityUsed=false;state.aiFollowUp=false;if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
 }
 function finish(winner){clearPendingTurn();state.brokerController?.abort();state.brokerController=null;$('broker-panel').hidden=true;state.ended=true;state.running=false;state.phase='ended';state.musicNextTime=0;// Results read from the human's side; a bot-vs-bot match and a two-player match just name the winner.
- const solo=isHuman(0)!==isHuman(1),humanWon=solo&&winner!==2&&isHuman(winner),loser=TEAM_NAMES[1-winner];
- $('result-caption').textContent=winner===2?'THE ISLAND CLAIMS EVERYONE':TEAM_NAMES[winner]+' WIN';$('result-title').textContent=winner===2?'DRAW':!solo?TEAM_NAMES[winner]+'!':humanWon?'VICTORY!':'DEFEAT';$('result-text').textContent=winner===2?'Both teams went under. Try another island!':solo&&!humanWon?`The ${TEAM_NAMES[winner].toLowerCase()} took this island. Try another tactic!`:`The ${loser.toLowerCase()} have been sent packing. The island is theirs!`;$('result').classList.add('open');music.setMood(winner!==2&&(isHuman(winner)||isBot(1-winner)&&isBot(winner))?'victory':'defeat');$('rematch').focus?.();tone(winner?180:600,.5,'sine',.1,winner?80:900);// The closing line speaks for the human side: cheers when a human team wins, "game over" when the bots win.
+ const solo=isHuman(0)!==isHuman(1),humanWon=solo&&winner!==2&&isHuman(winner),loser=TEAM_TITLES[1-winner];
+ $('result-caption').textContent=winner===2?'THE ISLAND CLAIMS EVERYONE':TEAM_NAMES[winner]+' WIN';$('result-title').textContent=winner===2?'DRAW':!solo?TEAM_NAMES[winner]+'!':humanWon?'VICTORY!':'DEFEAT';$('result-text').textContent=winner===2?'Both teams went under. Try another island!':solo&&!humanWon?`The ${TEAM_TITLES[winner]} took this island. Try another tactic!`:`The ${loser} have been sent packing. The island is theirs!`;$('result-stats').innerHTML=resultStats(winner);$('result').classList.toggle('team-sky',winner===0);$('result').classList.toggle('team-dirt',winner===1);$('result').classList.add('open');music.setMood(winner!==2&&(isHuman(winner)||isBot(1-winner)&&isBot(winner))?'victory':'defeat');$('rematch').focus?.();tone(winner?180:600,.5,'sine',.1,winner?80:900);// The closing line speaks for the human side: cheers when a human team wins, "game over" when the bots win.
  const champ=state.worms.find(w=>w.alive&&w.team===winner);if(winner===2)voice(state.worms[0],'tie');else if(isBot(winner)&&isHuman(1-winner))voice({team:1-winner,id:0},'die');else if(champ)voice(champ,'win')}
 function nextTurn(){if(state.ended)return;const p=living(0).length,e=living(1).length;if(!p||!e){finish(!p&&!e?2:p?0:1);return}if(isBot(state.team)){state.round++;if(state.round>8){state.waterLevel=Math.max(270,WATER-(state.round-8)*12);music.setMood('tense');say('SUDDEN DEATH · WATER RISING!',1.7)}}beginTurn(1-state.team)}
 function cycle(){if(!state.running||!isHuman(state.team)||state.used||state.shotgunLeft||state.phase!=='ready')return;const a=living(state.team),idx=a.indexOf(state.active);state.active.active=false;state.active=a[(idx+1)%a.length];state.active.active=true;state.lastActiveId[0]=state.active.id;updateUI();tone(450,.05)}
 function endTurn(){if(!state.running||!isHuman(state.team)||state.phase==='resolving')return;state.used=true;state.phase='resolving';state.resolveTimer=.5;state.charging=false;say('TURN PASSED',.8)}
 function emit(x,y,color,count=18,speed=180){for(let i=0;i<count;i++){const a=visualRand()*Math.PI*2,v=speed*(.25+visualRand()*.9);state.particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-50,life:.35+visualRand()*.6,max:1,r:1.5+visualRand()*5,color});}}
 function addBlast(x,y,r){state.blasts.push(makeBlast(x,y,r,visualRand));const th=themes[state.map];emit(x,y,th.dirt,26,330);emit(x,y,th.light,16,260);emit(x,y,th.dark,12,200)}
+// Match statistics for the results screen. A kill goes to whoever hit the worm last, so a knock into the
+// water or a fatal fall still counts for the attacker.
+function newStats(){return {start:Date.now(),teams:[0,1].map(()=>({dmg:0,kills:0,shots:0,lost:0,drowned:0,friendly:0})),worms:{},best:null}}
+function record(w,amount,sourceId){
+ if(!state.stats||!(amount>0))return;const src=state.worms.find(x=>x.id===sourceId);if(!src)return;
+ w.lastHitBy=src.id;const t=state.stats.teams[src.team];
+ if(src.team===w.team){t.friendly+=amount;return}
+ t.dmg+=amount;const ws=state.stats.worms[src.id]??={dmg:0,kills:0};ws.dmg+=amount;
+ if(!state.stats.best||amount>state.stats.best.amount)state.stats.best={amount,by:src.name,team:src.team,on:w.name};
+}
+function recordDeath(w,drowned){
+ const s=state.stats;if(!s)return;s.teams[w.team].lost++;if(drowned)s.teams[w.team].drowned++;
+ const by=state.worms.find(x=>x.id===w.lastHitBy);if(by&&by.team!==w.team){s.teams[by.team].kills++;(s.worms[by.id]??={dmg:0,kills:0}).kills++}
+}
+function resultStats(winner){
+ const s=state.stats;if(!s)return '';const e=v=>String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+ const card=t=>`<div class="rt ${t?'dirt':'sky'} ${winner===2?'draw':winner===t?'won':'lost'}"><b>${TEAM_NAMES[t]}</b><span>${winner===2?'DRAW':winner===t?'WINNER':'DEFEATED'}</span><small>${e(CONTROLLER_LABELS[ctrl(t)]||'')} · ${living(t).length} left</small></div>`;
+ const rows=[['Damage dealt','dmg'],['Kills','kills'],['Shots','shots'],['Worms lost','lost'],['Drowned','drowned'],['Friendly fire','friendly']];
+ const best=Object.entries(s.worms).map(([id,v])=>({w:state.worms.find(x=>x.id===Number(id)),...v})).filter(x=>x.w).sort((a,b)=>b.kills*60+b.dmg-(a.kills*60+a.dmg))[0];
+ const secs=Math.round((Date.now()-s.start)/1000);
+ return `<div class="result-teams">${card(0)}<i>VS</i>${card(1)}</div>`+
+  `<table class="result-stats"><tr><th></th><th class="sky">SKY</th><th class="dirt">DIRT</th></tr>${rows.map(([label,k])=>`<tr><td>${label}</td><td>${Math.round(s.teams[0][k])}</td><td>${Math.round(s.teams[1][k])}</td></tr>`).join('')}</table>`+
+  `<p class="result-meta">${best?`MVP <b class="${best.w.team?'dirt':'sky'}">${e(best.w.name)}</b> · ${Math.round(best.dmg)} dmg, ${best.kills} kill${best.kills===1?'':'s'} · `:''}${s.best?`Best hit ${Math.round(s.best.amount)} by ${e(s.best.by)} on ${e(s.best.on)} · `:''}${state.round} rounds · ${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}</p>`;
+}
+// Banner shown while a bot thinks: the worm, its team and level, in the team colour.
+function thinkingText(seconds){const w=state.active;return `${w?w.name.toUpperCase()+' · ':''}${TEAM_NAMES[state.team]} · ${CONTROLLER_LABELS[ctrl(state.team)]||'AI'} IS THINKING${seconds==null?'...':' · '+seconds+'s'}`}
 function explosion(x,y,r,damage,source){state.shake=Math.max(state.shake,13);addBlast(x,y,r);tone(95,.36,'sawtooth',.13,38);noise(.34,.11,750);emit(x,y,'#ffdd82',42,310);emit(x,y,'#634957',22,230);blastProps(state,x,y,r,damage);carve(state.terrain,x,y,r*.78);buildTerrain({x0:Math.floor(x-r-6),x1:Math.ceil(x+r+6),y0:Math.floor(y-r-6)});
- for(const w of state.worms){if(!w.alive)continue;const d=Math.hypot(w.x-x,w.y-y);const hurt=blastDamage(d,r,damage);if(hurt){w.hp=Math.max(0,w.hp-hurt);w.flash=.7;wormCry();const push=(1-d/r)*400;w.vx+=(w.x-x)/(d||1)*push;w.vy-=Math.max(130,push*.7);w.grounded=false;emit(w.x,w.y,w.team?'#ff9980':'#8ef9e4',8,110);if(w.hp)voice(w,w.hp<35?'medic':'hurt');if(!w.hp)kill(w);}}
+ for(const w of state.worms){if(!w.alive)continue;const d=Math.hypot(w.x-x,w.y-y);const hurt=blastDamage(d,r,damage);if(hurt){{const before=w.hp;w.hp=Math.max(0,w.hp-hurt);record(w,before-w.hp,source)}w.flash=.7;wormCry();const push=(1-d/r)*400;w.vx+=(w.x-x)/(d||1)*push;w.vy-=Math.max(130,push*.7);w.grounded=false;emit(w.x,w.y,w.team?'#ff9980':'#8ef9e4',8,110);if(w.hp)voice(w,w.hp<35?'medic':'hurt');if(!w.hp)kill(w);}}
  for(const p of state.projectiles){if(p.dead||(p.type!=='grenade'&&p.type!=='dynamite'))continue;const d=Math.hypot(p.x-x,p.y-y);if(d<r*1.3){const push=(1-d/(r*1.3))*520;p.vx+=(p.x-x)/(d||1)*push;p.vy+=(p.y-y)/(d||1)*push-120;p.resting=false}}
  updateUI();if(state.phase==='retreat')state.phase='resolving';if(state.phase==='resolving')state.resolveTimer=Math.max(state.resolveTimer,1.3);
 }
-function kill(w){if(!w.alive)return;voice(w,w.y>state.waterLevel-12?'water':'die');const killer=state.active;if(killer?.alive&&killer.team!==w.team)setTimeout?.(()=>voice(killer,'kill'),1100);w.alive=false;w.active=false;emit(w.x,w.y,'#fff8d1',28,220);tone(230,.22,'square',.05,80);chirp();say(w.name.toUpperCase()+' IS OUT!',1.3);if((state.active===w&&state.phase==='ready')||living(w.team).length===0){state.phase='resolving';state.resolveTimer=1.5}updateUI()}
+function kill(w){if(!w.alive)return;recordDeath(w,w.y>state.waterLevel-12);voice(w,w.y>state.waterLevel-12?'water':'die');const killer=state.active;if(killer?.alive&&killer.team!==w.team)setTimeout?.(()=>voice(killer,'kill'),1100);w.alive=false;w.active=false;emit(w.x,w.y,'#fff8d1',28,220);tone(230,.22,'square',.05,80);chirp();say(w.name.toUpperCase()+' IS OUT!',1.3);if((state.active===w&&state.phase==='ready')||living(w.team).length===0){state.phase='resolving';state.resolveTimer=1.5}updateUI()}
 // Hooks the map props call back into: blasts, heals, mine beeps and splashes.
 const propApi={explode:(x,y,r,d)=>explosion(x,y,r,d,-1),heal:(w,a)=>{w.hp+=a;w.flash=0;emit(w.x,w.y-10,'#7dffa8',14,120);tone(880,.12,'sine',.05,1320);say(`${w.name.toUpperCase()} +${a} HP`,1.2);updateUI()},beep:()=>tone(1150,.06,'square',.035),splash:(x,y)=>emit(x,y,'#d6f5ff',12,100)};
 function startResolution(wait=1){if(state.rope&&state.active){releaseRope(state.active,state.rope);state.active.grounded=false}state.rope=null;state.shotgunLeft=0;state.phase='resolving';state.resolveTimer=wait;state.used=true;state.charging=false}
@@ -100,7 +126,7 @@ function toggleGrenadeBounce(){if(!state.running||!isHuman(state.team)||state.ph
 function toggleStrikeDirection(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='airstrike')return;state.strikeDir*=-1;state.playerStrikeDir=state.strikeDir;updateUI();tone(460,.07,'triangle',.025)}
 function dropDynamite(){if(!state.running||state.phase!=='jetpack'||state.jetDropped||!state.active?.alive)return false;const w=state.active;state.projectiles.push({type:'dynamite',x:w.x,y:w.y+R+3,vx:w.vx*.25,vy:w.vy,fuse:3,r:9,bounces:0,bounceFactor:.48,source:w.id,trail:[]});state.jetDropped=true;weaponSound('dynamite');say('DYNAMITE DROPPED!',1);updateUI();return true}
 function aimVector(){return {x:Math.cos(state.aim)*state.dir,y:Math.sin(state.aim)}}
-function fire(power=state.power){if(!state.running||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,weapon=state.selected,v=aimVector();state.charging=false;followAgain();weaponSound(weapon);if(!['jetpack','rope','teleport'].includes(weapon)&&!state.shotgunLeft)voice(w,weapon==='bazooka'||weapon==='shotgun'?weapon:'fire');if(weapon==='airstrike'){const foe=living(1-w.team)[0];if(foe)setTimeout?.(()=>voice(foe,'incoming'),700)}if(weapon==='shotgun')noise(.18,.065,2300);else if(weapon==='bazooka')noise(.1,.035,1400);
+function fire(power=state.power){if(!state.running||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,weapon=state.selected,v=aimVector();state.charging=false;followAgain();if(state.stats&&!['jetpack','rope','teleport'].includes(weapon)&&!(weapon==='shotgun'&&state.shotgunLeft===1))state.stats.teams[w.team].shots++;weaponSound(weapon);if(!['jetpack','rope','teleport'].includes(weapon)&&!state.shotgunLeft)voice(w,weapon==='bazooka'||weapon==='shotgun'?weapon:'fire');if(weapon==='airstrike'){const foe=living(1-w.team)[0];if(foe)setTimeout?.(()=>voice(foe,'incoming'),700)}if(weapon==='shotgun')noise(.18,.065,2300);else if(weapon==='bazooka')noise(.1,.035,1400);
  if(weapon==='rope'){
   // Space or click fires the hook along the aim; again while hooked lets go and keeps the momentum.
   if(state.rope){releaseRope(w,state.rope);state.rope=null;w.grounded=false;tone(520,.06,'triangle',.03);return}
@@ -115,8 +141,8 @@ function fire(power=state.power){if(!state.running||state.phase!=='ready'||!stat
   ammo.teleport--;emit(w.x,w.y,'#c9a2ff',26,170);w.x=tx;w.y=ty;w.vx=0;w.vy=0;w.grounded=false;w.sliding=false;emit(tx,ty,'#c9a2ff',26,170);
   tone(300,.25,'sine',.05,1400);say(ammo.teleport?'TELEPORTED!':'TELEPORTED · LAST ONE',1.1);state.airTarget=null;state.selected=state.playerWeapon='bazooka';updateUI();return}
  if(weapon==='jetpack'){state.phase='jetpack';state.used=true;state.jetTime=4;if(isBot(state.team))w.jetUsed=true;say('JETPACK · STEER TO FLY',1.4);tone(480,.2,'sawtooth',.04,170);updateUI();return}
- if(weapon==='punch'){let hit=false;for(const target of state.worms){if(!target.alive||target.team===w.team)continue;const dx=target.x-w.x,dy=target.y-w.y;if(Math.abs(dx)<65&&Math.abs(dy)<48&&Math.sign(dx)===state.dir){target.hp=Math.max(0,target.hp-data.punch.damage);target.vx=state.dir*350;target.vy=-250;target.grounded=false;target.flash=.7;wormCry();voice(target,'hurt');emit(target.x,target.y,'#ffda8d',18,170);if(!target.hp)kill(target);hit=true;break}}carve(state.terrain,w.x+state.dir*39,w.y-3,24);buildTerrain();say(hit?'WHAM!':'SWUNG AND MISSED!',1.3);if(!hit)voice(w,'miss');tone(hit?190:350,.12,'square',.08);startResolution(1.3);updateUI();return}
- if(weapon==='shotgun'){if(!state.shotgunLeft)state.shotgunLeft=2;let hits=0;const chips=[];for(let i=0;i<5;i++){const a=state.aim+(simRandom()-.5)*.24,dir={x:Math.cos(a)*state.dir,y:Math.sin(a)},origin={x:w.x+dir.x*22,y:w.y-7+dir.y*22};for(let dist=0;dist<450;dist+=5){const x=origin.x+dir.x*dist,y=origin.y+dir.y*dist;if(x<0||x>=W||y<0||y>=H)break;if(solid(state.terrain,x,y)){chips.push([x,y]);break}let done=false;for(const target of state.worms){if(!target.alive||target===w)continue;if(Math.hypot(x-target.x,y-target.y)<R){target.hp=Math.max(0,target.hp-5);target.vx+=dir.x*32;target.vy-=24;target.flash=.6;hits++;if(!target.hp)kill(target);done=true;break}}if(done)break;}state.particles.push({x:origin.x,y:origin.y,vx:dir.x*340,vy:dir.y*340,life:.15,max:.15,r:2,color:'#fff3c9'});}for(const [x,y]of chips)carve(state.terrain,x,y,3);if(chips.length)buildTerrain();emit(w.x+v.x*25,w.y-7+v.y*25,'#ffda80',17,100);tone(180,.23,'sawtooth',.09,55);const result=hits?`${hits*5} DAMAGE`:'MISSED';if(!hits)voice(w,'miss');if(hits)wormCry();state.shotgunLeft--;if(state.shotgunLeft){say(`SHOTGUN · ${result} · SECOND SHOT!`,1.2);state.aiTimer=.4}else{say(`SHOTGUN · ${result}`,1.2);startResolution(1.2)}updateUI();return}
+ if(weapon==='punch'){let hit=false;for(const target of state.worms){if(!target.alive||target.team===w.team)continue;const dx=target.x-w.x,dy=target.y-w.y;if(Math.abs(dx)<65&&Math.abs(dy)<48&&Math.sign(dx)===state.dir){{const before=target.hp;target.hp=Math.max(0,target.hp-data.punch.damage);record(target,before-target.hp,w.id)}target.vx=state.dir*350;target.vy=-250;target.grounded=false;target.flash=.7;wormCry();voice(target,'hurt');emit(target.x,target.y,'#ffda8d',18,170);if(!target.hp)kill(target);hit=true;break}}carve(state.terrain,w.x+state.dir*39,w.y-3,24);buildTerrain();say(hit?'WHAM!':'SWUNG AND MISSED!',1.3);if(!hit)voice(w,'miss');tone(hit?190:350,.12,'square',.08);startResolution(1.3);updateUI();return}
+ if(weapon==='shotgun'){if(!state.shotgunLeft)state.shotgunLeft=2;let hits=0;const chips=[];for(let i=0;i<5;i++){const a=state.aim+(simRandom()-.5)*.24,dir={x:Math.cos(a)*state.dir,y:Math.sin(a)},origin={x:w.x+dir.x*22,y:w.y-7+dir.y*22};for(let dist=0;dist<450;dist+=5){const x=origin.x+dir.x*dist,y=origin.y+dir.y*dist;if(x<0||x>=W||y<0||y>=H)break;if(solid(state.terrain,x,y)){chips.push([x,y]);break}let done=false;for(const target of state.worms){if(!target.alive||target===w)continue;if(Math.hypot(x-target.x,y-target.y)<R){{const before=target.hp;target.hp=Math.max(0,target.hp-5);record(target,before-target.hp,w.id)}target.vx+=dir.x*32;target.vy-=24;target.flash=.6;hits++;if(!target.hp)kill(target);done=true;break}}if(done)break;}state.particles.push({x:origin.x,y:origin.y,vx:dir.x*340,vy:dir.y*340,life:.15,max:.15,r:2,color:'#fff3c9'});}for(const [x,y]of chips)carve(state.terrain,x,y,3);if(chips.length)buildTerrain();emit(w.x+v.x*25,w.y-7+v.y*25,'#ffda80',17,100);tone(180,.23,'sawtooth',.09,55);const result=hits?`${hits*5} DAMAGE`:'MISSED';if(!hits)voice(w,'miss');if(hits)wormCry();state.shotgunLeft--;if(state.shotgunLeft){say(`SHOTGUN · ${result} · SECOND SHOT!`,1.2);state.aiTimer=.4}else{say(`SHOTGUN · ${result}`,1.2);startResolution(1.2)}updateUI();return}
  if(weapon==='dynamite'){state.projectiles.push({type:'dynamite',x:w.x+state.dir*22,y:w.y-4,vx:0,vy:0,fuse:3,r:9,bounces:0,source:w.id,trail:[]});say('DYNAMITE · TAKE COVER!',1.6);tone(280,.1);state.phase='retreat';state.used=true;state.resolveTimer=3.6;state.aiRetreat=-state.dir;updateUI();return}
  if(weapon==='airstrike'){let tx=state.airTarget??clamp(w.x+state.dir*320,80,W-80);tx=clamp(tx,75,W-75);for(let i=0;i<5;i++)state.projectiles.push({type:'airstrike',x:clamp(tx-state.strikeDir*130+(i-2)*35,5,W-5),y:-170-i*90,vx:state.strikeDir*160,vy:370,fuse:6+i*.2,r:6,source:w.id,trail:[]});say('INCOMING AIRSTRIKE!',1.5);tone(600,.3,'sawtooth',.05,180);startResolution(4.3);updateUI();return}
  const speed=(weapon==='grenade'?300:370)+(weapon==='grenade'?280:390)*power;
@@ -178,7 +204,7 @@ async function requestBrokerTurn(resume=false){
  }
  const turnId=state.brokerTurnId,activeId=state.active.id,controller=new AbortController();
  const current=()=>state.running&&state.active?.id===activeId&&state.brokerTurnId===turnId&&state.phase==='broker-wait';
- state.brokerController=controller;state.phase='broker-wait';state.brokerElapsed=0;$('broker-panel').hidden=true;say('BROKER LLM IS THINKING...',20);updateUI();
+ state.brokerController=controller;state.phase='broker-wait';state.brokerElapsed=0;$('broker-panel').hidden=true;say(thinkingText(0),20,TEAM_COLORS[state.team]);updateUI();
  const deadline=setTimeout(()=>controller.abort(),28000);
  try{
   let result;
@@ -252,7 +278,7 @@ function land(w,jet){
  let gap=0;while(gap<8&&!solid(t,w.x,w.y+R+gap))gap++;
  if(gap>=8){const away=solid(t,w.x-7,w.y+R-3)||solid(t,w.x-9,w.y-1)?1:-1,nx=clamp(w.x+away*2,R,W-R);if(wormFits(t,nx,w.y)&&(w.shoves=(w.shoves||0)+1)<40){w.x=nx;w.vx=away*Math.max(40,Math.abs(w.vx)*.5);w.vy=Math.min(w.vy,40);return}}
  w.shoves=0;w.climbDebt=0;const impact=w.vy;
- if(!jet&&impact>560&&state.running){const hurt=Math.min(30,Math.round((impact-560)/8));w.hp=Math.max(0,w.hp-hurt);w.flash=.6;voice(w,'hurt');emit(w.x,w.y+R,themes[state.map].dirt,10,120);if(!w.hp)kill(w);updateUI()}
+ if(!jet&&impact>560&&state.running){const hurt=Math.min(30,Math.round((impact-560)/8));{const before=w.hp;w.hp=Math.max(0,w.hp-hurt);record(w,before-w.hp,w.lastHitBy)}w.flash=.6;voice(w,'hurt');emit(w.x,w.y+R,themes[state.map].dirt,10,120);if(!w.hp)kill(w);updateUI()}
  if(!jet&&impact>300){w.vy=-impact*.25;w.vx*=.6;return}
  // Settle on a whole pixel touching the ground, so the grounded test agrees next frame.
  w.y=Math.floor(w.y);for(let k=0;k<3&&!wormGrounded(t,w.x,w.y)&&wormFits(t,w.x,w.y+1);k++)w.y++;
@@ -267,7 +293,7 @@ function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dyn
  }}
  if(p.fuse<=0){p.dead=true;if(p.type==='grenade'||p.type==='dynamite'){explosion(p.x,p.y,data[p.type].radius,data[p.type].damage,p.source)}else if(p.type==='airstrike'){explosion(p.x,p.y,56,40,p.source)}else if(p.type==='bazooka'){p.dead=true}}
 }
-function update(dt){if(!state.running)return;updateCamera(dt);musicTick();if(isBot(state.team)&&usesBroker(state.team)&&['broker-wait','broker-error'].includes(state.phase)){if(state.phase==='broker-wait'){state.brokerElapsed=(state.brokerElapsed||0)+dt;$('message').textContent=`DIRT DEVILS ARE THINKING · ${Math.floor(state.brokerElapsed)}s`}updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
+function update(dt){if(!state.running)return;updateCamera(dt);musicTick();if(isBot(state.team)&&usesBroker(state.team)&&['broker-wait','broker-error'].includes(state.phase)){if(state.phase==='broker-wait'){state.brokerElapsed=(state.brokerElapsed||0)+dt;$('message').textContent=thinkingText(Math.floor(state.brokerElapsed))}updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
  if(state.phase==='ready'||state.phase==='jetpack'||state.phase==='reposition'){{const before=state.timer;state.timer-=dt;if(before>5&&state.timer<=5&&state.active?.alive)voice(state.active,'hurry')}if(state.timer<=0){state.timer=0;say('TIME IS UP!',1);startResolution(.7)}if(state.phase==='jetpack'){state.jetTime-=dt;state.jetPulse=(state.jetPulse||0)-dt;if(state.jetPulse<=0){noise(.19,.018,1800);state.jetPulse=.44}if(state.jetTime<=0)startResolution(.8)}if(state.phase==='reposition'){state.aiMoveTime-=dt;if(state.aiMoveTime<=0||Math.abs(state.active.x-state.aiTarget)<20){state.phase='ready';state.aiTimer=.25}}}
  if(isBot(state.team)&&state.phase==='ready'){state.aiTimer-=dt;if(state.aiTimer<=0)aiAct()}
  if(isBot(state.team)&&state.phase==='jetpack'&&!state.jetDropped&&state.active?.alive){const w=state.active;const target=living(1-w.team).find(f=>Math.abs(f.x-w.x)<62&&f.y-w.y>45);if(target&&living(w.team).every(f=>f===w||Math.hypot(f.x-w.x,f.y-w.y)>125))dropDynamite()}

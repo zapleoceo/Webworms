@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {W,H,R,WATER,createTerrain,spawnSpots,groundY,wormFits,wormGrounded,selectShot} from './engine.js';
 import {fireRope,stepRope,releaseRope} from './rope.js';
 import {planTeleport,planCrate,planRope,executeRopeInputs,simulateFall,ROPE_DT} from './ai-utility.js';
+// Generous on purpose: node --test runs files in parallel on a shared CPU; a real planner call takes ~5-60 ms,
+// so this still catches an order-of-magnitude regression without flaking under load.
+const BUDGET_MS=400;
 
 // A flat island with an optional profile, like engine.test.js: top(x) gives the surface of each column.
 function shaped(top){const t=createTerrain(0,1);for(let x=0;x<W;x++){t.top[x]=Math.floor(top(x));for(let y=0;y<H;y++)t.mask[y*W+x]=y>=t.top[x]?1:0}return t}
@@ -78,7 +81,7 @@ test('planRope swings a worm out of a deep pit onto the rim, and the replay land
   const t=pit(),worms=[worm(t,0,0,1800),worm(t,1,1,1100)],state=makeState(t,worms,{active:1});
   assert.ok(worms[1].y>800);
   const [plan,ms]=timed(()=>planRope(state));
-  assert.ok(plan,'expected a rope plan');assert.ok(ms<150,`planRope took ${ms.toFixed(0)} ms`);
+  assert.ok(plan,'expected a rope plan');assert.ok(ms<BUDGET_MS,`planRope took ${ms.toFixed(0)} ms`);
   assert.ok(plan.gain>0);assert.ok([-1,1].includes(plan.swing));assert.equal(typeof plan.reel,'boolean');
   assert.ok(plan.releaseAt>=.3-1e-9&&plan.releaseAt<=2.4+1e-9);
   assert.ok(plan.landing.y<600&&(plan.landing.x<1000||plan.landing.x>=1360),`landing still in the pit: ${JSON.stringify(plan.landing)}`);
@@ -113,9 +116,9 @@ test('real maps: every plan stays dry and fast',()=>{
       const [cr,t2]=timed(()=>planCrate(state));
       const [rp,t3]=timed(()=>planRope(state));
       const where=`map ${map}, diff ${diff}, worm ${active}`;
-      assert.ok(t1<150,`${where}: planTeleport ${t1.toFixed(0)} ms`);
-      assert.ok(t2<150,`${where}: planCrate ${t2.toFixed(0)} ms`);
-      assert.ok(t3<150,`${where}: planRope ${t3.toFixed(0)} ms`);
+      assert.ok(t1<BUDGET_MS,`${where}: planTeleport ${t1.toFixed(0)} ms`);
+      assert.ok(t2<BUDGET_MS,`${where}: planCrate ${t2.toFixed(0)} ms`);
+      assert.ok(t3<BUDGET_MS,`${where}: planRope ${t3.toFixed(0)} ms`);
       if(tp){assert.ok(tp.y+R<WATER-90,where);assert.ok(wormFits(t,tp.x,tp.y),where)}
       if(cr?.how==='teleport'){assert.ok(cr.y<WATER-40,where);assert.ok(wormFits(t,cr.x,cr.y),where)}
       if(cr?.how==='walk')assert.ok(groundY(t,cr.x)<WATER-40,where);
