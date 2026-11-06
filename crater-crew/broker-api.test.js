@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import turn from './api/ai/turn.mjs';
 import health from './api/ai/health.mjs';
+import {setStore,createMemoryStore,SETTINGS_PATH} from './lib/store.mjs';
+import {resetModelCache} from './lib/broker.mjs';
 
 const url='https://game.example/api/ai/turn';
 const pinned='claude-sub/claude-sonnet-5-5';
@@ -15,7 +17,8 @@ async function configured(fn,model=pinned){
  const old=Object.fromEntries(vars.map(name=>[name,process.env[name]]));const oldFetch=globalThis.fetch;
  process.env.BROKER_PROJECT_KEY='test-only-secret';process.env.BROKER_GAME_ENABLED='true';
  if(model===null)delete process.env.BROKER_SUBSCRIPTION_MODEL;else process.env.BROKER_SUBSCRIPTION_MODEL=model;
- try{return await fn()}finally{globalThis.fetch=oldFetch;for(const name of vars){if(old[name]===undefined)delete process.env[name];else process.env[name]=old[name]}}
+ resetModelCache();
+ try{return await fn()}finally{setStore(null);resetModelCache();globalThis.fetch=oldFetch;for(const name of vars){if(old[name]===undefined)delete process.env[name];else process.env[name]=old[name]}}
 }
 
 test('Broker requires explicit subscription model and exposes no key',async()=>configured(async()=>{
@@ -48,7 +51,7 @@ test('Subscription submit pins the route, omits unsupported controls, and polls 
 }));
 
 for(const [label,entry] of [
- ['unavailable',{available:false}],['API billed',{billing_type:'api'}],
+ ['unavailable',{available:false}],
  ['wrong route',{id:'api/other'}],['no chat capability',{capabilities:['structured']}],
  ['no JSON schema',{job_request:{response_format_types:['json_object']}}]
 ])test(`Catalog rejects ${label} without submitting a job`,async()=>configured(async()=>{
@@ -133,3 +136,63 @@ test('A bounded signed ticket survives long quota waits then expires without pol
   assert.equal(expired.status,400);assert.equal(polls,1);
  }finally{Date.now=clock}
 }));
+
+// ---------- model chosen in the admin panel (settings ai.model) ----------
+const apiModel='openai/gpt-5.5-mini';
+const apiRow={id:apiModel,source:'broker',billing_type:'api',available:true,capabilities:['chat:fast'],job_request:{response_format_types:['json_schema']}};
+function storedModel(model){const store=createMemoryStore();store.files.set(SETTINGS_PATH,JSON.stringify({ai:{model}}));setStore(store);return store}
+
+test('The admin-selected model replaces the env model, and an API-billed model is accepted',async()=>configured(async()=>{
+ storedModel(apiModel);const posted=[];
+ globalThis.fetch=async (input,options)=>{
+  const path=new URL(input).pathname;
+  if(path==='/v1/models')return response({data:[catalog().data[0],apiRow]});
+  if(path==='/v1/jobs'){posted.push(JSON.parse(options.body));return response({job_id:97},202)}
+  return response(done({provider:'openai',model:apiModel,requested_model:apiModel,billing_type:'api',cost_usd:0.0004}));
+ };
+ assert.deepEqual(await (await health.fetch()).json(),{mode:'broker',configured:true});
+ const submit=await turn.fetch(request('POST',body));assert.equal(submit.status,202);
+ assert.equal(posted[0].model,apiModel);
+ const ticket=(await submit.json()).ticket;
+ const poll=await turn.fetch(request('GET',undefined,'?ticket='+encodeURIComponent(ticket)));
+ assert.deepEqual(await poll.json(),{status:'done',turnId:body.turnId,candidateId:'bazooka_0'});
+}));
+
+test('An API-billed job must still run on exactly the requested model',async()=>configured(async()=>{
+ storedModel(apiModel);
+ globalThis.fetch=async input=>{
+  const path=new URL(input).pathname;
+  if(path==='/v1/models')return response({data:[apiRow]});
+  if(path==='/v1/jobs')return response({job_id:98},202);
+  return response(done({provider:'openai',model:'openai/other',requested_model:apiModel,billing_type:'api',cost_usd:0.01}));
+ };
+ const ticket=(await (await turn.fetch(request('POST',body))).json()).ticket;
+ const poll=await turn.fetch(request('GET',undefined,'?ticket='+encodeURIComponent(ticket)));
+ assert.equal(poll.status,502);
+}));
+
+for(const [label,entry] of [['unavailable',{available:false}],['no chat capability',{capabilities:['structured']}],['no JSON schema',{job_request:{response_format_types:['json_object']}}],['missing from the catalog',{id:'openai/not-this-one'}]])
+ test(`A stored model that is ${label} is refused without a job`,async()=>configured(async()=>{
+  storedModel(apiModel);const calls=[];
+  globalThis.fetch=async input=>{calls.push(new URL(input).pathname);return response({data:[{...apiRow,...entry}]})};
+  const r=await turn.fetch(request('POST',body));assert.equal(r.status,503);assert.deepEqual(calls,['/v1/models']);
+ }));
+
+test('A stored model works without the env model; an invalid stored value falls back to env',async()=>configured(async()=>{
+ storedModel(apiModel);
+ assert.deepEqual(await (await health.fetch()).json(),{mode:'broker',configured:true});
+ resetModelCache();storedModel('not a model');
+ assert.deepEqual(await (await health.fetch()).json(),{mode:'broker',configured:false});
+},null));
+
+test('A subscription model chosen in the panel keeps the subscription attestation',async()=>configured(async()=>{
+ storedModel(pinned);
+ globalThis.fetch=async input=>{
+  const path=new URL(input).pathname;
+  if(path==='/v1/models')return response(catalog());
+  if(path==='/v1/jobs')return response({job_id:99},202);
+  return response(done({cost_usd:0.02}));
+ };
+ const ticket=(await (await turn.fetch(request('POST',body))).json()).ticket;
+ assert.equal((await turn.fetch(request('GET',undefined,'?ticket='+encodeURIComponent(ticket)))).status,502);
+},'codex-sub/gpt-6.1-sol'));

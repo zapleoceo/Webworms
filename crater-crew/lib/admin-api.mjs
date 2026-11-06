@@ -10,11 +10,14 @@
 //   PUT    /api/admin/settings          (auth) validated save
 //   POST   /api/admin/sponsors          (auth) multipart: logo file + name, link, weight, placements, enabled
 //   DELETE /api/admin/sponsors/:id      (auth)
+//   GET    /api/admin/models            (auth) Broker catalog, trimmed, plus the active model
+//   POST   /api/admin/models/test       (auth) {model} runs one tiny JSON job on that model (rate-limited)
 import {randomBytes} from 'node:crypto';
 import {resolveAuth,checkPassword,recordMatches,hashPassword,recordFingerprint,authPath,validNewPassword,MIN_PASSWORD,MAX_PASSWORD,issueSession,isAuthenticated,sessionCookie,clearCookie,clientIp,loginBlocked,recordFailure,clearFailures,INIT_MARKER,invalidateAuthCache} from './auth.mjs';
 import {getStore} from './store.mjs';
+import {broker,brokerKey,catalog,trimModel,activeModel,envModel,resetModelCache} from './broker.mjs';
 import {validateLogo,MAX_LOGO_BYTES} from './images.mjs';
-import {mergeSettings,validateSettings,MAX_SPONSORS,PLACEMENTS} from '../settings.js';
+import {mergeSettings,validateSettings,validModelId,MAX_SPONSORS,PLACEMENTS} from '../settings.js';
 
 const MAX_JSON_BYTES=64*1024,MAX_UPLOAD_BYTES=MAX_LOGO_BYTES+64*1024;
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers}});
@@ -108,9 +111,11 @@ async function putSettings(request,store){
  const result=validateSettings(body);
  if(!result.ok)return err(422,'invalid settings',{errors:result.errors});
  const value=result.value;
+ // A save without an ai section keeps the chosen model (older admin pages do not send it).
+ if(body.ai===undefined)value.ai=current.ai;
  if(!Array.isArray(body.sponsors))value.sponsors=current.sponsors;
  else{const listed=new Set(value.sponsors.map(s=>s.id));value.sponsors.push(...current.sponsors.filter(s=>!listed.has(s.id)))}// removal only via DELETE
- await store.writeSettings(value);
+ await store.writeSettings(value);resetModelCache();
  return json({ok:true,settings:value});
 }
 
@@ -150,6 +155,57 @@ async function deleteSponsor(id,store){
  return json({ok:true,settings:next});
 }
 
+// ---------- Broker model picker ----------
+const BROKER_OFF='Broker is not configured on this server (BROKER_PROJECT_KEY)';
+// Broker errors are reduced to status and code ("broker 503 on /v1/models: unavailable"); the key is never in them.
+const brokerError=e=>{const m=/^broker (\d+) on [^:]+: ([a-z0-9_.-]+)$/.exec(e?.message||'');return m?`Broker answered ${m[1]} (${m[2]})`:/timeout|abort/i.test(String(e?.name)+String(e?.message))?'Broker did not answer in time':'Broker is unreachable'};
+async function listModels(request){
+ if(request.method!=='GET')return err(405,'method not allowed');
+ if(!brokerKey())return err(503,BROKER_OFF);
+ resetModelCache();const active=await activeModel();
+ let rows;try{rows=await catalog()}catch(e){console.error('broker catalog failed:',String(e?.message).slice(0,200));return err(502,brokerError(e))}
+ const models=rows.slice(0,500).map(trimModel).sort((a,b)=>Number(b.usable)-Number(a.usable)||a.id.localeCompare(b.id));
+ return json({models,active:{model:active.model||null,source:active.source},envModel:envModel()||null});
+}
+
+// A connectivity test runs a real job, so it is capped per function instance.
+export const MODEL_TESTS=6,MODEL_TEST_WINDOW_MS=10*60_000,MODEL_TEST_DEADLINE_MS=25_000;
+export const testClock={now:()=>Date.now(),sleep:ms=>new Promise(r=>setTimeout(r,ms))};
+let testRuns=[];
+export const resetModelTests=()=>{testRuns=[]};
+const TEST_SCHEMA={type:'object',properties:{ok:{type:'boolean'}},required:['ok'],additionalProperties:false};
+async function testModel(request){
+ if(request.method!=='POST')return err(405,'method not allowed');
+ if(!brokerKey())return err(503,BROKER_OFF);
+ const {body,error}=await readJson(request);if(error)return error;
+ const model=body?.model;
+ if(typeof model!=='string'||model===''||!validModelId(model))return err(422,'model: a Broker model ID like provider/model');
+ const start=testClock.now();testRuns=testRuns.filter(t=>start-t<MODEL_TEST_WINDOW_MS);
+ if(testRuns.length>=MODEL_TESTS)return err(429,`at most ${MODEL_TESTS} model tests per ${MODEL_TEST_WINDOW_MS/60_000} minutes`);
+ testRuns.push(start);
+ const payload={model,messages:[{role:'system',content:'You are a connectivity check. Reply with JSON only.'},{role:'user',content:'Reply with {"ok": true}.'}],
+  response_format:{type:'json_schema',json_schema:{name:'connectivity_check',strict:true,schema:TEST_SCHEMA}},workflow:'webworms-model-test'};
+ const out=(fields)=>json({model,latency_ms:testClock.now()-start,...fields});
+ let job;
+ try{
+  // A fresh random key: every test is its own job, never a replay of an earlier one.
+  job=await broker('/v1/jobs?capability=chat:fast',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':'wwt_'+randomBytes(16).toString('hex')},body:JSON.stringify(payload)});
+  while(job&&(job.status===undefined||job.status==='pending'||job.status==='running'||job.status==='queued')){
+   if(!Number.isInteger(job.job_id)||job.job_id<1)throw Error('invalid broker response');
+   const left=MODEL_TEST_DEADLINE_MS-(testClock.now()-start);
+   if(left<=0)return out({ok:false,status:'timeout',error:'No answer within 25 s; the job may still finish in Broker.',job_id:job.job_id});
+   await testClock.sleep(Math.min(left,Math.min(3000,Math.max(500,(Number(job.poll_after_s)||1)*1000))));
+   const id=job.job_id;job=await broker(`/v1/jobs/${id}`);if(job&&job.job_id===undefined)job.job_id=id;
+  }
+ }catch(e){console.error('model test failed:',String(e?.message).slice(0,200));return out({ok:false,status:'error',error:brokerError(e)})}
+ const reply=String(job?.text??'').slice(0,200);
+ if(job?.status!=='done')return out({ok:false,status:String(job?.status||'error').slice(0,20),error:String(job?.error??'Broker could not complete the job').slice(0,200),billing_type:job?.billing_type??null});
+ let parsed=null;try{parsed=JSON.parse(job.text)}catch{}
+ const sameModel=job.model===undefined||job.model===model;
+ return out({ok:parsed?.ok===true&&sameModel,status:'done',reply,billing_type:job.billing_type??null,ran_on:typeof job.model==='string'?job.model.slice(0,120):null,
+  ...(parsed?.ok===true?{}:{error:'The reply was not the requested JSON.'}),...(sameModel?{}:{error:'Broker ran a different model.'})});
+}
+
 async function admin(request,path){
  if(request.method!=='GET'&&request.method!=='HEAD'&&foreignOrigin(request))return err(403,'cross-origin request refused');
  const store=getStore(),auth=await resolveAuth(store);
@@ -166,6 +222,8 @@ async function admin(request,path){
  if(path==='/api/admin/session')return json({authenticated:authed,setupRequired:false,storage:Boolean(store),passwordSource:auth.mode});
  if(!authed)return err(401,'not signed in');
  if(path==='/api/admin/password')return changePassword(request,store,auth);
+ if(path==='/api/admin/models')return listModels(request);
+ if(path==='/api/admin/models/test')return testModel(request);
  if(path==='/api/admin/settings'){
   if(request.method==='GET')return json({settings:await loadSettings(store),storage:Boolean(store)});
   if(request.method==='PUT')return putSettings(request,store);
