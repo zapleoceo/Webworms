@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {W,H,R,WATER,createTerrain,spawnSpots,solid,carve,groundY,blastDamage,trajectory,selectShot,stepBody,crawl,wormFits,BODIES,BODY_STEP} from './engine.js';
+import {W,H,R,WATER,createTerrain,spawnSpots,solid,carve,groundY,blastDamage,trajectory,selectShot,stepBody,underwater,crawl,wormFits,BODIES,BODY_STEP} from './engine.js';
 
 // A flat island with an optional profile: top(x) gives the surface height of each column.
 function shaped(top){const t=createTerrain(0,1);for(let x=0;x<W;x++){t.top[x]=Math.floor(top(x));for(let y=0;y<H;y++)t.mask[y*W+x]=y>=t.top[x]?1:0}return t}
@@ -66,7 +66,7 @@ test('the AI grenade forecast matches live flight at any frame rate',()=>{
    // The game passes the water level to stepBody exactly like the forecast does, so a throw that ends
    // in a sea channel sinks at the same body step in both: same splash point at any frame rate.
    while(time<3-1e-9&&!b.sunk){stepBody(t,b,dt,{water:WATER});time+=dt}
-   assert.equal(Boolean(b.sunk),f.y>WATER,`drowns in both or neither: angle ${a}, power ${p}, dt ${dt}`);
+   assert.equal(Boolean(b.sunk),underwater(f.y,8,WATER),`drowns in both or neither: angle ${a}, power ${p}, dt ${dt}`);
    assert.ok(Math.hypot(b.x-f.x,b.y-f.y)<6,`angle ${a}, power ${p}, dt ${dt}: live (${b.x.toFixed(1)},${b.y.toFixed(1)}) forecast (${f.x.toFixed(1)},${f.y.toFixed(1)})`);
    let ct=0;while(ct<3-1e-9){stepBody(t,c,dt);ct+=dt}
    assert.ok(Math.hypot(c.x-full.x,c.y-full.y)<6,`no-water path: angle ${a}, power ${p}, dt ${dt}`)}

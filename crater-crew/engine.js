@@ -195,14 +195,14 @@ export function selectLob(t,from,targets,friends,wind,difficulty=1,water=WATER){
   for(const dir of [-1,1])for(let a=-88;a<=88;a+=profile.angleStep+1)for(let p=.35;p<=1.001;p+=profile.powerStep+.02){
     const theta=a*Math.PI/180,speed=300+280*p;
     const end=trajectory(t,from.x+dir*Math.cos(theta)*24,from.y-9+Math.sin(theta)*22,dir*Math.cos(theta)*speed,Math.sin(theta)*speed,0,{fuse:3,bounce:true,exact:false,water});
-    if(end.y<water)rough.push({dir,angle:a,power:p,score:lobScore(end)});
+    if(!underwater(end.y,8,water))rough.push({dir,angle:a,power:p,score:lobScore(end)});
   }
   // Bounces are chaotic, so the cheap sweep only shortlists; the live physics settles the pick.
   rough.sort((m,n)=>n.score-m.score);
   for(const c of rough.slice(0,12)){
     const theta=c.angle*Math.PI/180,speed=300+280*c.power;
     const end=trajectory(t,from.x+c.dir*Math.cos(theta)*24,from.y-9+Math.sin(theta)*22,c.dir*Math.cos(theta)*speed,Math.sin(theta)*speed,0,{fuse:3,bounce:true,water});
-    if(end.y>=water)continue;
+    if(underwater(end.y,8,water))continue;
     const score=lobScore(end);if(!best||score>best.score)best={...c,score,end};
   }
   return best;
@@ -229,13 +229,17 @@ export function contactNormal(t,x,y,r){
   for(const [cx,cy] of RIM)if(solid(t,x+cx*(r+1.5),y+cy*(r+1.5))){nx-=cx;ny-=cy;hits++}
   const len=Math.hypot(nx,ny);return hits&&len>1e-6?{x:nx/len,y:ny/len}:{x:0,y:-1};
 }
+// Water closes over a worm or a body only once its top (y-r) is below the surface: feet in the shallows are
+// safe, a full dunk drowns. Game, body physics, AI sandbox and AI forecasts all use this one rule.
+export const underwater=(y,r,water)=>y-r>water;
+export const wormDrowned=(w,water)=>underwater(w.y,R,water);
 // Fixed-step integration: the same sequence of steps runs at any frame rate and in the forecast.
 export const BODY_STEP=1/120;
 export function stepBody(t,b,dt,opts={}){
   const events={impact:0};b.acc=(b.acc||0)+dt;
   // The water check runs every step, so a body dipping under and bouncing back out is caught in game and forecast alike.
   const water=opts.water??Infinity;
-  while(!b.sunk&&b.acc>=BODY_STEP-1e-9){b.acc-=BODY_STEP;events.impact=Math.max(events.impact,fixedStep(t,b,BODY_STEP,opts));if(b.y>water)b.sunk=true;if(b.resting)b.acc=0}
+  while(!b.sunk&&b.acc>=BODY_STEP-1e-9){b.acc-=BODY_STEP;events.impact=Math.max(events.impact,fixedStep(t,b,BODY_STEP,opts));if(underwater(b.y,b.r||0,water))b.sunk=true;if(b.resting)b.acc=0}
   return events;
 }
 function fixedStep(t,b,dt,{wind=0,body=BODIES.grenadeHigh}={}){

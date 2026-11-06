@@ -370,6 +370,7 @@ test('two close shotgun shots both damage the target and finish the turn',()=>{
 });
 
 test('moving, jumping, cycling and seven weapons resolve without stuck turns',()=>{
+ // Each shot is followed until it resolves and hands the turn over; the AI's own reply is not part of the check.
  // Seeded: spawn spots now depend on the seed, and ~6% of random seeds put the first worm one step from
  // a ledge or under a tunnel roof, where walking right drops it and a jump is (correctly) impossible.
  newGame(0,1,1);let start=state.active.x;
@@ -378,7 +379,7 @@ test('moving, jumping, cycling and seven weapons resolve without stuck turns',()
  state.keys.KeyW=true;update(.04);state.keys.KeyW=false;assert.ok(state.active.vy<0);
  cycle();assert.equal(state.active.name,'Bubbles');
  const ids=['bazooka','grenade','shotgun','dynamite','airstrike','punch','jetpack'];
- for(const id of ids){beginTurn(0);state.selected=id;state.aim=-.6;state.dir=1;state.airTarget=1100;fire(.75);if(id==='shotgun'){assert.equal(state.shotgunLeft,1);fire(.75)}assert.notEqual(state.phase,'ready',id);for(let i=0;i<250;i++)update(.04);assert.ok(state.phase!=='resolving'||state.projectiles.length>0||state.resolveTimer>=0,`${id} resolved`)}
+ for(const id of ids){beginTurn(0);state.selected=id;state.aim=-.6;state.dir=1;state.airTarget=1100;fire(.75);if(id==='shotgun'){assert.equal(state.shotgunLeft,1);fire(.75)}assert.notEqual(state.phase,'ready',id);for(let i=0;i<250&&state.team===0;i++)update(.04);assert.ok(state.phase!=='resolving'||state.projectiles.length>0||state.resolveTimer>=0,`${id} resolved`)}
 });
 
 test('blast damages enemies, destroys terrain, and match reaches victory',()=>{
@@ -441,7 +442,7 @@ test('water and destroyed footing kill active unit and continue turn',()=>{
  newGame(2,1);const active=state.active,startY=active.y;explosion(active.x,active.y+12,100,0,3);
  for(let i=0;i<200;i++)update(.04);
  assert.ok(active.y>startY||!active.alive);
- active.y=WATER-5;update(.04);assert.equal(active.alive,false);
+ state.waterLevel=active.y-R-1;update(.04);assert.equal(active.alive,false);
  let advanced=false;for(let i=0;i<100&&!advanced;i++){update(.04);advanced=state.team===1||state.ended}
  assert.ok(advanced);
 });
@@ -529,4 +530,110 @@ test('worms start on stable ground on every map and stay put for the first secon
   state.worms.forEach((w,i)=>{assert.ok(w.alive,`map ${map} seed ${seed}: ${w.name} died`);assert.ok(w.grounded,`map ${map} seed ${seed}: ${w.name} airborne`);
    assert.ok(Math.abs(w.x-start[i].x)<2&&Math.abs(w.y-start[i].y)<4,`map ${map} seed ${seed}: ${w.name} moved`);assert.ok(w.y<WATER-100,`map ${map} seed ${seed}: ${w.name} near the sea`)});
  }
+ // Leave the default 3600x1400 world: later tests read WATER/W/H before their own newGame().
+ newGame(0,1,4242);
+});
+// ---- Water: a worm drowns only once the water closes over it (its top, y-R, below the surface).
+// Ground columns [x0,x1) at height top; top=H leaves an open sea with no floor.
+function setColumns(t,x0,x1,top){for(let x=x0;x<x1;x++){t.top[x]=top;for(let y=0;y<H;y++)t.mask[y*W+x]=y>=top?1:0}}
+function waterScene(seabed){
+ delete state.controllers;state.aiDriver='local';newGame(0,2,4242);const t=state.terrain;flatten(t,PLAIN);setColumns(t,1100,W,seabed);
+ const me=state.worms.find(w=>w.team===1),foe=state.worms.find(w=>w.team===0);for(const w of state.worms)if(w!==me&&w!==foe)w.alive=false;
+ me.x=1030;me.y=PLAIN-R-1;foe.x=1075;foe.y=PLAIN-R-1;foe.hp=100;state.team=1;state.active=me;me.active=true;state.phase='ready';state.wind=state.windTarget=0;
+ return {me,foe,t};
+}
+
+test('a worm standing in the shallows with water at its feet survives; the sea only takes it when it is fully under',()=>{
+ const {foe}=waterScene(WATER+10);state.phase='resolving';state.resolveTimer=99;
+ // Feet in the water (feet at WATER+9), head well above it: the old 'touches the water' rule drowned this worm.
+ foe.x=1500;foe.y=WATER+10-R-1;foe.vx=foe.vy=0;foe.grounded=true;
+ for(let i=0;i<90;i++)update(1/30);
+ assert.ok(foe.alive,`standing at y=${foe.y} (water ${state.waterLevel}) must survive`);assert.ok(foe.grounded);assert.ok(foe.y+R>state.waterLevel,'its feet really are in the water');
+ // Rising water that closes over it does drown it.
+ state.waterLevel=foe.y-R-1;update(1/30);assert.equal(foe.alive,false,'covered by the rising sea');assert.equal(state.stats.teams[foe.team].drowned,1);
+});
+
+test('a worm falling into open sea is alive while half in the water and drowns once fully under',()=>{
+ const {foe}=waterScene(H);state.phase='resolving';state.resolveTimer=99;
+ foe.x=1600;foe.y=WATER-120;foe.vx=0;foe.vy=0;foe.grounded=false;let halfIn=0,diedAt=null;
+ for(let i=0;i<240&&foe.alive;i++){update(1/120);if(foe.alive&&foe.y+R>WATER&&foe.y-R<=WATER)halfIn++;if(!foe.alive)diedAt=foe.y}
+ assert.ok(halfIn>0,'seen partly submerged and still alive');assert.equal(foe.alive,false,'drowned');
+ assert.ok(diedAt-R>WATER,`drowned only once fully under: top ${diedAt-R} vs water ${WATER}`);assert.equal(state.stats.teams[foe.team].drowned,1);
+});
+
+test('the AI sandbox and the real game agree on a punch toward the sea: shallows survive, open sea drowns',()=>{
+ for(const [seabed,dies] of [[WATER+10,false],[H,true]]){
+  const {me,foe}=waterScene(seabed);
+  const r=window.__craterCrew.simulateAction({weapon:'punch',dir:1});
+  assert.equal(r.kills.includes(foe.name),dies,`sandbox kill, seabed ${seabed}: ${r.summary}`);assert.equal(r.drowned.includes(foe.name),dies,`sandbox drowned: ${r.summary}`);
+  state.selected='punch';state.dir=1;me.face=1;fire();
+  for(let i=0;i<600&&state.team===1&&!state.ended;i++)update(1/30);
+  assert.equal(!foe.alive,dies,`real game, seabed ${seabed}: foe at y=${foe.y.toFixed(1)}, water ${state.waterLevel}`);
+  if(!dies){assert.ok(foe.y+R>state.waterLevel,'the foe stands in the water');assert.equal(foe.hp,100-r.enemyDmg,'same damage as the sandbox')}
+  else assert.equal(state.stats.teams[foe.team].drowned,1);
+ }
+});
+
+// ---- Turn hand-over after a shot: wait until nothing moves, keep the camera on the moving worm, then a short beat.
+const camCenter=()=>({x:state.cam.x+VIEW_W/state.cam.zoom/2,y:state.cam.y+VIEW_H/state.cam.zoom/2});
+function aftermath(){
+ delete state.controllers;state.aiDriver='local';newGame(0,1,4242);flatten(state.terrain,PLAIN);
+ const a=state.active,foe=state.worms.find(w=>w.team!==a.team);for(const w of state.worms)if(w!==a&&w!==foe)w.alive=false;
+ a.x=500;a.y=PLAIN-R-1;a.grounded=true;foe.x=900;foe.y=PLAIN-R-1;foe.grounded=true;state.wind=state.windTarget=0;
+ // The shot is over (nothing in flight, the resolve timer has run out); the foe was blasted high and sideways.
+ state.phase='resolving';state.resolveTimer=0;state.used=true;foe.vx=260;foe.vy=-420;foe.grounded=false;
+ return {a,foe};
+}
+
+test('after a shot the turn waits for a flying and skidding worm, the camera follows it, then a short pause',()=>{
+ const {foe}=aftermath();const dt=1/60;let t=0,stoppedAt=null,slid=false,maxGap=0;
+ while(state.team===0&&t<12){
+  update(dt);t+=dt;if(state.team!==0)break;
+  const moving=!foe.grounded||foe.sliding&&Math.abs(foe.vx)>18;if(foe.sliding)slid=true;
+  if(moving){stoppedAt=null;assert.equal(state.camHoldId,foe.id,'camera holds the moving worm');if(t>.5)maxGap=Math.max(maxGap,Math.abs(camCenter().x-foe.x))}
+  else if(stoppedAt==null)stoppedAt=t;
+ }
+ assert.ok(slid,'the worm skidded after landing');assert.equal(state.team,1,'turn handed over');assert.ok(stoppedAt!=null&&stoppedAt>1,`still moving until ${stoppedAt}`);
+ const pause=t-stoppedAt+dt;assert.ok(pause>=.6-1e-6&&pause<.7,`pause after settling ${pause.toFixed(3)} s`);
+ assert.ok(maxGap<VIEW_W/state.cam.zoom/2,`moving worm kept in view (max offset ${maxGap.toFixed(0)} px)`);
+});
+
+test('a body that never settles cannot hold the turn past the safety cap',()=>{
+ const {foe}=aftermath();const dt=1/30;let t=0;
+ while(state.team===0&&t<12){foe.x=900;foe.y=PLAIN-200;foe.vx=0;foe.vy=0;foe.grounded=false;update(dt);t+=dt}
+ assert.equal(state.team,1,'turn handed over');assert.ok(t>=8-1e-6&&t<8.2,`handed over after ${t.toFixed(2)} s`);
+});
+test('the match journal records the action and the real outcome of a turn: a punch that drowns the rival',()=>{
+ newGame(0,2,4243);state.controllers=['human','easy'];flatten(state.terrain,PLAIN);for(let x=1100;x<W;x++){state.terrain.top[x]=H;for(let y=0;y<H;y++)state.terrain.mask[y*W+x]=0}
+ const me=state.worms[0],foe=state.worms[3];for(const w of state.worms)if(w!==me&&w!==foe)w.alive=false;
+ me.x=1030;me.y=PLAIN-R-1;foe.x=1075;foe.y=PLAIN-R-1;foe.hp=100;state.wind=17.4;beginTurn(0);assert.equal(state.active,me);assert.deepEqual(state.journal,[]);
+ state.selected='punch';state.dir=1;fire();for(let i=0;i<400&&!state.ended;i++)update(1/30);
+ assert.equal(state.ended,true);assert.equal(state.journal.length,1,'the finished turn is journaled once');
+ const e=state.journal[0];
+ assert.deepEqual({...e,wd:undefined},{r:1,t:0,w:0,a:'punch',d:1,wd:undefined,h:[[3,100]],k:[3],dr:[3],s:0});assert.ok(Math.abs(e.wd-17)<=2,'wind at the punch');
+ delete state.controllers;
+});
+
+test('PC GOD sends the journal after the snapshot and candidates; PC Ultra does not; the pending GOD turn survives a reload',async()=>{
+ const prior=globalThis.fetch,posts=[];
+ globalThis.fetch=async (_url,options)=>{if(options?.method==='POST'){posts.push(JSON.parse(options.body));return new Response(JSON.stringify({status:'pending',ticket:'god-ticket',pollAfter:5}),{status:202})}return new Response(JSON.stringify({status:'pending',pollAfter:5}))};
+ try{
+  const {chooseController}=window.__craterCrew;chooseController(0,'human');chooseController(1,'god');element('start').onclick();
+  assert.deepEqual(state.controllers,['human','god']);assert.equal(element('ai-level').textContent,'HUMAN vs PC GOD');
+  // Sky Squad's airstrike becomes the first journal entry, then the GOD turn is asked for.
+  state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
+  assert.equal(state.team,1);assert.equal(state.journal.length,1);assert.equal(state.journal[0].a,'airstrike');
+  aiAct();await new Promise(resolve=>setImmediate(resolve));
+  assert.match(element('message').textContent,/PC GOD IS THINKING/);
+  assert.equal(posts.length,1);const god=posts[0];
+  assert.deepEqual(Object.keys(god),['turnId','difficulty','snapshot','candidates','history']);
+  assert.equal(god.difficulty,3);assert.deepEqual(god.history,state.journal);assert.equal(state.difficulty,2,'the local profile stays at its sharpest');
+  const saved=readPendingTurn();assert.ok(saved,'a GOD request (difficulty 3) is a valid pending turn');assert.deepEqual(saved.game.controllers,['human','god']);assert.deepEqual(saved.game.journal,state.journal);
+  state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));
+  newGame(0,1,995,true);delete state.controllers;assert.equal(restorePendingBrokerTurn(readPendingTurn()),true);
+  assert.deepEqual(state.controllers,['human','god']);assert.equal(state.journal.length,1);
+  chooseController(1,'ultra');element('start').onclick();state.selected='airstrike';state.airTarget=state.worms[3].x;fire();for(let i=0;i<400&&state.team===0;i++)update(1/30);
+  aiAct();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(posts.length,2);assert.equal(posts[1].difficulty,2);assert.equal(Object.hasOwn(posts[1],'history'),false,'PC Ultra gets no history');
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,996)}
 });

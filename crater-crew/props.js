@@ -43,7 +43,7 @@ export function updateProps(state,dt,api){
   if(p.dead)continue;
   if(p.parachute){p.vy=Math.min(p.vy+300*dt,90);p.vx=(state.wind||0)*.25;p.x=clamp(p.x+p.vx*dt,20,W-20);p.y+=p.vy*dt;if(p.y+p.r>=groundY(state.terrain,p.x)-1){p.parachute=false;p.y=groundY(state.terrain,p.x)-p.r-1}}
   else stepBody(state.terrain,p,dt,{body:BODY[p.kind],water:state.waterLevel});
-  if(p.sunk||p.y>state.waterLevel){p.dead=true;api.splash?.(p.x,state.waterLevel);continue}
+  if(p.sunk){p.dead=true;api.splash?.(p.x,state.waterLevel);continue}
   if(p.kind==='mine'){
    if(!p.armed&&state.worms.some(w=>w.alive&&Math.hypot(w.x-p.x,w.y-p.y)<MINE_TRIGGER)){p.armed=true;p.fuse=MINE_FUSE;api.beep?.()}
    if(p.armed){p.fuse-=dt;if(p.fuse<=0){p.dead=true;api.explode(p.x,p.y,PROP_BLAST.mine.radius,PROP_BLAST.mine.damage)}}

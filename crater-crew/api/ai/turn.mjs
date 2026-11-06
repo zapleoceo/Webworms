@@ -1,10 +1,11 @@
 import {createHmac,timingSafeEqual} from 'node:crypto';
 
-import {brokerKey as key,broker,activeModel,catalog,usableRow} from '../../lib/broker.mjs';
+import {brokerKey as key,broker,activeModel,catalog,usableRow,chatCapability} from '../../lib/broker.mjs';
 import {validModelId} from '../../settings.js';
+import {validHistory} from '../../journal.js';
 
 // The model is the admin's choice (settings ai.model) or else env BROKER_SUBSCRIPTION_MODEL; any Broker catalog model
-// that is available with chat:fast and json_schema qualifies (checked before every job).
+// that is not marked unavailable, serves a chat job capability and takes json_schema qualifies (API models included) (checked before every job).
 const validModel=s=>s!==''&&validModelId(s);
 const enabled=m=>process.env.BROKER_GAME_ENABLED==='true'&&Boolean(key())&&validModel(m);
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
@@ -18,7 +19,7 @@ const validProps=p=>p===undefined||Array.isArray(p)&&p.length<=60&&p.every(q=>q&
 // prompt-cache breakpoint, so this text must not change between turns (no names, dates or difficulty here).
 const RULES=`You command the team of the active worm (snapshot.activeId) in a turn-based 2D artillery game with destructible terrain; the other team is the enemy. Pick ONE move from the supplied candidates for your active worm. Never invent a move.
 
-World: x grows right, y grows DOWN; the map size is snapshot.size [width,height] (3600x1400 or 6400x1800). Water fills everything below snapshot.water; a worm that touches it dies. From round 9 (suddenDeath) the water rises 12 px every round. snapshot.terrain is the ground surface height sampled evenly across the map width. Worms have up to 100+ hp; a worm at 0 hp dies.
+World: x grows right, y grows DOWN; the map size is snapshot.size [width,height] (3600x1400 or 6400x1800). Water fills everything below snapshot.water; a worm (radius 15, y is its centre) drowns only once the water closes over it completely, i.e. y > snapshot.water + 15; standing with its feet in the shallows is safe. From round 9 (suddenDeath) the water rises 12 px every round. snapshot.terrain is the ground surface height sampled evenly across the map width. Worms have up to 100+ hp; a worm at 0 hp dies.
 
 Weapons (the candidates already contain the aim and power; each description shows the outcome predicted by the game's own physics: who is hit for how much, KILL, friendly fire as "ally"/"SELF", chained barrels/mines, water nearby):
 - bazooka: radius 77, damage up to 58; pushed by wind; explodes on impact.
@@ -31,9 +32,11 @@ Weapons (the candidates already contain the aim and power; each description show
 Map props: a mine explodes about 1 s after a worm comes within ~46 px (radius 62, damage 42); a barrel explodes when a blast reaches it (radius 80, damage 48) and can chain; a health_crate heals +25 to whoever touches it. Big knockbacks and long falls also hurt.
 
 Most candidates end with "SIMULATED: ...": the move was actually played on a copy of the match with the full physics (flight, blast, knockback, water, falls, chained barrels/mines), so its hits, KILLs and DROWNED are exact, not guesses; "value" scores it (enemy damage, +70 per kill, minus friendly losses) and "rank" orders the list. Candidates without SIMULATED (teleport/rope/crate combos) carry a planner estimate. Unless you see a clear reason in the snapshot, pick the highest value.
-How to choose: prefer KILLs and the largest damage to enemies; avoid moves that hurt allies or SELF; use barrels and mines near enemies; consider knocking enemies into water; when standing close to rising water, escaping can beat a weak shot. Difficulty in the message: "hard" plays solid, safe damage; "ultra" maximises kills and expected damage while protecting allies and exploiting props and water. A snapshot wind of 0 means you have no wind information.
+How to choose: prefer KILLs and the largest damage to enemies; avoid moves that hurt allies or SELF; use barrels and mines near enemies; consider knocking enemies into water; when standing close to rising water, escaping can beat a weak shot. Difficulty in the message: "hard" plays solid, safe damage; "ultra" maximises kills and expected damage while protecting allies and exploiting props and water; "god" plays like ultra and also learns from the match history. A snapshot wind of 0 means you have no wind information.
+History (only with "god"): "history" lists the last turns of BOTH teams, oldest first. Keys: r round, t team, w worm id, a action ("pass" = nothing fired), u utility used before it (rope/teleport), ang aim in degrees (negative = up), p power 0-100, d facing (+1 right, -1 left; airstrike: flight direction), x airstrike target x, wd wind at the shot, tg intended target worm id, l [x,y] where the shot exploded or left play, m [dx,dy] = l minus the target's position at turn start (dx>0 landed right of it, dy>0 below it), h [[worm id, damage taken]], k worms that died that turn (any team), dr worms that drowned, s damage the shooter did to itself.
+How to use history: SIMULATED outcomes assume the current wind, but the wind drifts while a shot flies and between turns. Look at earlier shots of the same weapon in similar wind (wd) and how far and which way they missed (m); when such shots keep missing, prefer candidates that tolerate the error (grenade, airstrike, bigger blasts, props) or whose landing corrects toward it. Sum h by attacker (w) to see which enemy worm has hurt your team most, and prioritise it when values are close. Do not repeat a move that already failed from the same spot against the same target (no damage in h, or self damage s); repeat or adapt what worked. An enemy that survived several direct hits may sit in cover: switch to a weapon that reaches it.
 Reply with JSON only: {"turn_id": <the given turn_id>, "candidate_id": <one supplied id>}.`;
-function validate(body){if(!body||typeof body!=='object'||!validId(body.turnId)||!Number.isInteger(body.difficulty)||body.difficulty<0||body.difficulty>2)return false;const s=body.snapshot;if(!s||!Number.isInteger(s.map)||s.map<0||s.map>3||!Number.isInteger(s.round)||s.round<1||s.round>500||!Number.isFinite(s.wind)||Math.abs(s.wind)>100||!Array.isArray(s.worms)||s.worms.length>6||!Array.isArray(s.terrain)||(s.terrain.length!==32&&s.terrain.length!==64)||!validProps(s.props)||!s.worms.every(w=>w&&(w.name===undefined||typeof w.name==='string'&&w.name.length<=24)))return false;if(!Array.isArray(body.candidates)||body.candidates.length<1||body.candidates.length>32)return false;const ids=new Set();for(const c of body.candidates){if(!validId(c.id)||ids.has(c.id)||typeof c.description!=='string'||c.description.length>240)return false;ids.add(c.id)}return true}
+function validate(body){if(!body||typeof body!=='object'||!validId(body.turnId)||!Number.isInteger(body.difficulty)||body.difficulty<0||body.difficulty>3)return false;if(body.history!==undefined&&(body.difficulty!==3||!validHistory(body.history)||JSON.stringify(body.history).length>16_000))return false;const s=body.snapshot;if(!s||!Number.isInteger(s.map)||s.map<0||s.map>3||!Number.isInteger(s.round)||s.round<1||s.round>500||!Number.isFinite(s.wind)||Math.abs(s.wind)>100||!Array.isArray(s.worms)||s.worms.length>6||!Array.isArray(s.terrain)||(s.terrain.length!==32&&s.terrain.length!==64)||!validProps(s.props)||!s.worms.every(w=>w&&(w.name===undefined||typeof w.name==='string'&&w.name.length<=24)))return false;if(!Array.isArray(body.candidates)||body.candidates.length<1||body.candidates.length>32)return false;const ids=new Set();for(const c of body.candidates){if(!validId(c.id)||ids.has(c.id)||typeof c.description!=='string'||c.description.length>240)return false;ids.add(c.id)}return true}
 // Returns the catalog row of a usable model, or null (nothing is submitted then).
 async function verifiedModel(m){
  const row=(await catalog()).find(item=>item.id===m)||null;
@@ -69,13 +72,13 @@ export default {async fetch(request){
    const row=await verifiedModel(model);
    if(!row)return json({status:'unavailable',error:'The selected Broker model is unavailable.'},503);
    const billing=typeof row.billing_type==='string'?row.billing_type:'unknown';
-   const names=['easy','hard','ultra'];
+   const names=['easy','hard','ultra','god'];
 
-   const payload={model,messages:[{role:'system',content:RULES},{role:'user',content:JSON.stringify({turn_id:body.turnId,difficulty:names[body.difficulty],snapshot:body.snapshot,candidates:body.candidates})}],response_format:{type:'json_schema',json_schema:{name:'artillery_turn',strict:true,schema:{type:'object',properties:{turn_id:{type:'string'},candidate_id:{type:'string'}},required:['turn_id','candidate_id'],additionalProperties:false}}},workflow:'webworms-turn'};
+   const payload={model,messages:[{role:'system',content:RULES},{role:'user',content:JSON.stringify({turn_id:body.turnId,difficulty:names[body.difficulty],snapshot:body.snapshot,candidates:body.candidates,...(body.history?{history:body.history}:{})})}],response_format:{type:'json_schema',json_schema:{name:'artillery_turn',strict:true,schema:{type:'object',properties:{turn_id:{type:'string'},candidate_id:{type:'string'}},required:['turn_id','candidate_id'],additionalProperties:false}}},workflow:'webworms-turn'};
    // Broker's project-scoped unique key replays the same job even after completion.
    // A changed payload for the same turn gets 409 instead of a second subscription run.
    const idempotencyKey='ww_'+sign('idem:'+body.turnId);
-   const result=await broker('/v1/jobs?capability=chat:fast',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify(payload)});
+   const result=await broker('/v1/jobs?capability='+chatCapability(row),{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify(payload)});
    if(!Number.isInteger(result.job_id)||result.job_id<1)throw Error('invalid broker response');
    const ids=body.candidates.map(c=>c.id);
    if(result.status==='done')return complete(result,body.turnId,ids,model,billing);

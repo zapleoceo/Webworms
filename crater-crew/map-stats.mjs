@@ -3,9 +3,9 @@
 // CLI: node map-stats.mjs [seeds]   (map-quality.test.js runs the same numbers)
 import {pathToFileURL} from 'node:url';
 import * as E from './engine.js';
-const {createTerrain,spawnSpots,groundY,solid,crawl,wormFits,wormGrounded,R}=E;
+const {createTerrain,spawnSpots,groundY,solid,crawl,wormFits,wormGrounded,wormDrowned,R}=E;
 export const sweepSeed=s=>1000+s*7919;
-// Sea column: nothing solid at the waterline, so the water shows there and a worm standing in it drowns.
+// Sea column: nothing solid just under the waterline, so open water shows there (a worm walking in soon goes under).
 export const wetColumns=t=>{const wet=new Uint8Array(E.W);for(let x=0;x<E.W;x++)wet[x]=solid(t,x,E.WATER-12)?0:1;return wet};
 // Walk a worm from the left shore to the right one with crawl(): count walls that need a jump and
 // drops into the sea (bridges and arches count as ground, so a channel with a bridge costs nothing).
@@ -15,7 +15,8 @@ export function walkAcross(t,wet){
  while(w.x<E.W-40&&guard++<E.W*2){
   const st=crawl(t,w,1,8);w.climbDebt=0;
   if(st==='fell')settle();
-  if(w.y>E.WATER-10){swims++;let nx=w.x;while(nx<E.W&&wet[nx])nx++;if(nx>=E.W-40)break;w.x=nx+10;w.y=groundY(t,w.x)-R-1;continue}
+  // Same rule as the game: a worm drowns once the water closes over it.
+  if(wormDrowned(w,E.WATER)){swims++;let nx=w.x;while(nx<E.W&&wet[nx])nx++;if(nx>=E.W-40)break;w.x=nx+10;w.y=groundY(t,w.x)-R-1;continue}
   if(st==='blocked'){walls++;w.x+=12;w.y=groundY(t,w.x)-R-1;settle()}
  }
  return {walls,swims};
