@@ -11,7 +11,7 @@
 //   POST   /api/admin/sponsors          (auth) multipart: logo file + name, link, weight, placements, enabled
 //   DELETE /api/admin/sponsors/:id      (auth)
 import {randomBytes} from 'node:crypto';
-import {resolveAuth,checkPassword,recordMatches,hashPassword,recordFingerprint,authPath,validNewPassword,MIN_PASSWORD,MAX_PASSWORD,issueSession,isAuthenticated,sessionCookie,clearCookie,clientIp,loginBlocked,recordFailure,clearFailures} from './auth.mjs';
+import {resolveAuth,checkPassword,recordMatches,hashPassword,recordFingerprint,authPath,validNewPassword,MIN_PASSWORD,MAX_PASSWORD,issueSession,isAuthenticated,sessionCookie,clearCookie,clientIp,loginBlocked,recordFailure,clearFailures,INIT_MARKER,invalidateAuthCache} from './auth.mjs';
 import {getStore} from './store.mjs';
 import {validateLogo,MAX_LOGO_BYTES} from './images.mjs';
 import {mergeSettings,validateSettings,MAX_SPONSORS,PLACEMENTS} from '../settings.js';
@@ -58,6 +58,8 @@ const NOT_CONFIGURED={
  storage:'admin not configured: connect a Blob store (BLOB_READ_WRITE_TOKEN) or set ADMIN_PASSWORD',
  secret:'admin not configured: set ADMIN_SESSION_SECRET (random, 32+ characters) to choose the admin password here, or set ADMIN_PASSWORD',
  record:'admin not configured: the stored admin password record is unreadable; set ADMIN_PASSWORD or delete the auth blob',
+ 'env-short':'admin closed: ADMIN_PASSWORD is shorter than 12 characters',
+ reset:'admin closed: a password was set before but its record is gone (secret rotated or store changed); set ADMIN_PASSWORD to regain access',
 };
 
 // First run: whoever completes this first becomes the admin. Allowed only while no password exists anywhere.
@@ -65,13 +67,14 @@ async function setup(request,store,auth){
  if(request.method!=='POST')return err(405,'method not allowed');
  if(auth.mode==='env')return err(409,'admin password is set by ADMIN_PASSWORD on the server');
  if(auth.mode==='stored')return err(409,'admin password already set');
- if(!auth.setupPossible)return err(503,NOT_CONFIGURED[auth.reason]||'admin not configured');
+ if(!auth.setupPossible){console.error(NOT_CONFIGURED[auth.reason]||'admin not configured');return err(503,'admin not configured')}
  const {body,error}=await readJson(request);if(error)return error;
  if(!validNewPassword(body?.password))return err(422,PASSWORD_RULE);
  const record=await hashPassword(body.password),path=authPath();
  // Re-check right before writing (hashing took a while); createAuth itself refuses to overwrite an existing record.
  if(await store.readAuth(path))return err(409,'admin password already set');
  if(!await store.createAuth(path,record))return err(409,'admin password already set');
+ await store.createAuth(INIT_MARKER,{v:1,at:new Date().toISOString()});invalidateAuthCache();
  return json({ok:true},200,{'set-cookie':sessionCookie(request,issueSession(Date.now(),recordFingerprint(record)))});
 }
 
@@ -86,7 +89,7 @@ async function changePassword(request,store,auth){
  clearFailures(ip);
  if(!validNewPassword(body?.next))return err(422,PASSWORD_RULE);
  const record=await hashPassword(body.next);
- try{await store.writeAuth(authPath(),record,auth.etag)}
+ try{await store.writeAuth(authPath(),record,auth.etag);invalidateAuthCache()}
  catch(e){if(e?.name==='BlobPreconditionFailedError'||/precondition failed/i.test(String(e?.message)))return err(409,'the password was changed meanwhile; sign in again');throw e}
  // The new record has a new fingerprint: every other session ends, this browser gets a fresh one.
  return json({ok:true},200,{'set-cookie':sessionCookie(request,issueSession(Date.now(),recordFingerprint(record)))});
@@ -152,7 +155,8 @@ async function admin(request,path){
  const store=getStore(),auth=await resolveAuth(store);
  if(path==='/api/admin/setup')return setup(request,store,auth);
  if(auth.mode==='none'){
-  if(!auth.setupPossible)return err(503,'admin not configured',{detail:NOT_CONFIGURED[auth.reason]});
+  // Anonymous callers only learn that the admin is closed; the reason goes to the server log.
+  if(!auth.setupPossible){console.error(NOT_CONFIGURED[auth.reason]||'admin not configured');return err(503,'admin not configured')}
   if(path==='/api/admin/session')return json({authenticated:false,setupRequired:true,storage:true,passwordSource:null});
   return err(403,'setup required');
  }
