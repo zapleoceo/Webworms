@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DEFAULT_SETTINGS,defaultSettings,validateSettings,mergeSettings,pickSponsors,validLink,validLogoUrl} from './settings.js';
+import {DEFAULT_SETTINGS,defaultSettings,validateSettings,mergeSettings,pickSponsors,validLink,validLogoUrl,PLACEMENTS,BATTLE_PLACEMENTS,PLACEMENTS_VERSION} from './settings.js';
 import {seeded} from './engine.js';
 
 const sponsor=(over={})=>({id:'abc123def456',name:'Acme',logoUrl:'https://x.public.blob.vercel-storage.com/sponsors/abc123def456.png',link:'https://acme.example',weight:3,enabled:true,placements:['billboard','crate','banner'],...over});
@@ -81,6 +81,28 @@ test('sponsor picks are weighted, deterministic per seed and respect placement a
  let heavy=0;const r=seeded(99);for(let i=0;i<1000;i++)if(pickSponsors(list,'billboard',1,r)[0].id==='bbbbbbbb2222')heavy++;
  assert.ok(heavy>820&&heavy<960,`weight 9 of 10 picked ${heavy}/1000`);
  assert.deepEqual(pickSponsors([],'banner',1,Math.random),[]);
+});
+test('in-battle placements: schema accepts the new keys, rejects unknown ones, upgrades stored billboard sponsors',()=>{
+ const all=['billboard','crate','banner','blimp','parachute','flag','jet','arena'];
+ assert.deepEqual(PLACEMENTS,all);
+ // New keys are accepted and kept exactly when the sponsor carries placementsV 2 (what the admin now sends).
+ const v2=validateSettings({sponsors:[sponsor({placements:['flag','jet','billboard'],placementsV:2})]});
+ assert.equal(v2.ok,true,v2.errors.join('; '));assert.deepEqual(v2.value.sponsors[0].placements,['billboard','flag','jet']);
+ assert.equal(v2.value.sponsors[0].placementsV,PLACEMENTS_VERSION);
+ const billboardOnly=validateSettings({sponsors:[sponsor({placements:['billboard'],placementsV:2})]});
+ assert.deepEqual(billboardOnly.value.sponsors[0].placements,['billboard'],'v2: in-battle placements can be switched off');
+ // Unknown keys, duplicates and a bad version are rejected.
+ for(const bad of [{placements:['blimp','zeppelin']},{placements:['jet','jet']},{placements:'jet'},{placementsV:3},{placementsV:'2'}]){
+  const r=validateSettings({sponsors:[sponsor(bad)]});assert.equal(r.ok,false,JSON.stringify(bad));
+ }
+ // Stored before this change (no placementsV): a billboard sponsor gets every in-battle placement; others stay as they were.
+ const old=mergeSettings({sponsors:[sponsor({id:'olda00000001',placements:['billboard','crate']}),sponsor({id:'oldb00000002',placements:['crate','banner']})]});
+ assert.deepEqual(old.sponsors[0].placements,['billboard','crate',...BATTLE_PLACEMENTS]);
+ assert.deepEqual(old.sponsors[1].placements,['crate','banner']);
+ // No placements at all still means every placement; re-merging an upgraded sponsor is stable (no re-expansion).
+ assert.deepEqual(mergeSettings({sponsors:[sponsor({placements:undefined})]}).sponsors[0].placements,all);
+ assert.deepEqual(mergeSettings(mergeSettings({sponsors:[sponsor({placements:['billboard'],placementsV:2})]})).sponsors[0].placements,['billboard']);
+ assert.deepEqual(pickSponsors(old.sponsors,'blimp',2,seeded(1)).map(s=>s.id),['olda00000001']);
 });
 
 test('ai.model: a Broker model ID or empty; merge drops a bad stored value',()=>{

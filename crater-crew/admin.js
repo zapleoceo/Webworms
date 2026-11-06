@@ -1,11 +1,11 @@
 // Crater Crew admin page: sign in, edit the game settings and sponsors, save through /api/admin/*.
 // Validation uses the same rules as the server (settings.js); the server checks everything again.
-import {defaultSettings,validateSettings,LIMITS,CONTROLLERS,PLACEMENTS,validLink} from './settings.js';
+import {defaultSettings,validateSettings,LIMITS,CONTROLLERS,PLACEMENTS,PLACEMENTS_VERSION,validLink} from './settings.js';
 
 const $=id=>document.getElementById(id);
 const MAP_NAMES=['Sunset Cove · 3600×1400','Rust Ridge · 3600×1400','Crystal Atoll · 3600×1400','Grand Expedition · 6400×1800'];
 const CTRL_NAMES={human:'Human',easy:'PC Easy (local)',hard:'PC Hard (Broker LLM)',ultra:'PC Ultra (Broker LLM)'};
-const PLACE_NAMES={billboard:'Billboard',crate:'Crate',banner:'Banner'};
+const PLACE_NAMES={billboard:'Billboard',crate:'Crate',banner:'Banner',blimp:'Blimp',parachute:'Parachute',flag:'Flags',jet:'Strike plane',arena:'Water buoy'};
 const MAX_LOGO=512*1024;
 
 // Labels, units and hints for every numeric/boolean field, in display order per section.
@@ -158,7 +158,7 @@ function readSponsors(){
  return [...$('sponsor-list').children].map(row=>{
   const f=k=>row.querySelector(`[data-field="${k}"]`),w=f('weight').value.trim();
   return {id:row.dataset.id,name:f('name').value,logoUrl:row.dataset.logo,link:f('link').value.trim(),weight:w===''?NaN:Number(w),enabled:f('enabled').checked,
-   placements:[...row.querySelectorAll('.places input')].filter(b=>b.checked).map(b=>b.value)};
+   placements:[...row.querySelectorAll('.places input')].filter(b=>b.checked).map(b=>b.value),placementsV:PLACEMENTS_VERSION};
  });
 }
 

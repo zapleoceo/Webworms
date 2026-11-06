@@ -3,7 +3,11 @@
 // Plain ES module without Node imports: the browser loads this file as is.
 
 export const CONTROLLERS=['human','easy','hard','ultra'];
-export const PLACEMENTS=['billboard','crate','banner'];
+export const PLACEMENTS=['billboard','crate','banner','blimp','parachute','flag','jet','arena'];
+// In-battle placements added in placements version 2. A sponsor stored before them (no placementsV) that shows on
+// billboards gets them all switched on; once saved with placementsV 2 its list is taken exactly as stored.
+export const BATTLE_PLACEMENTS=['blimp','parachute','flag','jet','arena'];
+export const PLACEMENTS_VERSION=2;
 export const MAP_COUNT=4;
 export const MAX_SPONSORS=20;
 
@@ -71,9 +75,12 @@ function checkSponsor(s,i,errors){
  if(!Number.isInteger(weight)||weight<1||weight>100)fail('weight: whole number 1 to 100');else out.weight=weight;
  const enabled=s.enabled===undefined?true:s.enabled;
  if(typeof enabled!=='boolean')fail('enabled: must be true or false');else out.enabled=enabled;
+ const pv=s.placementsV===undefined?1:s.placementsV;
+ if(!Number.isInteger(pv)||pv<1||pv>PLACEMENTS_VERSION)fail(`placementsV: whole number 1 to ${PLACEMENTS_VERSION}`);
  const placements=s.placements===undefined?[...PLACEMENTS]:s.placements;
  if(!Array.isArray(placements)||!placements.every(p=>PLACEMENTS.includes(p))||new Set(placements).size!==placements.length)fail(`placements: subset of ${PLACEMENTS.join(', ')}`);
- else out.placements=PLACEMENTS.filter(p=>placements.includes(p));
+ else{const legacy=pv<PLACEMENTS_VERSION&&placements.includes('billboard');out.placements=PLACEMENTS.filter(p=>placements.includes(p)||legacy&&BATTLE_PLACEMENTS.includes(p))}
+ out.placementsV=PLACEMENTS_VERSION;
  return bad?null:out;
 }
 
