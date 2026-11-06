@@ -41,7 +41,7 @@ export function brokerTurnOptions(state,{windBlind=false}={}){
  if(!state.aiUtilityUsed){
   const best=Math.max(0,...options.filter(o=>/^(bazooka|grenade)_/.test(o.id)).map(o=>Number(/-(d+)/.exec(o.description)?.[1]||0))),combos=[];
   const crate=planCrate(state);
-  if(crate)combos.push({id:crate.how==='walk'?'crate_walk':'crate_teleport',description:fit(`${crate.how==='walk'?'Walk':'Teleport'} to the health crate at x=${Math.round(crate.crate.x)} (+25 hp; you have ${Math.ceil(w.hp)}hp), then the best shot from there.`),action:{utility:{kind:crate.how==='walk'?'crate-walk':'crate-teleport',...crate}}});
+  if(crate)combos.push({id:crate.how==='walk'?'crate_walk':'crate_teleport',description:fit(`${crate.how==='walk'?'Walk':'Teleport'} to the health crate at x=${Math.round(crate.crate.x)} (+${state.crateHeal??25} hp; you have ${Math.ceil(w.hp)}hp), then the best shot from there.`),action:{utility:{kind:crate.how==='walk'?'crate-walk':'crate-teleport',...crate}}});
   if(best<25){
    const tp=planTeleport(state,{baseScore:best});
    if(tp)combos.push({id:'teleport_combo',description:fit(`Teleport (${state.ammo?.[w.team]?.teleport??0} charge left) to (${Math.round(tp.x)},${Math.round(tp.y)}), then ${tp.weapon}: ${effects(state,tp.shot.end.x,tp.shot.end.y,data[tp.weapon].radius,data[tp.weapon].damage)}.`),action:{utility:{kind:'teleport',...tp}}});
@@ -55,7 +55,7 @@ export function brokerTurnOptions(state,{windBlind=false}={}){
 
 // Everything the model may reason about, compact. Terrain is the surface height every W/63 px.
 export function brokerSnapshot(state,{windBlind=false}={}){
- return {map:state.map,round:state.round,suddenDeath:state.round>8,timer:Math.max(0,Math.ceil(state.timer)),wind:windBlind?0:Math.round(state.wind),water:Math.round(state.waterLevel),activeId:state.active.id,
+ return {map:state.map,round:state.round,suddenDeath:state.round>=(state.suddenDeathRound??9),timer:Math.max(0,Math.ceil(state.timer)),wind:windBlind?0:Math.round(state.wind),water:Math.round(state.waterLevel),activeId:state.active.id,
   worms:state.worms.map(w=>({id:w.id,name:w.name,team:w.team,x:Math.round(w.x),y:Math.round(w.y),hp:Math.ceil(w.hp),alive:w.alive})),
   props:(state.props||[]).slice(0,60).map(p=>({kind:p.kind==='crate'?'health_crate':p.kind,x:Math.round(p.x),y:Math.round(p.y),...(p.kind==='mine'?{armed:Boolean(p.armed)}:{})})),
   terrain:Array.from({length:TERRAIN_SAMPLES},(_,i)=>Math.round(groundY(state.terrain,Math.round(i*(W-1)/(TERRAIN_SAMPLES-1)))))};
