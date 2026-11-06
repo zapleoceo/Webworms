@@ -48,7 +48,8 @@ export function paintTerrain(p,run,grass,m,soil,th,W,H,rect=null){
   if((x>2&&!m[i-3])||(x<W-3&&!m[i+3])||(y>2&&!m[i-3*W])||(y<H-3&&!m[i+3*W])){r=ol[0];g=ol[1];b=ol[2]}
   else if(dep<grass[x]){const f=dep/grass[x],q=f*f,hl=dep<3?1.12:1;r=(g0[0]+(g1[0]-g0[0])*q)*hl;g=(g0[1]+(g1[1]-g0[1])*q)*hl;b=(g0[2]+(g1[2]-g0[2])*q)*hl}
   else if(over[i]){r=o8[i*4];g=o8[i*4+1];b=o8[i*4+2]}
-  else{const d=Math.min(1,Math.max(0,(dep-30)/230)),s=shade[i]/128,cs=dep<grass[x]+5?.8:1;r=(a[0]+(dark[0]-a[0])*d)*s*cs;g=(a[1]+(dark[1]-a[1])*d)*s*cs;b=(a[2]+(dark[2]-a[2])*d)*s*cs}
+  // Soil strata: gently waving bands that follow the depth, lighter and darker by turns, over the depth gradient.
+  else{const d=Math.min(1,Math.max(0,(dep-30)/230)),s=shade[i]/128,cs=dep<grass[x]+5?.8:1,band=Math.sin((dep+9*Math.sin(x*.013)+5*Math.sin(x*.041))*.075),st=1+.075*band+(band>.92?.06:0);r=(a[0]+(dark[0]-a[0])*d)*s*cs*st;g=(a[1]+(dark[1]-a[1])*d)*s*cs*st;b=(a[2]+(dark[2]-a[2])*d)*s*cs*st}
   p[k]=r;p[k+1]=g;p[k+2]=b;p[k+3]=255;
  }
 }
