@@ -1,5 +1,6 @@
 // Original canvas artwork for Crater Crew. The collision shape remains in engine.js.
 import {FONT} from './scenery.js';
+import {clamp} from './engine.js';
 const TAU=Math.PI*2;
 const oval=(c,x,y,rx,ry,color,rotation=0)=>{c.fillStyle=color;c.beginPath();c.ellipse(x,y,rx,ry,rotation,0,TAU);c.fill()};
 function stroke(c,color,width,points){c.strokeStyle=color;c.lineWidth=width;c.lineCap='round';c.lineJoin='round';c.beginPath();c.moveTo(...points[0]);for(const p of points.slice(1))c.lineTo(...p);c.stroke()}
@@ -73,15 +74,16 @@ function grave(c,x,y,team){
 export function drawCharacter(c,w,{active=false,weapon=null,aim=0,phase='ready',now=0,graveY=null}={}){
  const team=TEAM_COLORS[w.team?1:0];
  if(!w.alive){if(graveY!=null)grave(c,w.x,graveY,w.team);return}
- const f=w.face||1,walking=w.grounded&&Math.abs(w.vx)>24,swing=walking?Math.sin(now*.017+w.id)*2:0;
- const br=Math.sin(now*.004+w.id*1.3),bounce=walking?Math.abs(Math.sin(now*.017+w.id))*1.6:0,hurt=w.flash>0;
+ // Inchworm crawl: the body bunches and stretches with distance travelled, as in the original.
+ const f=w.face||1,walking=Boolean(w.walking)||w.grounded&&Math.abs(w.vx)>24,cp=(w.crawl||0)*.2,hump=walking?Math.max(0,Math.sin(cp)):0,reach=walking?Math.cos(cp):0,air=!w.grounded&&w.alive?clamp(-w.vy/400,-1,1):0;
+ const br=Math.sin(now*.004+w.id*1.3),bounce=hump*2.4,hurt=w.flash>0;
  c.save();c.translate(w.x,w.y-4-bounce*.8);c.scale(1.107,1.107);
  if(hurt&&Math.sin(w.flash*30)>0)c.globalAlpha=.65;
  oval(c,0,20+bounce,19,4.5,'#10284466');
  // Curled tail, then four chubby segments stacked toward the head, lighter belly on the facing side.
- blob(c,-f*12,15,6.5,4.2,SKIN_SHADE,-.4*f);
+ blob(c,-f*(12+reach*3-hump*3),15-hump*2+air*2,6.5+reach,4.2,SKIN_SHADE,-.4*f);
  const hy=-13+br*.7-bounce*.4,hx=f*2.5;
- const seg=[[-f*1,12,10.2],[0,3.5,10.8],[f*1,-4.5,11.2]];
+ const seg=[[-f*(1+hump*3),12-hump*3+air*2,10.2],[f*hump,3.5-hump*4+air,10.8],[f*(1+reach*1.2),-4.5-hump*2,11.2]];
  for(const [x,y,r] of seg)oval(c,x,y,r+2.9,r+2.9,OUT);
  oval(c,hx,hy,14+br*.25,14.4,OUT);
  for(const [x,y,r] of seg)oval(c,x,y,r,r,SKIN);
@@ -101,8 +103,8 @@ export function drawCharacter(c,w,{active=false,weapon=null,aim=0,phase='ready',
  }
  if(hurt)oval(c,hx+f*5,hy+9,2.6,3,OUT);else stroke(c,OUT,1.8,[[hx+f*2,hy+8.5],[hx+f*5,hy+10.2],[hx+f*9,hy+8.2]]);
  oval(c,hx-f*1,hy+6,2.4,1.6,'#ff8fa6aa');
- // Little feet.
- blob(c,-f*6,19+swing*.4,5.5,3,SKIN_SHADE,0,1.4);blob(c,f*7,19-swing*.4,5.5,3,SKIN_SHADE,0,1.4);
+ // No feet: the lowest segment rests on a flattened belly that slides along the ground.
+ oval(c,-f*hump*2,19-hump,11-hump*3,3.2,SKIN_SHADE);
  if(active){heldWeapon(c,weapon,f,aim,phase);blob(c,f*10,3,4.4,4.2,SKIN,0,1.4)}
  c.restore();
  // Name and HP in team colour with a dark outline, bold rounded face.

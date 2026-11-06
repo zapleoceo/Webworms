@@ -34,7 +34,9 @@ export function carve(t,cx,cy,r){
 }
 export function groundY(t,x){return t.top[clamp(Math.floor(x),0,W-1)]}
 export function blastDamage(distance,radius,max){return distance>=radius?0:Math.round(max*(1-distance/radius)**1.28)}
-export function trajectory(t,x,y,vx,vy,wind,{fuse=8,bounce=false,dt=1/40}={}){
+export function trajectory(t,x,y,vx,vy,wind,{fuse=8,bounce=false,exact=true,dt=1/40,water=WATER,body=BODIES.grenadeHigh,r=8}={}){
+  // Bouncing ordnance runs the live body step, so the AI forecast and the real throw agree.
+  if(bounce&&exact){const b={x,y,vx,vy,r};let time=0;while(time<fuse-1e-9&&b.y<=water){stepBody(t,b,BODY_STEP,{body});time+=BODY_STEP}return {x:b.x,y:b.y,time,hit:false}}
   let time=0, px=x,py=y,ax=vx,ay=vy,hit=false;
   while(time<fuse&&py<900){
     const nx=px+ax*dt,ny=py+ay*dt;
@@ -48,13 +50,13 @@ export function trajectory(t,x,y,vx,vy,wind,{fuse=8,bounce=false,dt=1/40}={}){
   }
   return {x:px,y:py,time,hit};
 }
-export function selectShot(t,from,targets,friends,wind,difficulty=1){
+export function selectShot(t,from,targets,friends,wind,difficulty=1,water=WATER){
   const profile=AI_PROFILES[difficulty]??AI_PROFILES[1];let best=null;const angles=[];for(let a=-88;a<=88;a+=profile.angleStep)angles.push(a);
   for(const dir of [-1,1])for(const a of angles)for(let p=0.35;p<=1.001;p+=profile.powerStep){
     const theta=a*Math.PI/180;const speed=370+390*p;
     const vx=dir*Math.cos(theta)*speed,vy=Math.sin(theta)*speed;
     const end=trajectory(t,from.x+dir*Math.cos(theta)*24,from.y-9+Math.sin(theta)*22,vx,vy,wind);
-    if(!end.hit||end.y>=WATER)continue;
+    if(!end.hit||end.y>=water)continue;
     let score=-999;
     for(const target of targets){const d=Math.hypot(target.x-end.x,target.y-10-end.y),hurt=blastDamage(d,77,58);score=Math.max(score,hurt+(difficulty===2&&hurt>=target.hp?22:0));}
     for(const f of friends){const d=Math.hypot(f.x-end.x,f.y-10-end.y);score-=blastDamage(d,77,58)*profile.friendWeight;}
@@ -63,17 +65,103 @@ export function selectShot(t,from,targets,friends,wind,difficulty=1){
   }
   return best;
 }
-export function selectLob(t,from,targets,friends,wind,difficulty=1){
-  const profile=AI_PROFILES[difficulty]??AI_PROFILES[1];let best=null;
+export function selectLob(t,from,targets,friends,wind,difficulty=1,water=WATER){
+  const profile=AI_PROFILES[difficulty]??AI_PROFILES[1],rough=[];let best=null;
+  const lobScore=end=>{let score=-999;for(const target of targets){const hurt=blastDamage(Math.hypot(target.x-end.x,target.y-end.y),84,66);score=Math.max(score,hurt+(difficulty===2&&hurt>=target.hp?22:0))}for(const friend of friends)score-=blastDamage(Math.hypot(friend.x-end.x,friend.y-end.y),84,66)*profile.friendWeight;return score};
   for(const dir of [-1,1])for(let a=-88;a<=88;a+=profile.angleStep+1)for(let p=.35;p<=1.001;p+=profile.powerStep+.02){
     const theta=a*Math.PI/180,speed=300+280*p;
-    const end=trajectory(t,from.x+dir*Math.cos(theta)*24,from.y-9+Math.sin(theta)*22,dir*Math.cos(theta)*speed,Math.sin(theta)*speed,wind,{fuse:3,bounce:true});
-    if(end.y>=WATER)continue;
-    let score=-999;
-    for(const target of targets){const hurt=blastDamage(Math.hypot(target.x-end.x,target.y-end.y),84,66);score=Math.max(score,hurt+(difficulty===2&&hurt>=target.hp?22:0))}
-    for(const friend of friends)score-=blastDamage(Math.hypot(friend.x-end.x,friend.y-end.y),84,66)*profile.friendWeight;
-    if(!best||score>best.score)best={dir,angle:a,power:p,score,end};
+    const end=trajectory(t,from.x+dir*Math.cos(theta)*24,from.y-9+Math.sin(theta)*22,dir*Math.cos(theta)*speed,Math.sin(theta)*speed,0,{fuse:3,bounce:true,exact:false,water});
+    if(end.y<water)rough.push({dir,angle:a,power:p,score:lobScore(end)});
+  }
+  // Bounces are chaotic, so the cheap sweep only shortlists; the live physics settles the pick.
+  rough.sort((m,n)=>n.score-m.score);
+  for(const c of rough.slice(0,12)){
+    const theta=c.angle*Math.PI/180,speed=300+280*c.power;
+    const end=trajectory(t,from.x+c.dir*Math.cos(theta)*24,from.y-9+Math.sin(theta)*22,c.dir*Math.cos(theta)*speed,Math.sin(theta)*speed,0,{fuse:3,bounce:true,water});
+    if(end.y>=water)continue;
+    const score=lobScore(end);if(!best||score>best.score)best={...c,score,end};
   }
   return best;
 }
 
+
+// ---- Body physics shared by live ordnance and AI prediction, so forecasts match real flight. ----
+// Bodies are circles against the terrain mask: an impact reflects the normal velocity with
+// restitution, a gentle contact keeps rolling along the surface, and a slow body on flat
+// ground comes to rest until the soil under it is blown away.
+export const BODIES={
+  grenadeHigh:{restitution:.55,impactFriction:.82,rollDrag:.55},
+  grenadeLow:{restitution:.32,impactFriction:.72,rollDrag:.9},
+  dynamite:{restitution:.22,impactFriction:.45,rollDrag:5.5},
+};
+const RIM=Array.from({length:16},(_,i)=>[Math.cos(i*Math.PI/8),Math.sin(i*Math.PI/8)]);
+export function overlaps(t,x,y,r){
+  // Fast path: a circle wholly above the surface line of the columns it spans touches nothing.
+  let top=H;for(let cx=Math.floor(x-r);cx<=x+r;cx+=4)top=Math.min(top,t.top[clamp(cx,0,W-1)]);top=Math.min(top,t.top[clamp(Math.floor(x+r),0,W-1)]);
+  if(y+r<top)return false;
+  if(solid(t,x,y))return true;for(let i=0;i<16;i+=2)if(solid(t,x+RIM[i][0]*r,y+RIM[i][1]*r))return true;return false}
+export function contactNormal(t,x,y,r){
+  let nx=0,ny=0,hits=0;
+  for(const [cx,cy] of RIM)if(solid(t,x+cx*(r+1.5),y+cy*(r+1.5))){nx-=cx;ny-=cy;hits++}
+  const len=Math.hypot(nx,ny);return hits&&len>1e-6?{x:nx/len,y:ny/len}:{x:0,y:-1};
+}
+// Fixed-step integration: the same sequence of steps runs at any frame rate and in the forecast.
+export const BODY_STEP=1/120;
+export function stepBody(t,b,dt,opts={}){
+  const events={impact:0};b.acc=(b.acc||0)+dt;
+  while(b.acc>=BODY_STEP-1e-9){b.acc-=BODY_STEP;events.impact=Math.max(events.impact,fixedStep(t,b,BODY_STEP,opts));if(b.resting)b.acc=0}
+  return events;
+}
+function fixedStep(t,b,dt,{wind=0,body=BODIES.grenadeHigh}={}){
+  const events={impact:0};
+  if(b.resting){if(overlaps(t,b.x,b.y+2,b.r))return 0;b.resting=false;b.restTime=0}
+  b.contact=false;
+  // Forces apply per substep, so a 60 fps frame, a 25 fps frame and the AI forecast agree.
+  const n=Math.max(1,Math.ceil((Math.hypot(b.vx,b.vy)+GRAVITY*dt)*dt/1.5)),h=dt/n;
+  for(let i=0;i<n;i++){
+    b.vx+=wind*h;b.vy+=GRAVITY*h;
+    let nx=b.x+b.vx*h,ny=b.y+b.vy*h;
+    if(!overlaps(t,nx,ny,b.r)){b.x=nx;b.y=ny;continue}
+    const nrm=contactNormal(t,nx,ny,b.r),vn=b.vx*nrm.x+b.vy*nrm.y;b.contact=true;b.normal=nrm;
+    if(vn<0){
+      const tx=-nrm.y,ty=nrm.x,vt=b.vx*tx+b.vy*ty,hard=-vn>45;
+      // A hard hit bounces; a soft one just removes the inward part and keeps the slide.
+      const outN=hard?-vn*body.restitution:0,outT=hard?vt*body.impactFriction:vt;
+      if(hard)events.impact=Math.max(events.impact,-vn);
+      b.vx=nrm.x*outN+tx*outT;b.vy=nrm.y*outN+ty*outT;
+    }
+    nx=b.x+b.vx*h;ny=b.y+b.vy*h;let moved=false;
+    for(let lift=0;lift<=3&&!moved;lift++)if(!overlaps(t,nx+nrm.x*lift,ny+nrm.y*lift,b.r)){b.x=nx+nrm.x*lift;b.y=ny+nrm.y*lift;moved=true}
+    if(!moved){for(let k=0;k<b.r+4&&overlaps(t,b.x,b.y,b.r);k++){b.x+=nrm.x;b.y+=nrm.y}break}
+  }
+  if(b.x<4||b.x>W-4){b.vx*=-.55;b.x=clamp(b.x,4,W-4)}
+  if(b.contact){
+    const drag=Math.max(0,1-body.rollDrag*dt);b.vx*=drag;b.vy*=drag;
+    const flat=(b.normal?.y??-1)<-.93;
+    if(flat&&Math.hypot(b.vx,b.vy)<14){b.restTime=(b.restTime||0)+dt;if(b.restTime>.2){b.resting=true;b.vx=0;b.vy=0}}else b.restTime=0;
+  }else b.restTime=0;
+  return events.impact;
+}
+
+// ---- Worm locomotion: pixel crawl like the original, climbing small steps and hugging slopes. ----
+// Single bumps up to CLIMB px are stepped over, but sustained climbing steeper than CLIMB_RATE px
+// per pixel walked (about 68 degrees) drains CLIMB_BUDGET and stops the worm: cliffs need a jump.
+export const CLIMB=9,CLIMB_RATE=2.5,CLIMB_BUDGET=12,WALK_SPEED=95;
+export function wormFits(t,x,y){return !solid(t,x,y+R-1)&&!solid(t,x-7,y+R-4)&&!solid(t,x+7,y+R-4)&&!solid(t,x,y-R)&&!solid(t,x-9,y-2)&&!solid(t,x+9,y-2)}
+// Support is the rounded underside of wormFits pushed one pixel down, so 'cannot sink' means 'grounded'.
+export function wormGrounded(t,x,y){return solid(t,x,y+R)||solid(t,x-7,y+R-3)||solid(t,x+7,y+R-3)}
+// Moves a grounded worm up to `distance` pixels; returns 'walked', 'blocked' or 'fell'.
+export function crawl(t,w,dir,distance){
+  let left=distance,status='walked';
+  while(left>0){
+    const step=Math.min(1,left),x=clamp(w.x+dir*step,R,W-R);if(x===w.x){status='blocked';break}
+    let y=null;
+    let up=0;while(up<=CLIMB&&!wormFits(t,x,w.y-up))up++;
+    if(up>CLIMB||(w.climbDebt||0)+up>CLIMB_BUDGET){status='blocked';break}
+    y=w.y-up;w.climbDebt=Math.max(0,(w.climbDebt||0)+up-CLIMB_RATE*step);
+    let drop=0;while(drop<CLIMB&&!wormGrounded(t,x,y)&&wormFits(t,x,y+1)){y++;drop++}
+    w.x=x;w.y=y;left-=step;w.crawl=(w.crawl||0)+step;
+    if(!wormGrounded(t,x,y)){status='fell';break}
+  }
+  return status;
+}

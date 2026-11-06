@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {W,H,WATER,createTerrain,solid,carve,groundY,blastDamage,trajectory,selectShot} from './engine.js';
+import {W,H,R,WATER,createTerrain,solid,carve,groundY,blastDamage,trajectory,selectShot,stepBody,crawl,wormFits,BODIES} from './engine.js';
+
+// A flat island with an optional profile: top(x) gives the surface height of each column.
+function shaped(top){const t=createTerrain(0,1);for(let x=0;x<W;x++){t.top[x]=Math.floor(top(x));for(let y=0;y<H;y++)t.mask[y*W+x]=y>=t.top[x]?1:0}return t}
 
 test('all maps form solid, varying islands above water',()=>{
  for(let map=0;map<3;map++){
@@ -34,3 +37,28 @@ test('ballistic shot hits terrain and AI can find shots on every map',()=>{
  }
 });
 
+
+test('worms crawl up a 1:2 ramp with feet on the ground, but not up a wall',()=>{
+ const ramp=shaped(x=>x<700?600:x<900?600-(x-700)*.5:500),w={x:650,y:600-R-1};
+ for(let i=0;i<200;i++)crawl(ramp,w,1,95/40);
+ assert.ok(w.x>1100,`reached ${w.x}`);assert.ok(Math.abs(w.y+R-groundY(ramp,w.x))<=1);
+ const wall=shaped(x=>x>=900&&x<960?300:600),v={x:850,y:600-R-1};
+ for(let i=0;i<200;i++)crawl(wall,v,1,95/40);
+ assert.ok(v.x<900-8,`passed into the wall at ${v.x}`);assert.ok(wormFits(wall,v.x,v.y));
+});
+
+test('a grenade thrown into a wall bounces back and settles instead of tunnelling up',()=>{
+ const t=shaped(x=>x>=900&&x<960?300:600),g={x:820,y:560,vx:520,vy:-80,r:8};let minY=g.y,maxX=g.x;
+ for(let i=0;i<60*6;i++){stepBody(t,g,1/60,{body:BODIES.grenadeHigh});minY=Math.min(minY,g.y);maxX=Math.max(maxX,g.x)}
+ assert.ok(maxX<900,`entered the wall at x=${maxX}`);assert.ok(minY>450,`climbed to y=${minY}`);
+ assert.equal(g.resting,true);assert.ok(Math.abs(g.y+g.r-600)<=2);
+});
+
+test('the AI grenade forecast matches live flight at any frame rate',()=>{
+ const t=createTerrain(0,4242);
+ for(const a of [-60,-25,15])for(const p of [.4,1]){
+  const th=a*Math.PI/180,s=300+280*p,x=500,y=groundY(t,500)-30,f=trajectory(t,x,y,Math.cos(th)*s,Math.sin(th)*s,0,{fuse:3,bounce:true});
+  for(const dt of [1/144,1/60,.04]){const b={x,y,vx:Math.cos(th)*s,vy:Math.sin(th)*s,r:8};let time=0;while(time<3-1e-9&&b.y<=WATER){stepBody(t,b,dt);time+=dt}
+   assert.ok(Math.hypot(b.x-f.x,b.y-f.y)<6,`angle ${a}, power ${p}, dt ${dt}`)}
+ }
+});

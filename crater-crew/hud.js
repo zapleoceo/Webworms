@@ -1,7 +1,7 @@
 // In-canvas HUD: timer box (bottom-left), stacked team health bars (bottom-centre), wind bar (bottom-right).
 import {FONT} from './scenery.js';
 import {TEAM_COLORS} from './art.js';
-const INK='#1c1420',NAMES=['SKY SQUAD','DIRT DEVILS'],SEGS=8,MAX_WIND=40;
+const INK='#1c1420',NAMES=['SKY SQUAD','DIRT DEVILS'],SEGS=8,MAX_WIND=80;
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.arc(x+w-r,y+r,r,-Math.PI/2,0);c.lineTo(x+w,y+h-r);c.arc(x+w-r,y+h-r,r,0,Math.PI/2);c.lineTo(x+r,y+h);c.arc(x+r,y+h-r,r,Math.PI/2,Math.PI);c.lineTo(x,y+r);c.arc(x+r,y+r,r,Math.PI,Math.PI*1.5);c.lineTo(x+r,y)}
 function plate(c,x,y,w,h,r,edge){rr(c,x,y,w,h,r);c.fillStyle='#1c1830dd';c.fill();c.lineWidth=3;c.strokeStyle=edge||INK;c.stroke()}
 function text(c,s,x,y,size,color,align='center'){c.textAlign=align;c.font='bold '+size+'px '+FONT;c.lineWidth=3.5;c.lineJoin='round';c.strokeStyle=INK;c.strokeText(s,x,y);c.fillStyle=color;c.fillText(s,x,y)}

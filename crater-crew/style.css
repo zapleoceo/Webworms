@@ -63,3 +63,6 @@ html,body{overflow-anchor:none}.weapon-options{min-height:44px}
 
 /* fit the whole game in the viewport height: canvas width follows available height (2:1 aspect) */
 @media(min-width:701px){.arena-wrap{width:min(100%,calc((100vh - var(--chrome,256px))*2));margin-inline:auto}}
+
+/* Touch devices of any size (tablets, landscape phones) get the on-screen movement pad. */
+@media(pointer:coarse){.touch-controls{display:flex}}
