@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handle} from './lib/admin-api.mjs';
-import {issueSession,verifySession,SESSION_TTL_MS,resetLimiter,passwordMatches} from './lib/auth.mjs';
+import {issueSession,verifySession,SESSION_TTL_MS,resetLimiter,passwordMatches,invalidateAuthCache} from './lib/auth.mjs';
 import {setStore,createMemoryStore,createBlobStore,SETTINGS_PATH} from './lib/store.mjs';
 import {validateLogo,sniffImage,MAX_LOGO_BYTES} from './lib/images.mjs';
 import {defaultSettings} from './settings.js';
@@ -15,7 +15,7 @@ const logged=[];for(const k of ['log','error','warn','info'])console[k]=(...a)=>
 
 function env(vars){
  for(const k of ['ADMIN_PASSWORD','ADMIN_SESSION_SECRET','BLOB_READ_WRITE_TOKEN'])delete process.env[k];
- Object.assign(process.env,vars);resetLimiter();
+ Object.assign(process.env,vars);resetLimiter();invalidateAuthCache();
 }
 const call=(path,{method='GET',body,headers={},cookie,ip='203.0.113.7',host=HOST}={})=>handle(new Request(host+path,{method,body,headers:{'x-real-ip':ip,...(cookie?{cookie}:{}),...headers}}));
 const postJson=(path,data,opts={})=>call(path,{method:opts.method||'POST',body:JSON.stringify(data),...opts,headers:{'content-type':'application/json',...opts.headers}});
@@ -29,7 +29,7 @@ test('without ADMIN_PASSWORD the admin API answers 503 and public settings still
  env({});setStore(null);
  for(const [path,method] of [['/api/admin/login','POST'],['/api/admin/session','GET'],['/api/admin/settings','PUT'],['/api/admin/sponsors','POST']]){
   const r=await call(path,{method,body:method==='GET'?undefined:'{}',headers:{'content-type':'application/json'}});
-  assert.equal(r.status,503,path);const b=await r.json();assert.equal(b.error,'admin not configured');assert.match(b.detail,/BLOB_READ_WRITE_TOKEN|ADMIN_PASSWORD/);
+  assert.equal(r.status,503,path);const b=await r.json();assert.equal(b.error,'admin not configured');assert.equal(b.detail,undefined,'anonymous callers get no setup details');
  }
  const pub=await call('/api/settings');assert.equal(pub.status,200);assert.deepEqual(await pub.json(),defaultSettings());
  assert.match(pub.headers.get('cache-control'),/max-age=30/);

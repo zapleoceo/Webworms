@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handle} from './lib/admin-api.mjs';
-import {authPath,resetLimiter,hashPassword,recordMatches,validRecord} from './lib/auth.mjs';
+import {authPath,resetLimiter,hashPassword,recordMatches,validRecord,invalidateAuthCache} from './lib/auth.mjs';
 import {setStore,createMemoryStore,createFileStore,createBlobStore} from './lib/store.mjs';
 import {mkdtemp,rm,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -16,7 +16,7 @@ const logged=[];for(const k of ['log','error','warn','info'])console[k]=(...a)=>
 
 function env(vars){
  for(const k of ['ADMIN_PASSWORD','ADMIN_SESSION_SECRET','BLOB_READ_WRITE_TOKEN'])delete process.env[k];
- Object.assign(process.env,vars);resetLimiter();
+ Object.assign(process.env,vars);resetLimiter();invalidateAuthCache();
 }
 const call=(path,{method='GET',body,headers={},cookie,ip='203.0.113.7'}={})=>handle(new Request(HOST+path,{method,body,headers:{'x-real-ip':ip,...(cookie?{cookie}:{}),...headers}}));
 const postJson=(path,data,opts={})=>call(path,{method:opts.method||'POST',body:JSON.stringify(data),...opts,headers:{'content-type':'application/json',...opts.headers}});
@@ -50,7 +50,7 @@ test('setup stores a scrypt record, signs in, and works only once (second setup 
  // Two setups racing: exactly one wins.
  const raced=fresh();
  const res=await Promise.all([postJson('/api/admin/setup',{password:FIRST}),postJson('/api/admin/setup',{password:SECOND})]);
- assert.deepEqual(res.map(r=>r.status).sort(),[200,409]);assert.equal(raced.files.size,1);
+ assert.deepEqual(res.map(r=>r.status).sort(),[200,409]);assert.equal([...raced.files.keys()].filter(k=>k.startsWith('auth/admin-')).length,1);
 });
 
 test('login against the stored record: wrong refused, right accepted, rate limit kept',async()=>{
@@ -78,7 +78,7 @@ test('password change ends old sessions; env password cannot be changed here',as
  assert.equal((await sessionOf(renewed)).authenticated,true,'the changing browser stays signed in');
  assert.equal((await postJson('/api/admin/login',{password:FIRST},{ip:'198.51.100.61'})).status,401);
  assert.equal((await postJson('/api/admin/login',{password:SECOND},{ip:'198.51.100.61'})).status,200);
- assert.equal(store.files.size,1);
+ assert.equal([...store.files.keys()].filter(k=>k.startsWith('auth/admin-')).length,1);
  // Env password wins over the stored record, and is not changeable from the panel.
  process.env.ADMIN_PASSWORD=ENV_PW;resetLimiter();
  assert.equal((await postJson('/api/admin/login',{password:SECOND})).status,401,'stored password ignored while env is set');
@@ -94,9 +94,9 @@ test('setup refused when ADMIN_PASSWORD is set, without ADMIN_SESSION_SECRET, or
  assert.equal(store.files.size,0);
  assert.deepEqual(await(await call('/api/admin/session')).json(),{authenticated:false,setupRequired:false,storage:true,passwordSource:'env'});
  const noSecret=fresh({});
- const n=await postJson('/api/admin/setup',{password:FIRST});assert.equal(n.status,503);assert.match((await n.json()).error,/ADMIN_SESSION_SECRET/);
+ const n=await postJson('/api/admin/setup',{password:FIRST});assert.equal(n.status,503);assert.equal((await n.json()).error,'admin not configured');
  assert.equal(noSecret.files.size,0);
- const ns=await call('/api/admin/session');assert.equal(ns.status,503);assert.match((await ns.json()).detail,/ADMIN_SESSION_SECRET/);
+ const ns=await call('/api/admin/session');assert.equal(ns.status,503);assert.equal((await ns.json()).detail,undefined,'no setup details for anonymous callers');
  env({ADMIN_SESSION_SECRET:SECRET});setStore(null);
  assert.equal((await postJson('/api/admin/setup',{password:FIRST})).status,503);
 });
@@ -119,10 +119,10 @@ test('the record path is not derivable without the secret',async()=>{
  assert.match(a,/^auth\/admin-[0-9a-f]{64}\.json$/);assert.notEqual(a,b);assert.ok(!a.includes(SECRET));
  assert.throws(()=>authPath(''),/ADMIN_SESSION_SECRET/);
  const store=fresh();await postJson('/api/admin/setup',{password:FIRST});
- assert.deepEqual([...store.files.keys()],[a]);
- // Another secret looks elsewhere: it finds no record, and old sessions do not carry over.
+ assert.deepEqual([...store.files.keys()].sort(),[a,'auth/initialized.json'].sort());
+ // Another secret looks elsewhere and finds no record, but the marker keeps setup closed (no takeover after a rotation).
  process.env.ADMIN_SESSION_SECRET=SECRET+'x';
- assert.equal((await(await call('/api/admin/session')).json()).setupRequired,true);
+ invalidateAuthCache();const after=await call('/api/admin/session');assert.equal(after.status,503);assert.equal((await after.json()).setupRequired,undefined);
 });
 
 test('the scrypt record is never returned by an endpoint and never logged',async()=>{
@@ -170,4 +170,20 @@ test('blob store adapter: create refuses overwrite, change is conditional on the
  }finally{globalThis.fetch=realFetch}
  await store.writeAuth(path,{v:3},'"e1"');
  assert.equal(calls.at(-1)[2].ifMatch,'"e1"');assert.equal(calls.at(-1)[2].allowOverwrite,true);
+});
+
+test('setup never reopens once a password was stored: rotating the session secret keeps the admin closed',async()=>{
+ const store=fresh();assert.equal((await postJson('/api/admin/setup',{password:FIRST})).status,200);
+ env({ADMIN_SESSION_SECRET:SECRET+'-rotated'});setStore(store);
+ const s=await call('/api/admin/session');assert.equal(s.status,503,'closed, not open for setup');
+ assert.equal((await postJson('/api/admin/setup',{password:'attacker password 1'})).status,503);
+ env({ADMIN_SESSION_SECRET:SECRET+'-rotated',ADMIN_PASSWORD:ENV_PW});setStore(store);assert.equal((await postJson('/api/admin/login',{password:ENV_PW})).status,200,'env password recovers access');
+});
+test('a too-short ADMIN_PASSWORD closes the admin instead of opening setup',async()=>{
+ fresh({ADMIN_SESSION_SECRET:SECRET,ADMIN_PASSWORD:'short1'});
+ assert.equal((await call('/api/admin/session')).status,503);assert.equal((await postJson('/api/admin/setup',{password:FIRST})).status,503);
+});
+test('an install that stored its password before the marker existed gets the marker on first read',async()=>{
+ const store=fresh();assert.equal((await postJson('/api/admin/setup',{password:FIRST})).status,200);store.files.delete('auth/initialized.json');invalidateAuthCache();
+ assert.equal((await call('/api/admin/session')).status,200);assert.ok(store.files.has('auth/initialized.json'));
 });
