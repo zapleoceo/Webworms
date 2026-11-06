@@ -66,3 +66,6 @@ html,body{overflow-anchor:none}.weapon-options{min-height:44px}
 
 /* Touch devices of any size (tablets, landscape phones) get the on-screen movement pad. */
 @media(pointer:coarse){.touch-controls{display:flex}}
+
+/* Power meter sits top-right under the AI label so it never covers the worm being aimed. */
+.arena-wrap .power-wrap{top:44px;right:14px;bottom:auto;left:auto;transform:none}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AI_PROFILES,W,H,R,WATER,createTerrain,groundY,selectShot} from './engine.js';
+import {AI_PROFILES,W,H,R,WATER,VIEW_W,VIEW_H,createTerrain,groundY,selectShot} from './engine.js';
 import {PENDING_KEY,readPendingTurn,savePendingTurn,PENDING_AGE_MS} from './broker-resume.js';
 import {propsBusy} from './props.js';
 
@@ -470,4 +470,29 @@ test('map props: mines and barrels are scattered, a mine stepped on blows and th
   for(let i=0;i<60;i++)update(.04);assert.ok(!state.props.includes(mine),'mine went off');assert.ok(w.hp<hp||!w.alive,'nearby worm hurt');
   for(let i=0;i<150;i++)update(.04);assert.equal(propsBusy(state),false,'nothing left holding the turn');
  }finally{Object.assign(scheme,{mines:0,barrels:0,crateChance:0})}
+});
+
+test('teleport moves the active worm into open air, keeps the turn, spends one of two charges and refuses rock',()=>{
+ newGame(0,1,4242);flatten(state.terrain,PLAIN);const w=state.active;w.x=400;w.y=PLAIN-R-1;w.grounded=true;state.selected='teleport';
+ state.airTarget=1200;state.airTargetY=PLAIN-200;fire();assert.equal(w.x,1200);assert.equal(state.phase,'ready','teleport keeps the turn');assert.equal(state.ammo[0].teleport,1);
+ state.selected='teleport';state.airTarget=900;state.airTargetY=PLAIN+40;fire();assert.equal(w.x,1200,'no teleport into rock');assert.equal(state.ammo[0].teleport,1);
+ state.selected='teleport';state.airTarget=800;state.airTargetY=PLAIN-120;fire();assert.equal(w.x,800);assert.equal(state.ammo[0].teleport,0);
+ state.selected='teleport';state.airTarget=600;state.airTargetY=PLAIN-120;fire();assert.equal(w.x,800,'out of charges');
+});
+
+test('ninja rope hooks a ceiling, swings the worm, lets go on the second press and keeps the turn',()=>{
+ newGame(0,1,4242);const t=state.terrain;flatten(t,PLAIN);for(let y=PLAIN-420;y<PLAIN-380;y++)t.mask.fill(1,y*W+300,y*W+1300);
+ const w=state.active;w.x=700;w.y=PLAIN-R-1;w.grounded=true;state.selected='rope';state.dir=1;state.aim=-1.2;fire();
+ assert.ok(state.rope,'rope fired');for(let i=0;i<40&&state.rope?.state==='flying';i++)update(.02);assert.equal(state.rope?.state,'attached');
+ state.keys.KeyW=true;for(let i=0;i<30;i++)update(.02);state.keys.KeyW=false;assert.ok(w.y<PLAIN-R-40,`reeled up to ${w.y}`);
+ state.keys.KeyD=true;for(let i=0;i<60;i++)update(.02);state.keys.KeyD=false;
+ state.selected='rope';fire();assert.equal(state.rope,null,'released');assert.equal(state.phase,'ready','rope keeps the turn');
+ for(let i=0;i<200&&!w.grounded;i++)update(.02);assert.ok(w.grounded&&w.alive,'lands after letting go');
+});
+
+test('the camera frames the active worm with a distant rival, zooming out as needed',()=>{
+ newGame(0,1,4242);flatten(state.terrain,PLAIN);const a=state.active;a.x=500;a.y=PLAIN-R-1;
+ const foe=state.worms.find(w=>w.team!==a.team);for(const w of state.worms)if(w!==a&&w!==foe)w.alive=false;foe.x=1700;foe.y=PLAIN-R-1;
+ for(let i=0;i<120;i++)render?.(),update(.03);const c=state.cam,inView=w=>w.x>=c.x&&w.x<=c.x+VIEW_W/c.zoom&&w.y>=c.y&&w.y<=c.y+VIEW_H/c.zoom;
+ assert.ok(c.zoom<1,'zoomed out');assert.ok(inView(a)&&inView(foe),'both in view');
 });

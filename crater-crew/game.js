@@ -11,6 +11,7 @@ import {W,H,WATER,R,GRAVITY,WEAPONS,data,AI_PROFILES,clamp,seeded,createTerrain,
 import {voice,stopVoices,configureVoices,loadVoices} from './voice.js';
 import {createMusic} from './music.js';
 import {placeProps,dropCrate,blastProps,updateProps,drawProps,propsBusy} from './props.js';
+import {fireRope,stepRope,releaseRope,ropePoints} from './rope.js';
 // Match settings, like a classic scheme: map props and how often a health crate drops at turn start.
 const scheme={mines:8,barrels:6,crateChance:.3};
 const $=id=>document.getElementById(id), canvas=$('game'),ctx=canvas.getContext('2d');
@@ -55,7 +56,7 @@ function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePend
  const spots=spawnSpots(state.terrain,seed);
  for(let team=0;team<2;team++)for(let i=0;i<3;i++){const s=spots[i*2+team]??{x:400+(i*2+team)*500,y:groundY(state.terrain,400+(i*2+team)*500)-R-2};let x=s.x,y=s.y;state.worms.push({id:team*3+i,team,name:names[team][i],x,y,vx:0,vy:0,hp:100,alive:true,face:team? -1:1,grounded:true,flash:0,active:false});}
  for(let i=0;i<42;i++)state.decor.push({x:visualRand()*W,y:visualRand()*H*.55,r:visualRand()*3+1,phase:visualRand()*6.28});
- state.props=placeProps(state.terrain,state.worms,seed,scheme);state.propWait=0;music.next();music.setMood('battle');state.active=state.worms[0];state.active.active=true;state.cam={x:0,y:0,zoom:1,tz:1,free:false};centerCamera();updateUI();say('YOUR TURN · TAKE AIM',2.5);
+ state.props=placeProps(state.terrain,state.worms,seed,scheme);state.propWait=0;music.next();music.setMood('battle');state.active=state.worms[0];state.active.active=true;state.cam={x:0,y:0,zoom:1,tz:1,free:false,auto:true};state.camTargetId=null;state.ammo=[{teleport:2},{teleport:2}];centerCamera();updateUI();say('YOUR TURN · TAKE AIM',2.5);
 }
 function living(team){return state.worms.filter(w=>w.team===team&&w.alive)}
 function beginTurn(team){
@@ -64,7 +65,7 @@ function beginTurn(team){
  const alive=living(team);if(!alive.length){finish(1-team);return}
  const prior=state.lastActiveId[team];state.active=alive.find(w=>w.id>prior)||alive[0];state.active.active=true;state.lastActiveId[team]=state.active.id;state.dir=team? -1:1;state.aim=-.78;state.power=.55;
  updateUI();say(team?'DIRT DEVILS ARE THINKING...':'YOUR TURN · TAKE AIM',1.8);voice(state.active,'turn');
- state.aiTimer=team?1.1:0;followAgain();if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
+ state.aiTimer=team?1.1:0;pickTarget(null);state.rope=null;if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
 }
 function finish(winner){clearPendingTurn();state.brokerController?.abort();state.brokerController=null;$('broker-panel').hidden=true;state.ended=true;state.running=false;state.phase='ended';state.musicNextTime=0;$('result-caption').textContent=winner===2?'THE ISLAND CLAIMS EVERYONE':winner?'THE DIRT DEVILS WIN':'SKY SQUAD WINS';$('result-title').textContent=winner===2?'DRAW':winner?'DEFEAT':'VICTORY!';$('result-text').textContent=winner===2?'Both teams went under. Try another island!':winner?'The Dirt Devils took this island. Try another tactic!':'The Dirt Devils have been sent packing. The island is yours!';$('result').classList.add('open');music.setMood(winner===0?'victory':'defeat');$('rematch').focus?.();tone(winner?180:600,.5,'sine',.1,winner?80:900);const champ=state.worms.find(w=>w.alive&&w.team===winner);if(champ)voice(champ,'win');else if(winner===2)voice(state.worms[0],'tie')}
 function nextTurn(){if(state.ended)return;const p=living(0).length,e=living(1).length;if(!p||!e){finish(!p&&!e?2:p?0:1);return}if(state.team===1){state.round++;if(state.round>8){state.waterLevel=Math.max(270,WATER-(state.round-8)*12);music.setMood('tense');say('SUDDEN DEATH · WATER RISING!',1.7)}}beginTurn(1-state.team)}
@@ -80,13 +81,26 @@ function explosion(x,y,r,damage,source){state.shake=Math.max(state.shake,13);add
 function kill(w){if(!w.alive)return;voice(w,w.y>state.waterLevel-12?'water':'die');const killer=state.active;if(killer?.alive&&killer.team!==w.team)setTimeout?.(()=>voice(killer,'kill'),1100);w.alive=false;w.active=false;emit(w.x,w.y,'#fff8d1',28,220);tone(230,.22,'square',.05,80);chirp();say(w.name.toUpperCase()+' IS OUT!',1.3);if((state.active===w&&state.phase==='ready')||living(w.team).length===0){state.phase='resolving';state.resolveTimer=1.5}updateUI()}
 // Hooks the map props call back into: blasts, heals, mine beeps and splashes.
 const propApi={explode:(x,y,r,d)=>explosion(x,y,r,d,-1),heal:(w,a)=>{w.hp+=a;w.flash=0;emit(w.x,w.y-10,'#7dffa8',14,120);tone(880,.12,'sine',.05,1320);say(`${w.name.toUpperCase()} +${a} HP`,1.2);updateUI()},beep:()=>tone(1150,.06,'square',.035),splash:(x,y)=>emit(x,y,'#d6f5ff',12,100)};
-function startResolution(wait=1){state.shotgunLeft=0;state.phase='resolving';state.resolveTimer=wait;state.used=true;state.charging=false}
+function startResolution(wait=1){if(state.rope&&state.active){releaseRope(state.active,state.rope);state.active.grounded=false}state.rope=null;state.shotgunLeft=0;state.phase='resolving';state.resolveTimer=wait;state.used=true;state.charging=false}
 function setGrenadeFuse(value){if(!state.running||state.team!==0||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeFuse=clamp(Number(value)||3,1,5);state.playerGrenadeFuse=state.grenadeFuse;updateUI();tone(620,.05,'triangle',.025)}
 function toggleGrenadeBounce(){if(!state.running||state.team!==0||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeBounce=state.grenadeBounce==='high'?'low':'high';state.playerGrenadeBounce=state.grenadeBounce;updateUI();tone(540,.07,'triangle',.025)}
 function toggleStrikeDirection(){if(!state.running||state.team!==0||state.phase!=='ready'||state.selected!=='airstrike')return;state.strikeDir*=-1;state.playerStrikeDir=state.strikeDir;updateUI();tone(460,.07,'triangle',.025)}
 function dropDynamite(){if(!state.running||state.phase!=='jetpack'||state.jetDropped||!state.active?.alive)return false;const w=state.active;state.projectiles.push({type:'dynamite',x:w.x,y:w.y+R+3,vx:w.vx*.25,vy:w.vy,fuse:3,r:9,bounces:0,bounceFactor:.48,source:w.id,trail:[]});state.jetDropped=true;weaponSound('dynamite');say('DYNAMITE DROPPED!',1);updateUI();return true}
 function aimVector(){return {x:Math.cos(state.aim)*state.dir,y:Math.sin(state.aim)}}
-function fire(power=state.power){if(!state.running||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,weapon=state.selected,v=aimVector();state.charging=false;followAgain();weaponSound(weapon);if(weapon!=='jetpack'&&!state.shotgunLeft)voice(w,weapon==='bazooka'||weapon==='shotgun'?weapon:'fire');if(weapon==='airstrike'){const foe=living(1-w.team)[0];if(foe)setTimeout?.(()=>voice(foe,'incoming'),700)}if(weapon==='shotgun')noise(.18,.065,2300);else if(weapon==='bazooka')noise(.1,.035,1400);
+function fire(power=state.power){if(!state.running||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,weapon=state.selected,v=aimVector();state.charging=false;followAgain();weaponSound(weapon);if(!['jetpack','rope','teleport'].includes(weapon)&&!state.shotgunLeft)voice(w,weapon==='bazooka'||weapon==='shotgun'?weapon:'fire');if(weapon==='airstrike'){const foe=living(1-w.team)[0];if(foe)setTimeout?.(()=>voice(foe,'incoming'),700)}if(weapon==='shotgun')noise(.18,.065,2300);else if(weapon==='bazooka')noise(.1,.035,1400);
+ if(weapon==='rope'){
+  // Space or click fires the hook along the aim; again while hooked lets go and keeps the momentum.
+  if(state.rope){releaseRope(w,state.rope);state.rope=null;w.grounded=false;tone(520,.06,'triangle',.03);return}
+  const v=aimVector();state.rope=fireRope(state.terrain,w,v.x,v.y);tone(900,.08,'square',.03,400);say('ROPE · A/D SWING · W/S REEL · SPACE LET GO',1.6);return}
+ if(state.rope){releaseRope(w,state.rope);state.rope=null;w.grounded=false}
+ if(weapon==='teleport'){
+  // Utility: does not end the turn, two per team per match, only into open air above the water.
+  const tx=state.airTarget,ty=state.airTargetY,ammo=state.ammo?.[w.team];
+  if(tx==null){say('CLICK WHERE TO TELEPORT',1.2);return}
+  if(!ammo?.teleport){say('NO TELEPORTS LEFT',1.2);state.airTarget=null;return}
+  if(!wormFits(state.terrain,tx,ty)||ty>state.waterLevel-40||ty<R){say("CAN'T TELEPORT THERE",1.1);tone(200,.12,'square',.04);state.airTarget=null;return}
+  ammo.teleport--;emit(w.x,w.y,'#c9a2ff',26,170);w.x=tx;w.y=ty;w.vx=0;w.vy=0;w.grounded=false;w.sliding=false;emit(tx,ty,'#c9a2ff',26,170);
+  tone(300,.25,'sine',.05,1400);say(ammo.teleport?'TELEPORTED!':'TELEPORTED · LAST ONE',1.1);state.airTarget=null;state.selected=state.playerWeapon='bazooka';updateUI();return}
  if(weapon==='jetpack'){state.phase='jetpack';state.used=true;state.jetTime=4;if(state.team===1)w.jetUsed=true;say('JETPACK · STEER TO FLY',1.4);tone(480,.2,'sawtooth',.04,170);updateUI();return}
  if(weapon==='punch'){let hit=false;for(const target of state.worms){if(!target.alive||target.team===w.team)continue;const dx=target.x-w.x,dy=target.y-w.y;if(Math.abs(dx)<65&&Math.abs(dy)<48&&Math.sign(dx)===state.dir){target.hp=Math.max(0,target.hp-data.punch.damage);target.vx=state.dir*350;target.vy=-250;target.grounded=false;target.flash=.7;wormCry();voice(target,'hurt');emit(target.x,target.y,'#ffda8d',18,170);if(!target.hp)kill(target);hit=true;break}}carve(state.terrain,w.x+state.dir*39,w.y-3,24);buildTerrain();say(hit?'WHAM!':'SWUNG AND MISSED!',1.3);if(!hit)voice(w,'miss');tone(hit?190:350,.12,'square',.08);startResolution(1.3);updateUI();return}
  if(weapon==='shotgun'){if(!state.shotgunLeft)state.shotgunLeft=2;let hits=0;const chips=[];for(let i=0;i<5;i++){const a=state.aim+(simRandom()-.5)*.24,dir={x:Math.cos(a)*state.dir,y:Math.sin(a)},origin={x:w.x+dir.x*22,y:w.y-7+dir.y*22};for(let dist=0;dist<450;dist+=5){const x=origin.x+dir.x*dist,y=origin.y+dir.y*dist;if(x<0||x>=W||y<0||y>=H)break;if(solid(state.terrain,x,y)){chips.push([x,y]);break}let done=false;for(const target of state.worms){if(!target.alive||target===w)continue;if(Math.hypot(x-target.x,y-target.y)<R){target.hp=Math.max(0,target.hp-5);target.vx+=dir.x*32;target.vy-=24;target.flash=.6;hits++;if(!target.hp)kill(target);done=true;break}}if(done)break;}state.particles.push({x:origin.x,y:origin.y,vx:dir.x*340,vy:dir.y*340,life:.15,max:.15,r:2,color:'#fff3c9'});}for(const [x,y]of chips)carve(state.terrain,x,y,3);if(chips.length)buildTerrain();emit(w.x+v.x*25,w.y-7+v.y*25,'#ffda80',17,100);tone(180,.23,'sawtooth',.09,55);const result=hits?`${hits*5} DAMAGE`:'MISSED';if(!hits)voice(w,'miss');if(hits)wormCry();state.shotgunLeft--;if(state.shotgunLeft){say(`SHOTGUN · ${result} · SECOND SHOT!`,1.2);state.aiTimer=.4}else{say(`SHOTGUN · ${result}`,1.2);startResolution(1.2)}updateUI();return}
@@ -158,6 +172,12 @@ async function requestBrokerTurn(resume=false){
  finally{clearTimeout(deadline);if(state.brokerController===controller)state.brokerController=null}
 }
 function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);const player=state.team===0&&state.active===w&&state.running&&(state.phase==='ready'||state.phase==='jetpack'||state.phase==='retreat');const ai=state.team===1&&state.active===w&&['reposition','jetpack','retreat'].includes(state.phase);const aiDir=state.phase==='retreat'?state.aiRetreat:Math.sign(state.aiTarget-w.x);const aiDrive=ai&&Math.abs(state.aiTarget-w.x)>18||ai&&state.phase==='retreat';const aiLeft=aiDrive&&aiDir<0,aiRight=aiDrive&&aiDir>0;const ahead=w.x+aiDir*35,aiCliff=ai&&aiDir!==0&&(groundY(state.terrain,ahead)>state.waterLevel-25||groundY(state.terrain,ahead)-groundY(state.terrain,w.x)>55);const left=player&&(state.keys.left||state.keys.KeyA||state.keys.ArrowLeft)||aiLeft,right=player&&(state.keys.right||state.keys.KeyD||state.keys.ArrowRight)||aiRight,jump=player&&(state.keys.jump||state.keys.KeyW||state.keys.ArrowUp)||aiCliff&&state.phase!=='retreat';
+ // Ninja rope: while the hook flies the worm keeps its normal physics; once hooked it swings on the rope.
+ if(state.rope&&state.active===w){
+  const rp=state.rope,k=state.keys;stepRope(state.terrain,w,rp,dt,{left:!!(k.KeyA||k.ArrowLeft||k.left),right:!!(k.KeyD||k.ArrowRight||k.right),up:!!(k.KeyW||k.ArrowUp||k.jump),down:!!(k.KeyS||k.ArrowDown)});
+  if(rp.state==='missed'){state.rope=null;say('ROPE MISSED',.8)}
+  else if(rp.state==='attached'){w.grounded=false;w.sliding=false;if(Math.abs(w.vx)>20)w.face=Math.sign(w.vx);if(w.y>state.waterLevel-10){w.hp=0;kill(w);say(w.name.toUpperCase()+' TOOK A SWIM!',1.4)}return}
+ }
  const t=state.terrain,jet=state.phase==='jetpack'&&state.active===w,dir=left&&!right?-1:right&&!left?1:0,backflip=player&&state.keys.Backspace;
  w.stepClock=Math.max(0,(w.stepClock||0)-dt);w.walking=false;
  if(w.grounded&&!jet){
@@ -207,7 +227,7 @@ function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dyn
  }}
  if(p.fuse<=0){p.dead=true;if(p.type==='grenade'||p.type==='dynamite'){explosion(p.x,p.y,data[p.type].radius,data[p.type].damage,p.source)}else if(p.type==='airstrike'){explosion(p.x,p.y,56,40,p.source)}else if(p.type==='bazooka'){p.dead=true}}
 }
-function update(dt){if(!state.running)return;musicTick();if(state.team===1&&state.aiDriver==='broker'&&['broker-wait','broker-error'].includes(state.phase)){updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
+function update(dt){if(!state.running)return;updateCamera(dt);musicTick();if(state.team===1&&state.aiDriver==='broker'&&['broker-wait','broker-error'].includes(state.phase)){updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
  if(state.phase==='ready'||state.phase==='jetpack'||state.phase==='reposition'){{const before=state.timer;state.timer-=dt;if(before>5&&state.timer<=5&&state.active?.alive)voice(state.active,'hurry')}if(state.timer<=0){state.timer=0;say('TIME IS UP!',1);startResolution(.7)}if(state.phase==='jetpack'){state.jetTime-=dt;state.jetPulse=(state.jetPulse||0)-dt;if(state.jetPulse<=0){noise(.19,.018,1800);state.jetPulse=.44}if(state.jetTime<=0)startResolution(.8)}if(state.phase==='reposition'){state.aiMoveTime-=dt;if(state.aiMoveTime<=0||Math.abs(state.active.x-state.aiTarget)<20){state.phase='ready';state.aiTimer=.25}}}
  if(state.team===1&&state.phase==='ready'){state.aiTimer-=dt;if(state.aiTimer<=0)aiAct()}
  if(state.team===1&&state.phase==='jetpack'&&!state.jetDropped&&state.active?.alive){const w=state.active;const target=living(0).find(f=>Math.abs(f.x-w.x)<62&&f.y-w.y>45);if(target&&living(1).every(f=>f===w||Math.hypot(f.x-w.x,f.y-w.y)>125))dropDynamite()}
@@ -251,19 +271,47 @@ function centerCamera(){const c=state.cam,f=camFocus();if(!c||!f)return;c.x=f.x-
 function updateCamera(dt){
  const c=state.cam;if(!c)return;
  if(Math.abs(c.tz-c.zoom)>1e-3){const mx=c.x+VIEW_W/c.zoom/2,my=c.y+VIEW_H/c.zoom/2;c.zoom+=(c.tz-c.zoom)*Math.min(1,dt*9);c.x=mx-VIEW_W/c.zoom/2;c.y=my-VIEW_H/c.zoom/2}
- if(!c.free){const f=camFocus();if(f){const k=Math.min(1,dt*(f===state.active?4:7));c.x+=(f.x-VIEW_W/c.zoom/2-c.x)*k;c.y+=(f.y-VIEW_H/c.zoom*.55-c.y)*k}}
+ if(!c.free){
+  const f=camFocus(),a=state.active,tgt=f===a&&c.auto?frameTarget():null;let cx=f?.x,cy=f?.y,k=Math.min(1,dt*(f===a?4:7));
+  if(tgt){
+   // Frame the active worm with its target, zooming out as far as needed; past the widest view keep
+   // our worm on screen and lean toward the target so its direction and the aim line stay readable.
+   const dx=tgt.x-a.x,dy=tgt.y-a.y;c.tz=clamp(Math.min(VIEW_W/(Math.abs(dx)+560),VIEW_H/(Math.abs(dy)+460)),MIN_ZOOM,1);
+   const vw=VIEW_W/c.zoom;cx=(a.x+tgt.x)/2;cy=(a.y+tgt.y)/2-20;if(Math.abs(dx)+560>vw)cx=a.x+Math.sign(dx)*(vw/2-280);k=Math.min(1,dt*3);
+  }
+  if(f){c.x+=(cx-VIEW_W/c.zoom/2-c.x)*k;c.y+=(cy-VIEW_H/c.zoom*.55-c.y)*k}
+ }
  clampCam(c);
 }
-function zoomBy(factor){const c=state.cam;if(c)c.tz=clamp(c.tz*factor,MIN_ZOOM,1.25)}
+function zoomBy(factor){const c=state.cam;if(c){c.auto=false;c.tz=clamp(c.tz*factor,MIN_ZOOM,1.25)}}
 function followAgain(){if(state.cam){state.cam.free=false}}
+// Who the camera frames with the active worm: a picked target (T or an edge arrow), else the nearest rival.
+function frameTarget(){
+ const a=state.active;if(!a?.alive||!state.running)return null;
+ const picked=state.worms.find(w=>w.id===state.camTargetId&&w.alive&&w.team!==a.team);if(picked)return picked;
+ let best=null;for(const w of state.worms)if(w.alive&&w.team!==a.team&&(!best||Math.abs(w.x-a.x)<Math.abs(best.x-a.x)))best=w;return best;
+}
+function pickTarget(w){const c=state.cam;state.camTargetId=w?.id??null;if(c){c.auto=true;c.free=false}}
+function cycleTarget(){const a=state.active;if(!a)return;const foes=state.worms.filter(w=>w.alive&&w.team!==a.team).sort((p,q)=>Math.abs(p.x-a.x)-Math.abs(q.x-a.x));if(!foes.length)return;const i=foes.findIndex(w=>w.id===state.camTargetId);pickTarget(foes[(i+1)%foes.length]);say('TARGET · '+foes[(i+1)%foes.length].name.toUpperCase(),.9)}
+// The rope: a dark core with a light strand, through every wrap point, and the hook at the end.
+function drawRope(){
+ const r=state.rope,w=state.active;if(!r||!w?.alive)return;const pts=ropePoints(w,r);if(pts.length<2)return;
+ ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+ for(const [col,width] of [['#2b1d14',4],['#d9b77a',1.8]]){ctx.strokeStyle=col;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y-6);for(const p of pts.slice(1))ctx.lineTo(p.x,p.y);ctx.stroke()}
+ const e=pts[pts.length-1];ctx.fillStyle='#8796a3';ctx.strokeStyle='#1c1420';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,4.5,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();
+}
 // Arrows on the screen edge point at worms outside the view.
 function drawOffscreen(){
  const c=state.cam;if(!c)return;
+ state.edgeArrows=[];
  for(const w of state.worms){
   if(!w.alive)continue;const sx=(w.x-c.x)*c.zoom,sy=(w.y-c.y)*c.zoom;if(sx>=-10&&sx<=VIEW_W+10&&sy>=-10&&sy<=VIEW_H+10)continue;
   const ex=clamp(sx,22,VIEW_W-22),ey=clamp(sy,22,VIEW_H-120);
   ctx.save();ctx.translate(ex,ey);ctx.rotate(Math.atan2(sy-ey,sx-ex));ctx.beginPath();ctx.moveTo(13,0);ctx.lineTo(-8,-9);ctx.lineTo(-8,9);ctx.lineTo(13,0);
-  ctx.fillStyle=TEAM_COLORS[w.team?1:0];ctx.fill();ctx.lineWidth=2.5;ctx.strokeStyle='#1c1420';ctx.stroke();ctx.restore();
+  ctx.fillStyle=TEAM_COLORS[w.team?1:0];ctx.fill();ctx.lineWidth=state.camTargetId===w.id?4:2.5;ctx.strokeStyle=state.camTargetId===w.id?'#ffffff':'#1c1420';ctx.stroke();ctx.restore();
+  const a=state.active,dist=a?Math.round(Math.hypot(w.x-a.x,w.y-a.y)/10):0,lx=clamp(ex,40,VIEW_W-40),ly=ey+(ey>VIEW_H/2?-22:26);
+  ctx.save();ctx.font='bold 13px system-ui,sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='#1c1420';ctx.fillStyle='#ffffff';const label=`${Math.ceil(w.hp)}♥ ${dist}m`;ctx.strokeText(label,lx,ly);ctx.fillText(label,lx,ly);ctx.restore();
+  state.edgeArrows.push({x:ex,y:ey,id:w.id});
  }
 }
 function drawWorm(w){if(!w.alive)return;const active=w===state.active&&state.running;ctx.save();ctx.translate(w.x,w.y);if(w.flash>0&&Math.sin(w.flash*30)>0)ctx.globalAlpha=.55;
@@ -304,12 +352,14 @@ function drawWormDetails(w){
  ctx.restore();
 }
 function drawProjectile(p){ctx.save();if(p.trail.length){ctx.beginPath();ctx.moveTo(p.trail[0].x,p.trail[0].y);for(const point of p.trail)ctx.lineTo(point.x,point.y);ctx.lineTo(p.x,p.y);ctx.strokeStyle=p.type==='airstrike'?'#fff6a6aa':'#fff9dda6';ctx.lineWidth=p.type==='airstrike'?5:3;ctx.stroke()}ctx.translate(p.x,p.y);ctx.rotate(Math.atan2(p.vy,p.vx));ctx.fillStyle=p.type==='grenade'?'#4e796a':p.type==='dynamite'?'#db6260':p.type==='airstrike'?'#fff0a5':'#fbdf89';ctx.beginPath();ctx.ellipse(0,0,p.type==='dynamite'?10:12,5,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fcf5d7';ctx.fillRect(-6,-2,5,4);ctx.restore()}
-function drawAim(){if(!state.running||state.team!==0||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,v=aimVector();ctx.save();ctx.strokeStyle='#fff8d9';ctx.lineWidth=3;ctx.setLineDash([8,8]);ctx.beginPath();ctx.moveTo(w.x+v.x*27,w.y-8+v.y*27);ctx.lineTo(w.x+v.x*125,w.y-8+v.y*125);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#fff9dd';ctx.beginPath();ctx.arc(w.x+v.x*125,w.y-8+v.y*125,6,0,Math.PI*2);ctx.fill();const ax=state.airTarget??state.airHover;if(state.selected==='airstrike'&&ax!=null){ctx.strokeStyle='#ffefaa';ctx.lineWidth=2;if(state.airTarget==null)ctx.setLineDash?.([6,6]);ctx.beginPath();ctx.moveTo(ax,120);ctx.lineTo(ax,groundY(state.terrain,ax)-30);ctx.stroke();ctx.beginPath();ctx.arc(ax,groundY(state.terrain,ax)-25,28,0,Math.PI*2);ctx.stroke();ctx.setLineDash?.([])}ctx.restore()}
-function render(){if(!state.terrain)return;const now=performance.now();frameDt=lastFrame?Math.min(.05,(now-lastFrame)/1000):.016;lastFrame=now;updateCamera(frameDt);drawSky(now);const cam=state.cam;ctx.save();ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.x,-cam.y);if(state.shake){ctx.translate((visualRand()-.5)*state.shake,(visualRand()-.5)*state.shake)}drawWorldBack(now);drawEnvironment(ctx,state,groundY);ctx.drawImage(state.terrainCanvas,0,0);drawProps(ctx,state.props,now);for(const p of state.projectiles)drawOrdnance(ctx,p);for(const w of state.worms)drawCharacter(ctx,w,{active:w===state.active&&state.running,weapon:state.selected,aim:state.aim,phase:state.phase,now,graveY:w.alive?null:graveY(w)});for(const b of state.blasts)drawBlast(ctx,b);drawAim();for(const p of state.particles){ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();if(p.r>3.4){ctx.lineWidth=1.5;ctx.strokeStyle='#2b1a1c';ctx.stroke()}}ctx.globalAlpha=1;drawWater(ctx,state,themes[state.map],W,H,now,true);ctx.restore();drawOffscreen();drawHud(ctx,state,VIEW_W,VIEW_H,now)}
+function drawAim(){if(!state.running||state.team!==0||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,v=aimVector();ctx.save();ctx.strokeStyle='#fff8d9';ctx.lineWidth=3;ctx.setLineDash([8,8]);ctx.beginPath();ctx.moveTo(w.x+v.x*27,w.y-8+v.y*27);ctx.lineTo(w.x+v.x*125,w.y-8+v.y*125);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#fff9dd';ctx.beginPath();ctx.arc(w.x+v.x*125,w.y-8+v.y*125,6,0,Math.PI*2);ctx.fill();const ax=state.airTarget??state.airHover;if(state.selected==='airstrike'&&ax!=null){ctx.strokeStyle='#ffefaa';ctx.lineWidth=2;if(state.airTarget==null)ctx.setLineDash?.([6,6]);ctx.beginPath();ctx.moveTo(ax,120);ctx.lineTo(ax,groundY(state.terrain,ax)-30);ctx.stroke();ctx.beginPath();ctx.arc(ax,groundY(state.terrain,ax)-25,28,0,Math.PI*2);ctx.stroke();ctx.setLineDash?.([])}
+ // Teleport preview: a worm-sized ring, green where it fits, red where it does not.
+ if(state.selected==='teleport'){const tx=state.airTarget??state.airHover,ty=state.airTarget!=null?state.airTargetY:state.airHoverY;if(tx!=null&&ty!=null){const ok=wormFits(state.terrain,tx,ty)&&ty<state.waterLevel-40&&ty>R;ctx.strokeStyle=ok?'#9dffb8':'#ff7a6b';ctx.lineWidth=3;ctx.setLineDash?.([5,5]);ctx.beginPath();ctx.arc(tx,ty,R+7,0,Math.PI*2);ctx.stroke();ctx.setLineDash?.([])}}ctx.restore()}
+function render(){if(!state.terrain)return;const now=performance.now();frameDt=lastFrame?Math.min(.05,(now-lastFrame)/1000):.016;lastFrame=now;drawSky(now);const cam=state.cam;ctx.save();ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.x,-cam.y);if(state.shake){ctx.translate((visualRand()-.5)*state.shake,(visualRand()-.5)*state.shake)}drawWorldBack(now);drawEnvironment(ctx,state,groundY);ctx.drawImage(state.terrainCanvas,0,0);drawProps(ctx,state.props,now);drawRope();for(const p of state.projectiles)drawOrdnance(ctx,p);for(const w of state.worms)drawCharacter(ctx,w,{active:w===state.active&&state.running,weapon:state.selected,aim:state.aim,phase:state.phase,now,graveY:w.alive?null:graveY(w)});for(const b of state.blasts)drawBlast(ctx,b);drawAim();for(const p of state.particles){ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();if(p.r>3.4){ctx.lineWidth=1.5;ctx.strokeStyle='#2b1a1c';ctx.stroke()}}ctx.globalAlpha=1;drawWater(ctx,state,themes[state.map],W,H,now,true);ctx.restore();drawOffscreen();drawHud(ctx,state,VIEW_W,VIEW_H,now)}
 let last=performance.now();function loop(now){const dt=Math.min((now-last)/1000,.04);last=now;update(dt);render();requestAnimationFrame(loop)}requestAnimationFrame(loop);
 function pointerCoords(ev){const r=canvas.getBoundingClientRect(),c=state.cam,sx=(ev.clientX-r.left)/r.width*VIEW_W,sy=(ev.clientY-r.top)/r.height*VIEW_H;return{x:c.x+sx/c.zoom,y:c.y+sy/c.zoom}}
-function aimAt(ev){if(!state.running||state.team!==0||state.phase!=='ready')return;const m=pointerCoords(ev),w=state.active,dx=m.x-w.x,dy=m.y-w.y+8;if(state.selected==='airstrike'){if(ev.type==='pointerdown'&&(ev.button===0||ev.pointerType!=='mouse')){state.airTarget=m.x;state.airHover=null}else if(state.airTarget==null)state.airHover=m.x;return}state.dir=dx<0?-1:1;state.aim=aimAngle(dx,dy);w.face=state.dir}
-function chargeStart(){if(!state.running||state.team!==0||state.phase!=='ready'||state.charging)return;if(['punch','dynamite','airstrike','jetpack','shotgun'].includes(state.selected)){fire();return}state.charging=true;state.chargeDir=1;state.power=.22;tone(480,.08,'sine',.03,650)}
+function aimAt(ev){if(!state.running||state.team!==0||state.phase!=='ready')return;const m=pointerCoords(ev),w=state.active,dx=m.x-w.x,dy=m.y-w.y+8;if(state.selected==='airstrike'||state.selected==='teleport'){if(ev.type==='pointerdown'&&(ev.button===0||ev.pointerType!=='mouse')){state.airTarget=m.x;state.airTargetY=m.y;state.airHover=null}else if(state.airTarget==null){state.airHover=m.x;state.airHoverY=m.y}return}state.dir=dx<0?-1:1;state.aim=aimAngle(dx,dy);w.face=state.dir}
+function chargeStart(){if(!state.running||state.team!==0||state.phase!=='ready'||state.charging)return;if(['punch','dynamite','airstrike','jetpack','shotgun','teleport','rope'].includes(state.selected)){fire();return}state.charging=true;state.chargeDir=1;state.power=.22;tone(480,.08,'sine',.03,650)}
 function chargeEnd(){if(state.charging)fire()}
 const weaponBox=$('weapons');WEAPONS.forEach((id,i)=>{const b=document.createElement('button');b.className='weapon';b.dataset.weapon=id;b.title=`${data[id].name} - ${data[id].short}`;b.innerHTML=`<span class="glyph">${weaponIcon(id)||data[id].icon}</span><span class="name">${data[id].name}</span><span class="key">${i+1}</span>`;b.addEventListener('click',()=>{if(state.team!==0||state.phase!=='ready'||state.shotgunLeft)return;state.selected=id;state.playerWeapon=id;state.airTarget=null;state.airHover=null;updateUI();tone(530,.06,'sine',.03)});weaponBox.appendChild(b)});
 for(const button of document.querySelectorAll('[data-fuse]'))button.addEventListener('click',()=>setGrenadeFuse(button.dataset.fuse));
@@ -322,7 +372,10 @@ canvas.addEventListener('wheel',e=>{e.preventDefault();zoomBy(e.deltaY>0?.88:1/.
 canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&(e.button===2||e.button===1)&&state.cam){panFrom={x:e.clientX,y:e.clientY,cx:state.cam.x,cy:state.cam.y};canvas.setPointerCapture?.(e.pointerId)}});
 window.addEventListener('pointerup',e=>{if(e.button===2||e.button===1)panFrom=null});
 canvas.addEventListener('pointermove',e=>{if(!panFrom)return;const r=canvas.getBoundingClientRect(),c=state.cam,k=VIEW_W/r.width/c.zoom;c.free=true;c.x=panFrom.cx-(e.clientX-panFrom.x)*k;c.y=panFrom.cy-(e.clientY-panFrom.y)*k;clampCam(c)});
-canvas.addEventListener('pointermove',aimAt);canvas.addEventListener('pointerdown',e=>{document.activeElement?.blur?.();aimAt(e);if(e.pointerType==='mouse'&&e.button===0)chargeStart()});window.addEventListener('pointerup',chargeEnd);
+canvas.addEventListener('pointermove',aimAt);canvas.addEventListener('pointerdown',e=>{document.activeElement?.blur?.();
+ // A click on an edge arrow frames that worm instead of shooting.
+ if(e.button===0&&state.edgeArrows?.length){const r=canvas.getBoundingClientRect(),sx=(e.clientX-r.left)/r.width*VIEW_W,sy=(e.clientY-r.top)/r.height*VIEW_H,hit=state.edgeArrows.find(a=>Math.hypot(a.x-sx,a.y-sy)<26);if(hit){pickTarget(state.worms.find(w=>w.id===hit.id));return}}
+ aimAt(e);if(e.pointerType==='mouse'&&e.button===0)chargeStart()});window.addEventListener('pointerup',chargeEnd);
 $('fire').addEventListener('pointerdown',e=>{e.preventDefault();chargeStart()});$('fire').addEventListener('pointerup',e=>{e.preventDefault();chargeEnd();$('fire').blur?.()});$('fire').addEventListener('focus',()=>{const y=window.scrollY;requestAnimationFrame?.(()=>window.scrollTo?.(0,y))});$('fire').addEventListener('pointerleave',chargeEnd);
 document.addEventListener?.('click',e=>{const b=e.target?.closest?.('button');if(b&&!b.closest('.modal')&&e.detail>0)b.blur()});
 $('end-turn').onclick=endTurn;$('touch-switch').onclick=cycle;
@@ -336,12 +389,13 @@ window.addEventListener('keydown',e=>{
  state.keys[e.code]=true;
  if(e.code==='Space')chargeStart();if(e.code==='Tab')cycle();if(e.code==='Enter')endTurn();
  if(e.code==='KeyX')dropDynamite();
- if(e.code==='KeyC'&&state.cam){followAgain();state.cam.tz=1}
- if(e.code==='KeyZ'&&state.cam){followAgain();state.cam.tz=state.cam.tz>MIN_ZOOM+.01?MIN_ZOOM:1}
+ if(e.code==='KeyC'&&state.cam){pickTarget(null);state.cam.tz=1}
+ if(e.code==='KeyZ'&&state.cam){followAgain();state.cam.auto=false;state.cam.tz=state.cam.tz>MIN_ZOOM+.01?MIN_ZOOM:1}
+ if(e.code==='KeyT')cycleTarget();
  if(e.code==='KeyR')toggleStrikeDirection();
  if(e.code==='Minus'||e.code==='Equal')toggleGrenadeBounce();
  if(e.shiftKey&&/^Digit[1-5]$/.test(e.code)){setGrenadeFuse(Number(e.code.slice(-1)));return}
- if(/^Digit[1-7]$/.test(e.code)&&state.team===0&&state.phase==='ready'&&!state.shotgunLeft){state.selected=WEAPONS[Number(e.code.slice(-1))-1];state.playerWeapon=state.selected;state.airTarget=null;updateUI()}
+ if(/^Digit[1-9]$/.test(e.code)&&state.team===0&&state.phase==='ready'&&!state.shotgunLeft){state.selected=WEAPONS[Number(e.code.slice(-1))-1];state.playerWeapon=state.selected;state.airTarget=null;updateUI()}
 });
 window.addEventListener('keyup',e=>{state.keys[e.code]=false;if(e.code==='Space')chargeEnd()});window.addEventListener('blur',()=>{state.keys={};state.charging=false;state.power=.5;updateUI()});
 const aiHints=['Easy: aims loosely, favors simple shots and rarely changes position.','Normal: plans shots, uses grenades and moves for a better angle.','Hard: searches more trajectories, protects allies and aims precisely.'];

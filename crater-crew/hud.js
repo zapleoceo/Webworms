@@ -1,4 +1,4 @@
-// In-canvas HUD: timer box (bottom-left), stacked team health bars (bottom-centre), wind bar (bottom-right).
+// In-canvas HUD: team health bars (top-left, clear of the worms), timer box (bottom-left), wind bar (bottom-right).
 import {FONT} from './scenery.js';
 import {TEAM_COLORS} from './art.js';
 const INK='#1c1420',NAMES=['SKY SQUAD','DIRT DEVILS'],SEGS=8,MAX_WIND=80;
@@ -15,10 +15,10 @@ export function drawHud(c,st,W,H,now){
  text(c,mine?'YOUR TURN':'AI TURN',66,H-58,11,tc);
  // health bars, one row per team
  // bar right edge + 1.5px bar stroke + PAD + 1.5px panel stroke must stay inside the panel half-width
- const cx=W/2,PW=380,PAD=16,bx=cx-18,bw=cx+PW/2-1.5-PAD-1.5-bx;
- plate(c,cx-PW/2,H-78,PW,62,12);
+ const PW=380,cx=18+PW/2,PAD=16,bx=cx-18,bw=cx+PW/2-1.5-PAD-1.5-bx,TOP=16;
+ plate(c,cx-PW/2,TOP,PW,62,12);
  for(let t=0;t<2;t++){
-  const y=H-70+t*26,f=teamHealth(st.worms,t);
+  const y=TOP+8+t*26,f=teamHealth(st.worms,t);
   text(c,NAMES[t],cx-30,y+14,13,TEAM_COLORS[t],'right');
   rr(c,bx,y,bw,18,8);c.fillStyle='#0d0a14';c.fill();
   if(f>0){rr(c,bx+2,y+2,Math.max(10,(bw-4)*f),14,6);c.fillStyle=TEAM_COLORS[t];c.fill();rr(c,bx+4,y+3,Math.max(6,(bw-8)*f),4,2);c.fillStyle='#ffffff55';c.fill()}
