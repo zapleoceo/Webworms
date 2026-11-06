@@ -2,7 +2,7 @@
 // Pure, deterministic planners over the game state (no DOM, no Math.random). Every plan is checked against
 // the same physics the game runs: selectShot/selectLob for shots, rope.js for the swing and a copy of
 // game.js updateWorm's airborne branch (plus land() and the grounded slide) for the fall after release.
-import {W,R,GRAVITY,WATER,solid,groundY,wormFits,wormGrounded,crawl,selectShot,selectLob} from './engine.js';
+import {W,R,GRAVITY,WATER,wormDrowned,solid,groundY,wormFits,wormGrounded,crawl,selectShot,selectLob} from './engine.js';
 import {fireRope,stepRope,releaseRope} from './rope.js';
 
 export const ROPE_DT=1/60;
@@ -127,7 +127,7 @@ export function simulateFall(t,w0,{water=WATER,maxTime=4,dt=ROPE_DT}={}){
         w.vy=0;w.x=nx;
       }
     }
-    if(w.y>water-10)return {x:w.x,y:w.y,landed:false,drowned:true,hurt};
+    if(wormDrowned(w,water))return {x:w.x,y:w.y,landed:false,drowned:true,hurt};
     if(w.grounded&&!w.sliding)return {x:w.x,y:w.y,landed:true,drowned:false,hurt};
   }
   return {x:w.x,y:w.y,landed:false,drowned:false,hurt};
@@ -164,7 +164,7 @@ function ropeRun(t,start,aim,swing,reel,{water,mines,hp}){
         out.push({...plan,releaseAt:k/60,landing:{x:f.x,y:f.y},hurt:f.hurt});
     }
     stepRope(t,w,rope,ROPE_DT,executeRopeInputs(plan,k/60));
-    if(w.y>water-10)break;
+    if(wormDrowned(w,water))break;
   }
   return out;
 }
