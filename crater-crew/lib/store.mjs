@@ -1,11 +1,13 @@
 // Settings and sponsor-logo storage. Production: Vercel Blob (env BLOB_READ_WRITE_TOKEN). Local dev: a folder
 // served by server.mjs. Tests: memory. All three expose the same small interface:
 //   readSettings() -> object|null, writeSettings(obj), putLogo(id, ext, bytes, contentType) -> url, deleteLogo(url)
+//   readAuth(path) -> {record, etag}|null, createAuth(path, record) -> false when it already exists,
+//   writeAuth(path, record, etag) (overwrite; the blob store refuses it when the record changed since that etag)
 import {mkdir,readFile,writeFile,rm} from 'node:fs/promises';
 import {join,resolve,sep} from 'node:path';
 
 export const SETTINGS_PATH='settings/game.json';
-const MAX_SETTINGS_BYTES=256*1024;
+const MAX_SETTINGS_BYTES=256*1024,MAX_AUTH_BYTES=4096;
 
 let override=null;
 // server.mjs (local dev) and the tests install their own store; null restores the env-based choice.
@@ -39,6 +41,26 @@ export function createBlobStore(client=null){
    return result.url;
   },
   async deleteLogo(url){const {del}=await blob();await del(url)},
+  // The admin password record (scrypt hash). Public like everything in this store, so `path` is secret-derived.
+  async readAuth(path){
+   const {head,BlobNotFoundError}=await blob();
+   let meta;try{meta=await head(path)}catch(e){if(BlobNotFoundError&&e instanceof BlobNotFoundError||e?.name==='BlobNotFoundError')return null;throw e}
+   const response=await fetch(`${meta.url}?v=${Date.parse(meta.uploadedAt)||Date.now()}`,{cache:'no-store',signal:AbortSignal.timeout(5000)});
+   if(!response.ok)throw Error(`auth blob read failed: ${response.status}`);
+   const text=await response.text();if(text.length>MAX_AUTH_BYTES)throw Error('auth blob too large');
+   let record;try{record=JSON.parse(text)}catch{record={}}
+   return {record,etag:meta.etag};
+  },
+  async createAuth(path,record){
+   const {put}=await blob();
+   try{await put(path,JSON.stringify(record),{access:'public',contentType:'application/json; charset=utf-8',addRandomSuffix:false,allowOverwrite:false,cacheControlMaxAge:60})}
+   catch(e){if(await this.readAuth(path).catch(()=>null))return false;throw e}// lost the race: someone created it first
+   return true;
+  },
+  async writeAuth(path,record,etag){
+   const {put}=await blob();
+   await put(path,JSON.stringify(record),{access:'public',contentType:'application/json; charset=utf-8',addRandomSuffix:false,allowOverwrite:true,cacheControlMaxAge:60,...(etag?{ifMatch:etag}:{})});
+  },
  };
 }
 
@@ -50,6 +72,9 @@ export function createMemoryStore(){
   async writeSettings(s){files.set(SETTINGS_PATH,JSON.stringify(s))},
   async putLogo(id,ext,bytes){const p=`sponsors/${id}.${ext}`;files.set(p,Buffer.from(bytes));return `https://blob.test/${p}`},
   async deleteLogo(url){files.delete(new URL(url).pathname.slice(1))},
+  async readAuth(p){const t=files.get(p);return t?{record:JSON.parse(t),etag:'m'+t.length}:null},
+  async createAuth(p,r){if(files.has(p))return false;files.set(p,JSON.stringify(r));return true},
+  async writeAuth(p,r){files.set(p,JSON.stringify(r))},
  };
 }
 
@@ -62,5 +87,9 @@ export function createFileStore(root,dir='.local-store'){
   async writeSettings(s){await mkdir(join(base,'settings'),{recursive:true});await writeFile(at(SETTINGS_PATH),JSON.stringify(s,null,1))},
   async putLogo(id,ext,bytes){await mkdir(join(base,'sponsors'),{recursive:true});await writeFile(at(`sponsors/${id}.${ext}`),Buffer.from(bytes));return `/${dir}/sponsors/${id}.${ext}`},
   async deleteLogo(url){const m=/\/sponsors\/([a-z0-9]+\.(png|jpg|webp|svg))$/.exec(url);if(m)await rm(at(`sponsors/${m[1]}`),{force:true})},
+  async readAuth(p){try{return {record:JSON.parse(await readFile(at(p),'utf8')),etag:null}}catch(e){if(e.code==='ENOENT')return null;throw e}},
+  // 'wx' fails when the file exists, so two first-run setups cannot both win.
+  async createAuth(p,r){await mkdir(join(base,'auth'),{recursive:true});try{await writeFile(at(p),JSON.stringify(r),{flag:'wx',mode:0o600})}catch(e){if(e.code==='EEXIST')return false;throw e}return true},
+  async writeAuth(p,r){await mkdir(join(base,'auth'),{recursive:true});await writeFile(at(p),JSON.stringify(r),{mode:0o600})},
  };
 }

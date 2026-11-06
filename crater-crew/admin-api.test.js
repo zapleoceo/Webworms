@@ -29,7 +29,7 @@ test('without ADMIN_PASSWORD the admin API answers 503 and public settings still
  env({});setStore(null);
  for(const [path,method] of [['/api/admin/login','POST'],['/api/admin/session','GET'],['/api/admin/settings','PUT'],['/api/admin/sponsors','POST']]){
   const r=await call(path,{method,body:method==='GET'?undefined:'{}',headers:{'content-type':'application/json'}});
-  assert.equal(r.status,503,path);assert.deepEqual(await r.json(),{error:'admin not configured'});
+  assert.equal(r.status,503,path);const b=await r.json();assert.equal(b.error,'admin not configured');assert.match(b.detail,/BLOB_READ_WRITE_TOKEN|ADMIN_PASSWORD/);
  }
  const pub=await call('/api/settings');assert.equal(pub.status,200);assert.deepEqual(await pub.json(),defaultSettings());
  assert.match(pub.headers.get('cache-control'),/max-age=30/);
@@ -48,7 +48,7 @@ test('login: wrong password is refused, the right one sets a strict HttpOnly coo
  assert.ok(!cookie.includes(PASSWORD));
  const local=await postJson('/api/admin/login',{password:PASSWORD},{host:'http://localhost:4173'});
  assert.doesNotMatch(local.headers.get('set-cookie'),/Secure/,'no Secure flag on plain-http localhost');
- const session=await call('/api/admin/session',{cookie:cookie.split(';')[0]});assert.deepEqual(await session.json(),{authenticated:true,storage:false});
+ const session=await call('/api/admin/session',{cookie:cookie.split(';')[0]});assert.deepEqual(await session.json(),{authenticated:true,setupRequired:false,storage:false,passwordSource:'env'});
  const out=await call('/api/admin/logout',{method:'POST'});assert.match(out.headers.get('set-cookie'),/^cc_admin=; .*Max-Age=0/);
  assert.equal(passwordMatches(PASSWORD+' '),false);assert.equal(passwordMatches(undefined),false);
 });
