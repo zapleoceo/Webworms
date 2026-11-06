@@ -11,11 +11,14 @@ const sign=s=>createHmac('sha256',key()).update(s).digest('base64url');
 function ticketFor(payload){const encoded=Buffer.from(JSON.stringify(payload)).toString('base64url');return encoded+'.'+sign(encoded)}
 function parseTicket(ticket){if(typeof ticket!=='string'||ticket.length>5000)return null;const [encoded,mac,extra]=ticket.split('.');if(!encoded||!mac||extra)return null;const actual=Buffer.from(sign(encoded)),given=Buffer.from(mac);if(actual.length!==given.length||!timingSafeEqual(actual,given))return null;try{const p=JSON.parse(Buffer.from(encoded,'base64url').toString()),now=Date.now();return Number.isInteger(p.jobId)&&p.jobId>0&&p.exp>now&&p.exp<=now+8*60*60_000+1000&&typeof p.turnId==='string'&&Array.isArray(p.ids)&&p.ids.length>0&&p.ids.length<=32&&p.model===model()?p:null}catch{return null}}
 function validate(body){if(!body||typeof body!=='object'||!validId(body.turnId)||!Number.isInteger(body.difficulty)||body.difficulty<0||body.difficulty>2)return false;const s=body.snapshot;if(!s||!Number.isInteger(s.map)||s.map<0||s.map>2||!Number.isInteger(s.round)||s.round<1||s.round>500||!Number.isFinite(s.wind)||Math.abs(s.wind)>100||!Array.isArray(s.worms)||s.worms.length>6||!Array.isArray(s.terrain)||s.terrain.length!==32)return false;if(!Array.isArray(body.candidates)||body.candidates.length<1||body.candidates.length>32)return false;const ids=new Set();for(const c of body.candidates){if(!validId(c.id)||ids.has(c.id)||typeof c.description!=='string'||c.description.length>240)return false;ids.add(c.id)}return true}
-async function broker(path,options={}){const url=new URL(path,brokerBase());if(url.protocol!=='https:')throw Error('broker configuration');const response=await fetch(url,{...options,headers:{'X-Project-Key':key(),'accept':'application/json',...(options.headers||{})},signal:AbortSignal.timeout(7000)});if(!response.ok)throw Error('broker unavailable');return response.json()}
+async function broker(path,options={}){const url=new URL(path,brokerBase());if(url.protocol!=='https:')throw Error('broker configuration');const response=await fetch(url,{...options,headers:{'X-Project-Key':key(),'accept':'application/json',...(options.headers||{})},signal:AbortSignal.timeout(7000)});if(!response.ok)throw Error(`broker ${response.status} on ${url.pathname}: ${(await response.text().catch(()=>"")).slice(0,200)}`);return response.json()}
 async function verifiedSubscriptionModel(){
  const catalog=await broker('/v1/models');
  const row=Array.isArray(catalog?.data)?catalog.data.find(item=>item?.id===model()):null;
- return Boolean(row&&row.source==='broker'&&row.billing_type==='subscription'&&row.available===true&&Array.isArray(row.capabilities)&&row.capabilities.includes('chat:fast')&&Array.isArray(row.job_request?.response_format_types)&&row.job_request.response_format_types.includes('json_schema'));
+ const ok=Boolean(row&&row.source==='broker'&&row.billing_type==='subscription'&&row.available===true&&Array.isArray(row.capabilities)&&row.capabilities.includes('chat:fast')&&Array.isArray(row.job_request?.response_format_types)&&row.job_request.response_format_types.includes('json_schema'));
+ // Only public catalog fields are logged, so a rejected model is diagnosable without exposing the key.
+ if(!ok)console.error('broker model rejected:',JSON.stringify(row?{id:row.id,source:row.source,billing_type:row.billing_type,available:row.available,capabilities:row.capabilities,job_request:row.job_request}:{id:model(),found:false}));
+ return ok;
 }
 function attestedSubscription(result,pinned){return result.billing_type==='subscription'&&result.provider===pinned.split('/')[0]&&result.model===pinned&&result.requested_model===pinned&&result.cost_usd===null}
 function complete(result,turnId,ids,pinned){
@@ -54,5 +57,5 @@ export default {async fetch(request){
    return complete(result,p.turnId,p.ids,p.model);
   }
   return json({error:'method not allowed'},405);
- }catch{return json({status:'unavailable',error:'Broker is unavailable. Retry this turn later.'},503)}
+ }catch(error){console.error('broker turn failed:',error?.message);return json({status:'unavailable',error:'Broker is unavailable. Retry this turn later.'},503)}
 }};
