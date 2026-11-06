@@ -42,7 +42,7 @@ const UI={
  },
 };
 
-let settings=defaultSettings(),storage=false,dirty=false;
+let settings=defaultSettings(),storage=false,dirty=false,passwordSource=null;
 
 // ---------- API ----------
 async function api(path,{method='GET',json,form}={}){
@@ -52,12 +52,14 @@ async function api(path,{method='GET',json,form}={}){
  let response;try{response=await fetch(path,init)}catch{throw Object.assign(Error('Network error. Check your connection.'),{status:0})}
  let body=null;try{body=await response.json()}catch{}
  if(response.status===401&&path!=='/api/admin/login'){showLogin('Your session has ended. Please sign in again.');throw Object.assign(Error('Not signed in'),{status:401,silent:true})}
- if(!response.ok)throw Object.assign(Error(body?.error||`Request failed (${response.status})`),{status:response.status,errors:body?.errors||[]});
+ if(response.status===403&&body?.error==='setup required'){showSetup();throw Object.assign(Error('Setup required'),{status:403,silent:true})}
+ if(!response.ok)throw Object.assign(Error(body?.error||`Request failed (${response.status})`),{status:response.status,errors:body?.errors||[],detail:body?.detail});
  return body;
 }
 
 // ---------- views ----------
-function show(view){$('loading').hidden=true;$('login-view').hidden=view!=='login';$('config-view').hidden=view!=='config';$('bar-actions').hidden=view!=='config'}
+function show(view){$('loading').hidden=true;$('login-view').hidden=view!=='login';$('setup-view').hidden=view!=='setup';$('config-view').hidden=view!=='config';$('bar-actions').hidden=view!=='config'}
+function showSetup(){show('setup');$('setup-error').textContent='';$('setup-password').focus()}
 function showLogin(message=''){show('login');$('login-error').textContent=message;$('password').value='';$('password').focus()}
 let toastTimer=0;
 function toast(text,kind='ok'){const t=$('toast');t.textContent=text;t.className=`toast ${kind}`;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},kind==='error'?7000:3500)}
@@ -204,6 +206,52 @@ $('reset').addEventListener('click',()=>{
 });
 
 // ---------- auth ----------
+// Rough strength hint only (length and character variety); the server enforces 12 to 200 characters.
+function strength(pw){
+ if(!pw)return [0,''];
+ if(pw.length<12)return [1,`${12-pw.length} more character${pw.length===11?'':'s'} needed (at least 12).`];
+ const kinds=[/[a-z]/,/[A-Z]/,/\d/,/[^a-zA-Z\d]/].filter(r=>r.test(pw)).length,words=pw.trim().split(/\s+/).length;
+ const score=(pw.length>=16?1:0)+(pw.length>=24?1:0)+(kinds>=3||words>=4?1:0)+(/^(.)\1+$/.test(pw)?-2:0);
+ const level=Math.max(1,Math.min(4,2+score));
+ return [level,['','Weak: too short.','Fair. Longer is stronger.','Good.','Strong.'][level]+(level<4?' Add more words or characters.':'')];
+}
+function bindStrength(inputId,boxId,textId,base){
+ $(inputId).addEventListener('input',()=>{const [level,text]=strength($(inputId).value);$(boxId).dataset.level=String(level);$(textId).textContent=text||base});
+}
+bindStrength('setup-password','setup-strength','setup-strength-text','At least 12 characters. A few unrelated words make a strong, memorable password.');
+bindStrength('pw-next','pw-strength','pw-strength-text','At least 12 characters.');
+function newPasswordProblem(pw,repeat){
+ if(pw.length<12)return 'The password needs at least 12 characters.';
+ if(pw.length>200)return 'The password can be at most 200 characters.';
+ if(pw!==repeat)return 'The two passwords do not match.';
+ return '';
+}
+
+$('setup-form').addEventListener('submit',async e=>{
+ e.preventDefault();const out=$('setup-error'),pw=$('setup-password').value;out.textContent='';
+ const problem=newPasswordProblem(pw,$('setup-repeat').value);if(problem){out.textContent=problem;return}
+ $('setup-button').disabled=true;
+ try{
+  await api('/api/admin/setup',{method:'POST',json:{password:pw}});
+  $('setup-form').reset();passwordSource='stored';await loadConfig();toast('Admin password created. You are signed in.');
+ }catch(err){
+  if(err.silent)return;
+  if(err.status===409){showLogin('An admin password already exists on this server. Sign in with it.');return}
+  out.textContent=err.message;
+ }finally{$('setup-button').disabled=false}
+});
+
+$('password-form').addEventListener('submit',async e=>{
+ e.preventDefault();const out=$('password-error'),next=$('pw-next').value;out.textContent='';
+ const problem=newPasswordProblem(next,$('pw-repeat').value);if(problem){out.textContent=problem;return}
+ $('password-button').disabled=true;
+ try{
+  await api('/api/admin/password',{method:'POST',json:{current:$('pw-current').value,next}});
+  $('password-form').reset();$('pw-strength').dataset.level='0';toast('Password changed. Other browsers have been signed out.');
+ }catch(err){if(!err.silent)out.textContent=err.message==='current password is wrong'?'The current password is wrong.':err.message}
+ finally{$('password-button').disabled=false}
+});
+
 $('login-form').addEventListener('submit',async e=>{
  e.preventDefault();$('login-error').textContent='';$('login-button').disabled=true;
  try{await api('/api/admin/login',{method:'POST',json:{password:$('password').value}});$('password').value='';await loadConfig()}
@@ -213,19 +261,21 @@ $('login-form').addEventListener('submit',async e=>{
 $('logout').addEventListener('click',async()=>{if(dirty&&!confirm('Discard unsaved changes and sign out?'))return;try{await api('/api/admin/logout',{method:'POST'})}catch{}setDirty(false);showLogin()});
 
 async function loadConfig(){
+ if(!passwordSource){try{passwordSource=(await api('/api/admin/session')).passwordSource}catch{}}
  const r=await api('/api/admin/settings');settings=r.settings;storage=r.storage;
  $('storage-notice').hidden=storage;for(const id of ['save','upload-button'])$(id).disabled=!storage;
+ $('password-card').hidden=passwordSource!=='stored';$('env-password-note').hidden=passwordSource!=='env';
  fillForm(settings);setDirty(false);showErrors([]);show('config');
 }
 
 buildFields();
 (async()=>{
  try{
-  const s=await api('/api/admin/session');
-  if(s.authenticated)await loadConfig();else showLogin();
+  const s=await api('/api/admin/session');passwordSource=s.passwordSource;
+  if(s.setupRequired)showSetup();else if(s.authenticated)await loadConfig();else showLogin();
  }catch(err){
   if(err.silent)return;
   show('login');$('login-form').hidden=err.status===503;
-  $('login-error').textContent=err.status===503?(err.message==='admin not configured'?'The admin panel is not configured on this server (set ADMIN_PASSWORD).':err.message):err.status===404?'The admin API is not available here. Open this page from the game server.':err.message;
+  $('login-error').textContent=err.status===503?(err.message==='admin not configured'?`The admin panel is not configured on this server. ${err.detail||'Set ADMIN_PASSWORD.'}`.replace(/admin not configured: /,''):err.message):err.status===404?'The admin API is not available here. Open this page from the game server.':err.message;
  }
 })();

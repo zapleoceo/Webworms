@@ -33,6 +33,23 @@
   </form>
  </section>
 
+ <section class="card login setup" id="setup-view" hidden>
+  <h1>Create admin password</h1>
+  <p class="muted">No admin password exists on this server yet. Choose one now to open the settings.</p>
+  <p class="notice warn"><b>Whoever completes this form first becomes the admin.</b> This screen disappears for good once a password is saved; afterwards everyone sees the normal sign-in.</p>
+  <form id="setup-form" novalidate>
+   <label class="field"><span class="label">New password</span>
+    <input type="password" id="setup-password" autocomplete="new-password" required minlength="12" maxlength="200" aria-describedby="setup-strength">
+    <span class="strength" id="setup-strength" data-level="0"><span class="meter"><i></i></span><span class="hint" id="setup-strength-text">At least 12 characters. A few unrelated words make a strong, memorable password.</span></span>
+   </label>
+   <label class="field"><span class="label">Repeat password</span>
+    <input type="password" id="setup-repeat" autocomplete="new-password" required maxlength="200">
+   </label>
+   <p class="error" id="setup-error" role="alert"></p>
+   <button class="primary" type="submit" id="setup-button">Create password &amp; open settings</button>
+  </form>
+ </section>
+
  <div id="config-view" hidden>
   <p class="notice" id="storage-notice" hidden>Storage is not configured on this server (<code>BLOB_READ_WRITE_TOKEN</code>). You can look at the settings, but saving and uploads are off.</p>
 
@@ -101,6 +118,20 @@
     <div class="wide"><button class="primary" type="submit" id="upload-button">Upload &amp; add</button></div>
    </form>
   </section>
+
+  <section class="card" aria-labelledby="h-password" id="password-card" hidden>
+   <h2 id="h-password">Admin password</h2>
+   <p class="hint">Changing it signs out every other browser. This browser stays signed in.</p>
+   <form id="password-form" class="grid" novalidate>
+    <label class="field"><span class="label">Current password</span><input type="password" id="pw-current" autocomplete="current-password" required maxlength="200"></label>
+    <label class="field"><span class="label">New password</span><input type="password" id="pw-next" autocomplete="new-password" required minlength="12" maxlength="200" aria-describedby="pw-strength">
+     <span class="strength" id="pw-strength" data-level="0"><span class="meter"><i></i></span><span class="hint" id="pw-strength-text">At least 12 characters.</span></span></label>
+    <label class="field"><span class="label">Repeat new password</span><input type="password" id="pw-repeat" autocomplete="new-password" required maxlength="200"></label>
+    <p class="error wide" id="password-error" role="alert"></p>
+    <div class="wide"><button class="primary" type="submit" id="password-button">Change password</button></div>
+   </form>
+  </section>
+  <p class="hint env-password" id="env-password-note" hidden>The admin password is set by <code>ADMIN_PASSWORD</code> on the server; change it there and redeploy.</p>
 
   <div class="savebar">
    <span class="dirty" id="dirty" hidden>Unsaved changes</span>

@@ -43,6 +43,16 @@ input[type=checkbox]{accent-color:var(--gold);width:18px;height:18px;vertical-al
 .placements{display:block}.placements label{margin-right:12px;white-space:nowrap}
 .error{display:block;min-height:0;color:var(--bad);font-size:12px;margin:4px 0 0;font-family:"Trebuchet MS","Segoe UI",sans-serif}
 .error:empty{display:none}
+.notice.warn{margin:0 0 16px;font-size:14px;line-height:1.45}
+.strength{display:block;margin-top:6px}
+.meter{display:block;height:8px;border:2px solid var(--ink);border-radius:6px;background:var(--field);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--bad);transition:width .2s,background .2s}
+.strength[data-level="1"] .meter i{width:25%;background:var(--bad)}
+.strength[data-level="2"] .meter i{width:50%;background:#f1a947}
+.strength[data-level="3"] .meter i{width:75%;background:var(--gold)}
+.strength[data-level="4"] .meter i{width:100%;background:var(--ok)}
+.env-password{margin:0 0 18px}
+.login form>.field+.field{margin-top:14px}
 .notice{background:#4a2f1d;border:3px solid var(--ink);border-left:8px solid var(--gold);border-radius:12px;padding:12px 14px;margin:0 0 18px}
 button{font:inherit;cursor:pointer;border-radius:12px;border:3px solid var(--ink);padding:10px 16px;min-height:44px;font-size:15px}
 button:disabled{opacity:.5;cursor:not-allowed}
