@@ -1,5 +1,8 @@
-// World size; the canvas is a VIEW_W x VIEW_H window onto it.
-export const W=3600,H=1400,WATER=1355,VIEW_W=1600,VIEW_H=800,R=15,GRAVITY=620,WEAPONS=['bazooka','grenade','shotgun','dynamite','airstrike','punch','jetpack','rope','teleport'];
+// World size depends on the map (live bindings: setWorld() updates every importer); the canvas is a VIEW_W x VIEW_H window onto it.
+export let W=3600,H=1400,WATER=1355;
+export const WORLD_SIZES=[[3600,1400],[3600,1400],[3600,1400],[6400,1800]];
+export function setWorld(map){[W,H]=WORLD_SIZES[map]??WORLD_SIZES[0];WATER=H-45}
+export const VIEW_W=1600,VIEW_H=800,R=15,GRAVITY=620,WEAPONS=['bazooka','grenade','shotgun','dynamite','airstrike','punch','jetpack','rope','teleport'];
 export const AIM_MIN=-Math.PI/2+0.025,AIM_MAX=Math.PI/2-0.025;
 export const AI_PROFILES=[
   {name:'EASY',angleStep:9,powerStep:.15,aimError:.18,airError:150,friendWeight:1.3,reposition:false,shotgunRange:115,grenadeThreshold:32},
@@ -15,7 +18,46 @@ export function seeded(seed){let x=seed>>>0;return()=>{x=(1664525*x+1013904223)>
 // 1 Rust Ridge: one tall massif riddled with caverns and tunnels.
 // 2 Crystal Atoll: two islands and a scatter of floating crystal chunks.
 const TAU=Math.PI*2;
+// Grand Expedition (map 3): one wide world crossing four zones, each with its own features.
+// 0-25% tropical islands split by channels, 25-50% jungle hills with caverns and tunnels,
+// 50-75% an industrial ridge with chasms, girder bridges and rock towers, 75-100% an atoll of floating islands.
+function createExpedition(seed){
+  const rand=seeded(seed^0x5eed),mask=new Uint8Array(W*H),top=new Int16Array(W),ph=[0,1,2,3].map(()=>rand()*TAU);
+  const zone=x=>x/W*4,base=H-560;
+  const heightAt=x=>{
+    const z=zone(x),b=[
+      base+40+90*Math.sin(x/260+ph[0])+30*Math.sin(x/71+ph[1]),
+      base-140+190*Math.sin(x/330+ph[1])+70*Math.sin(x/97+ph[2]),
+      base-260+60*Math.sin(x/410+ph[2])+20*Math.sin(x/53+ph[3]),
+      base+90+70*Math.sin(x/220+ph[3])+25*Math.sin(x/61+ph[0])];
+    // Blend neighbouring zones across a 300 px seam so the landscape changes smoothly.
+    const i=Math.min(3,Math.floor(z)),f=z-i,seam=300/(W/4);
+    if(f>1-seam&&i<3){const k=(f-(1-seam))/seam,s=k*k*(3-2*k);return b[i]*(1-s)+b[i+1]*s}
+    return b[i];
+  };
+  const gaps=[[W*.09,190],[W*.18,230],[W*.56,170],[W*.66,200],[W*.83,260],[W*.93,220]].map(([x,w])=>[x+(rand()-.5)*120,w]);
+  for(let x=0;x<W;x++){
+    let y=heightAt(x)+2*Math.sin(x*.45)+1.4*Math.sin(x*1.27)+(rand()-.5)*3;
+    let shore=Math.min(x-120,W-120-x);for(const [gx,gw] of gaps)shore=Math.min(shore,Math.abs(x-gx)-gw/2);
+    if(shore<0)y=H;else if(shore<300){const k=1-shore/300;y+=k*k*(WATER+40-y)}
+    top[x]=Math.floor(clamp(y,360,H));
+    for(let iy=top[x];iy<H;iy++)mask[iy*W+x]=1;
+  }
+  const t={mask,top,map:3,seed},fill=(x0,y0,x1,y1)=>{for(let y=Math.max(0,Math.floor(y0));y<Math.min(H,y1);y++)for(let x=Math.max(0,Math.floor(x0));x<Math.min(W,x1);x++)mask[y*W+x]=1;for(let x=Math.max(0,Math.floor(x0));x<Math.min(W,x1);x++){let y=0;while(y<H&&!mask[y*W+x])y++;top[x]=y}};
+  const blob=(cx,cy,rx,ry,flat)=>{for(let y=Math.max(0,Math.floor(cy-ry));y<=Math.min(H-1,cy+ry);y++)for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(W-1,cx+rx);x++)if(((x-cx)/rx)**2+((y-cy)/ry)**2<1&&y>=cy-ry*flat)mask[y*W+x]=1;for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(W-1,cx+rx);x++){let y=0;while(y<H&&!mask[y*W+x])y++;top[x]=y}};
+  // Jungle: caverns and crawlable tunnels.
+  for(let k=0;k<6;k++){const x=W*.27+rand()*W*.21,g=groundY(t,x);if(g<WATER-300)carve(t,x,g+170+rand()*80,50+rand()*40)}
+  for(let k=0;k<3;k++){let x=W*.26+rand()*W*.18,y=groundY(t,x)+80;const dir=rand()<.5?-1:1;for(let s=0;s<420;s+=10){x+=dir*10;y+=Math.sin(s/80+k)*3;if(y<WATER-60&&groundY(t,x)<y-40)carve(t,x,y,30)}}
+  // Industrial ridge: girder bridges over the chasms and flat-topped rock towers.
+  for(const [gx,gw] of gaps.filter(([x])=>x>W*.5&&x<W*.75)){const left=groundY(t,gx-gw/2-40),right=groundY(t,gx+gw/2+40),y=Math.min(left,right)-2;fill(gx-gw/2-60,y,gx+gw/2+60,y+12)}
+  for(let k=0;k<5;k++){const x=W*.52+rand()*W*.22,w=40+rand()*30,g=groundY(t,x);if(g<WATER-200)fill(x-w/2,g-180-rand()*140,x+w/2,g+4)}
+  // Floating islands over the channels and across the atoll.
+  for(const [gx] of gaps.filter(([x])=>x<W*.25||x>W*.75))blob(gx,Math.min(groundY(t,gx-260),groundY(t,gx+260))-100-rand()*80,110+rand()*50,26,.35);
+  for(let k=0;k<7;k++){const x=W*.76+rand()*W*.22;blob(x,groundY(t,x)-180-rand()*200,50+rand()*45,20,.25)}
+  return t;
+}
 export function createTerrain(map=0,seed=1){
+  setWorld(map);if(map===3)return createExpedition(seed);
   const rand=seeded(seed),mask=new Uint8Array(W*H),top=new Int16Array(W),ph=[0,1,2].map(()=>rand()*TAU);
   const gaps=[],n=[3,1,2][map]??2;
   for(let i=0;i<n;i++)gaps.push([W*(i+1)/(n+1)+(rand()-.5)*300,(map===2?200:150)+rand()*80]);
