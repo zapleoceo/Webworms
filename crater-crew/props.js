@@ -59,8 +59,10 @@ export const propsBusy=state=>state.props.some(p=>p.armed||p.boom>0||(!p.parachu
 const INK='#1c1420';
 const oval=(c,x,y,rx,ry,col)=>{c.fillStyle=col;c.beginPath();c.ellipse(x,y,rx,ry,0,0,Math.PI*2);c.fill()};
 // opts.crateLogo: a loaded sponsor image shown on crates instead of the green cross.
-export function drawProps(c,props,now,{crateLogo=null}={}){
+// opts.view: the camera's world rectangle; props outside it are skipped.
+export function drawProps(c,props,now,{crateLogo=null,view=null}={}){
  for(const p of props){
+  if(view&&(p.x+70<view.x0||p.x-70>view.x1||p.y+30<view.y0||p.y-70>view.y1))continue;
   c.save();c.translate(p.x,p.y);c.lineJoin='round';
   if(p.kind==='mine'){
    // Flat dome mine with three studs and a light that blinks fast once armed.
