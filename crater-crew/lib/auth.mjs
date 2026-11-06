@@ -7,7 +7,9 @@ export const SESSION_TTL_MS=12*60*60_000;
 export const MAX_FAILURES=5,FAILURE_WINDOW_MS=10*60_000;
 
 export const adminPassword=()=>process.env.ADMIN_PASSWORD||'';
-export const adminConfigured=()=>adminPassword().length>0;
+// A short password is treated as not configured: the admin stays closed until a real one (12+ characters) is set.
+export const MIN_PASSWORD=12;
+export const adminConfigured=()=>adminPassword().length>=MIN_PASSWORD;
 // Without ADMIN_SESSION_SECRET the key is derived from the password, so changing the password also ends sessions.
 function sessionKey(){
  const s=process.env.ADMIN_SESSION_SECRET;

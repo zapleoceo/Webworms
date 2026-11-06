@@ -205,3 +205,21 @@ test('storage failures surface as 502 without leaking details; the public GET fa
 test('the password never reaches the logs',()=>{
  assert.ok(!logged.some(l=>l.includes(PASSWORD)),'password found in console output');
 });
+
+test('a burst of parallel wrong logins is capped too, not just sequential ones',async()=>{
+ env({ADMIN_PASSWORD:PASSWORD});
+ const res=await Promise.all(Array.from({length:40},(_,i)=>postJson('/api/admin/login',{password:'guess'+i},{ip:'198.51.100.9'})));
+ const counts=res.reduce((m,r)=>(m[r.status]=(m[r.status]||0)+1,m),{});
+ assert.equal(counts[401],5,'only five guesses are checked');assert.equal(counts[429],35);
+});
+
+test('a password shorter than 12 characters leaves the admin closed',async()=>{
+ env({ADMIN_PASSWORD:'short'});
+ assert.equal((await postJson('/api/admin/login',{password:'short'})).status,503);
+});
+
+test('SVG with namespace-prefixed script elements is rejected',()=>{
+ for(const svg of ['<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><s:script>alert(1)</s:script></svg>','<svg xmlns="http://www.w3.org/2000/svg"><h:script xmlns:h="http://www.w3.org/1999/xhtml">alert(1)</h:script></svg>'])
+  assert.equal(validateLogo(Buffer.from(svg)).ok,false,svg);
+ assert.equal(validateLogo(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><rect width="4" height="4"/></svg>')).ok,true,'plain static SVG still passes');
+});

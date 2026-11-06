@@ -578,6 +578,8 @@ function useSettings(s){
  Object.assign(scheme,{mines:s.props.mines,barrels:s.props.barrels,crateChance:s.props.crateChance});
  Object.assign(rules,{turnTime:s.match.turnTime,teleports:s.match.teleports,crateHeal:s.props.crateHeal,suddenDeathRound:s.water.suddenDeathRound,waterRise:s.water.waterRise,windStart:s.wind.startMax,windDrift:s.wind.turnDrift,windCap:s.wind.cap,maps:[...s.maps.enabled],voices:s.audio.voices,sponsors:s.sponsors.filter(x=>x.enabled!==false)});
  loadSponsorImages(rules.sponsors);showSponsorBanner();
+ // The field manual quotes the live rules (crate heal, sudden-death round, teleport charges).
+ for(const el of document.querySelectorAll?.('[data-rule]')??[])if(rules[el.dataset.rule]!=null)el.textContent=String(rules[el.dataset.rule]);
  for(const o of $('map-choice').options??[]){const on=rules.maps.includes(Number(o.value));o.hidden=!on;o.disabled=!on}
  if(!rules.maps.includes(Number($('map-choice').value)))$('map-choice').value=String(rules.maps[0]);
  offered={hard:s.players.offerHard,ultra:s.players.offerUltra};if(!ctrlsSaved)setupCtrls=[...s.players.defaults];refreshCtrlButtons();

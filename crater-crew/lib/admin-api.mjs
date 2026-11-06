@@ -43,8 +43,10 @@ async function login(request){
  if(request.method!=='POST')return err(405,'method not allowed');
  const ip=clientIp(request);
  if(loginBlocked(ip))return err(429,'too many failed attempts, try again later',{});
+ // Count the attempt before the first await, so a burst of parallel guesses cannot all pass the check; a success clears it.
+ recordFailure(ip);
  const {body,error}=await readJson(request);if(error)return error;
- if(!passwordMatches(body?.password)){recordFailure(ip);return err(401,'wrong password')}
+ if(!passwordMatches(body?.password))return err(401,'wrong password');
  clearFailures(ip);
  return json({ok:true},200,{'set-cookie':sessionCookie(request,issueSession())});
 }

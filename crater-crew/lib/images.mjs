@@ -23,6 +23,9 @@ function looksLikeSvg(b){
 // run script, pull in other documents or resources, or link out. Every href must point inside the file (#id).
 const SVG_FORBIDDEN=[
  [/<!doctype|<!entity/i,'DOCTYPE/ENTITY declarations'],
+ // Prefixed elements (<s:script>, <h:script>) and extra namespaces would slip past the name checks below.
+ [/<\s*\/?\s*[\w.-]+:[\w.-]/,'namespaced elements'],
+ [/\sxmlns:(?!xlink\s*=)[\w.-]+\s*=/i,'extra XML namespaces'],
  [/<\s*(script|foreignobject|iframe|embed|object|image|a|use|animate\w*|set|handler|listener|meta|link|base|audio|video|canvas)\b/i,'active or external elements'],
  [/\son[a-z]+\s*=/i,'event handler attributes'],
  [/javascript:|vbscript:|data:/i,'script or data URLs'],

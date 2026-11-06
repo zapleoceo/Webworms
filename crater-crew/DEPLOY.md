@@ -38,3 +38,8 @@ Vercel setup:
 Without `ADMIN_PASSWORD` the admin API answers 503; without the Blob token it shows the defaults and refuses to save (503). Sessions are a signed HttpOnly, SameSite=Strict cookie valid 12 h; logout clears the cookie (a copied cookie stays valid until it expires; changing the secret or the password, when no secret is set, ends all sessions). Login is limited to 5 failures per IP per 10 minutes per function instance (best effort). Logos: PNG, JPEG, WebP or plain SVG (no scripts, links or external resources), up to 512 KB, checked by content.
 
 Local dev: `ADMIN_PASSWORD=... node server.mjs` keeps settings and logos in `./.local-store` (git-ignored) when no Blob token is set.
+
+### Admin: known limits
+- The settings document lives in the public Blob store, so anything in it is readable by anyone who knows the store host — including sponsors that are switched off. Keep unannounced sponsors out of it.
+- Logging out clears the cookie in that browser but does not revoke an already issued session token; to end every session, rotate `ADMIN_SESSION_SECRET` and redeploy.
+- The admin stays closed (503) until `ADMIN_PASSWORD` is at least 12 characters. Failed logins are capped per IP per function instance (best effort on serverless).
