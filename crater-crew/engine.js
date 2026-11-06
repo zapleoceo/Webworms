@@ -1,4 +1,5 @@
-export const W=1600,H=800,WATER=755,R=15,GRAVITY=620,WEAPONS=['bazooka','grenade','shotgun','dynamite','airstrike','punch','jetpack'];
+// World size; the canvas is a VIEW_W x VIEW_H window onto it.
+export const W=3600,H=1400,WATER=1355,VIEW_W=1600,VIEW_H=800,R=15,GRAVITY=620,WEAPONS=['bazooka','grenade','shotgun','dynamite','airstrike','punch','jetpack'];
 export const AIM_MIN=-Math.PI/2+0.025,AIM_MAX=Math.PI/2-0.025;
 export const AI_PROFILES=[
   {name:'EASY',angleStep:9,powerStep:.15,aimError:.18,airError:150,friendWeight:1.3,reposition:false,shotgunRange:115,grenadeThreshold:32},
@@ -9,21 +10,56 @@ export function aimAngle(dx,dy){return clamp(Math.atan2(dy,Math.abs(dx)),AIM_MIN
 export const data={bazooka:{name:'BAZOOKA',short:'Wind-bent rocket',icon:'🚀',radius:77,damage:58},grenade:{name:'GRENADE',short:'Bounce + 3 s fuse',icon:'💣',radius:84,damage:66},shotgun:{name:'SHOTGUN',short:'Close-range spread',icon:'▰',radius:0,damage:10},dynamite:{name:'DYNAMITE',short:'Drop + 3 s fuse',icon:'🧨',radius:102,damage:82},airstrike:{name:'AIRSTRIKE',short:'Five wind-proof missiles',icon:'✈',radius:56,damage:40},punch:{name:'PUNCH',short:'Melee knockback',icon:'✊',radius:0,damage:30},jetpack:{name:'JETPACK',short:'Fly for 4 seconds',icon:'♨',radius:0,damage:0}};
 export function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 export function seeded(seed){let x=seed>>>0;return()=>{x=(1664525*x+1013904223)>>>0;return x/4294967296}}
+// Maps are about 120 worm heights wide, like the classic landscapes; the camera shows a 1600x800 window.
+// 0 Sunset Cove: archipelago split by sea channels, tunnels and floating rocks over the water.
+// 1 Rust Ridge: one tall massif riddled with caverns and tunnels.
+// 2 Crystal Atoll: two islands and a scatter of floating crystal chunks.
+const TAU=Math.PI*2;
 export function createTerrain(map=0,seed=1){
-  const rand=seeded(seed),mask=new Uint8Array(W*H),top=new Int16Array(W);
+  const rand=seeded(seed),mask=new Uint8Array(W*H),top=new Int16Array(W),ph=[0,1,2].map(()=>rand()*TAU);
+  const gaps=[],n=[3,1,2][map]??2;
+  for(let i=0;i<n;i++)gaps.push([W*(i+1)/(n+1)+(rand()-.5)*300,(map===2?200:150)+rand()*80]);
   for(let x=0;x<W;x++){
     let y;
-    if(map===0) y=510+58*Math.sin(x/143)+31*Math.sin(x/49)+17*Math.sin(x/23);
-    else if(map===1) y=490+85*Math.sin(x/108)+29*Math.sin(x/33)+48*Math.sin(x/275);
-    else y=515+42*Math.sin(x/211)+55*Math.sin(x/68)+18*Math.sin(x/21);
+    if(map===0) y=1000+150*Math.sin(x/420+ph[0])+70*Math.sin(x/143+ph[1])+30*Math.sin(x/49+ph[2])+12*Math.sin(x/23);
+    else if(map===1) y=890+230*Math.sin(x/510+ph[0])+90*Math.sin(x/170+ph[1])+40*Math.sin(x/61+ph[2]);
+    else y=1050+110*Math.sin(x/360+ph[0])+80*Math.sin(x/120+ph[1])+22*Math.sin(x/37+ph[2]);
     // Fine, deterministic chips break up the sine-wave silhouette while
     // keeping the ground height stable enough for walking and aiming.
     y+=2*Math.sin(x*.45)+1.4*Math.sin(x*1.27)+(rand()-.5)*3;
-    if(map===2 && ((x>365&&x<480)||(x>1030&&x<1165))) y=720;
-    top[x]=Math.floor(clamp(y,330,735));
+    // Beaches slope into the sea at the map ends and into every channel.
+    let shore=Math.min(x-120,W-120-x);for(const [gx,gw] of gaps)shore=Math.min(shore,Math.abs(x-gx)-gw/2);
+    if(shore<0)y=H;else if(shore<320){const k=1-shore/320;y+=k*k*(WATER+40-y)}
+    top[x]=Math.floor(clamp(y,380,H));
     for(let iy=top[x];iy<H;iy++)mask[iy*W+x]=1;
   }
-  return {mask,top,map,seed};
+  const t={mask,top,map,seed},fill=(cx,cy,rx,ry,flat)=>{
+    for(let y=Math.max(0,Math.floor(cy-ry));y<=Math.min(H-1,cy+ry);y++)for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(W-1,cx+rx);x++)
+      if(((x-cx)/rx)**2+((y-cy)/ry)**2<1&&y>=cy-ry*flat)mask[y*W+x]=1;
+    for(let x=Math.max(0,Math.floor(cx-rx));x<=Math.min(W-1,cx+rx);x++){let y=0;while(y<H&&!mask[y*W+x])y++;top[x]=y}
+  };
+  // Tunnels wide enough to crawl through, snaking under the hills.
+  for(let k=0;k<(map===1?4:map===0?2:1);k++){
+    let x=300+rand()*(W-900),y=groundY(t,x)+70+rand()*60;const len=320+rand()*360,dir=rand()<.5?-1:1;
+    for(let s=0;s<len;s+=10){x+=dir*10;y+=Math.sin(s/90+k)*3;if(y<WATER-60&&groundY(t,x)<y-40)carve(t,x,y,30)}
+  }
+  // Caverns inside the Rust Ridge massif.
+  if(map===1)for(let k=0;k<6;k++){const x=250+rand()*(W-500),g=groundY(t,x);if(g<WATER-280)carve(t,x,g+150+rand()*90,55+rand()*45)}
+  // Floating rocks over the sea channels; crystal chunks scattered over the atoll.
+  if(map!==1)for(const [gx] of gaps){const g=Math.min(groundY(t,gx-260),groundY(t,gx+260));fill(gx,g-90-rand()*70,110+rand()*40,26,.35)}
+  if(map===2)for(let k=0;k<5;k++){const x=300+rand()*(W-600);fill(x,groundY(t,x)-170-rand()*120,40+rand()*35,20,.2)}
+  return t;
+}
+// Six spawn points on level dry ground, sorted left to right; teams take alternate spots so rivals start close.
+export function spawnSpots(t,seed,count=6){
+  const rand=seeded((seed^0x51ed270b)>>>0),cand=[];
+  // Level ground, headroom to jump, and no sheer drop within a few steps either way.
+  for(let x=140;x<W-140;x+=20){const g=groundY(t,x);if(g>WATER-90||Math.abs(groundY(t,x-14)-groundY(t,x+14))>14||!wormFits(t,x,g-R-1)||solid(t,x,g-R*2-30))continue;
+    if([-70,-40,40,70].some(d=>groundY(t,x+d)-g>45))continue;cand.push(x)}
+  for(let i=cand.length-1;i>0;i--){const j=Math.floor(rand()*(i+1));[cand[i],cand[j]]=[cand[j],cand[i]]}
+  let picked=[];
+  for(const gap of [420,300,200,120,40]){picked=[];for(const x of cand)if(picked.every(p=>Math.abs(p-x)>=gap)){picked.push(x);if(picked.length===count)break}if(picked.length===count)break}
+  return picked.sort((a,b)=>a-b).map(x=>({x,y:groundY(t,x)-R-1}));
 }
 export function solid(t,x,y){const ix=Math.floor(x),iy=Math.floor(y);return ix>=0&&ix<W&&iy>=0&&iy<H&&t.mask[iy*W+ix]===1}
 export function carve(t,cx,cy,r){
@@ -36,9 +72,9 @@ export function groundY(t,x){return t.top[clamp(Math.floor(x),0,W-1)]}
 export function blastDamage(distance,radius,max){return distance>=radius?0:Math.round(max*(1-distance/radius)**1.28)}
 export function trajectory(t,x,y,vx,vy,wind,{fuse=8,bounce=false,exact=true,dt=1/40,water=WATER,body=BODIES.grenadeHigh,r=8}={}){
   // Bouncing ordnance runs the live body step, so the AI forecast and the real throw agree.
-  if(bounce&&exact){const b={x,y,vx,vy,r};let time=0;while(time<fuse-1e-9&&b.y<=water){stepBody(t,b,BODY_STEP,{body});time+=BODY_STEP}return {x:b.x,y:b.y,time,hit:false}}
+  if(bounce&&exact){const b={x,y,vx,vy,r};let time=0;while(time<fuse-1e-9&&!b.sunk){stepBody(t,b,BODY_STEP,{body,water});time+=BODY_STEP}return {x:b.x,y:b.y,time,hit:false}}
   let time=0, px=x,py=y,ax=vx,ay=vy,hit=false;
-  while(time<fuse&&py<900){
+  while(time<fuse&&py<H+100){
     const nx=px+ax*dt,ny=py+ay*dt;
     ay+=GRAVITY*dt;ax+=wind*dt*0.7;time+=dt;
     if(nx<2||nx>W-2){if(!bounce)break;ax*=-.55;px=clamp(nx,2,W-2);py=ny;continue}
@@ -109,7 +145,9 @@ export function contactNormal(t,x,y,r){
 export const BODY_STEP=1/120;
 export function stepBody(t,b,dt,opts={}){
   const events={impact:0};b.acc=(b.acc||0)+dt;
-  while(b.acc>=BODY_STEP-1e-9){b.acc-=BODY_STEP;events.impact=Math.max(events.impact,fixedStep(t,b,BODY_STEP,opts));if(b.resting)b.acc=0}
+  // The water check runs every step, so a body dipping under and bouncing back out is caught in game and forecast alike.
+  const water=opts.water??Infinity;
+  while(!b.sunk&&b.acc>=BODY_STEP-1e-9){b.acc-=BODY_STEP;events.impact=Math.max(events.impact,fixedStep(t,b,BODY_STEP,opts));if(b.y>water)b.sunk=true;if(b.resting)b.acc=0}
   return events;
 }
 function fixedStep(t,b,dt,{wind=0,body=BODIES.grenadeHigh}={}){
@@ -137,8 +175,11 @@ function fixedStep(t,b,dt,{wind=0,body=BODIES.grenadeHigh}={}){
   if(b.x<4||b.x>W-4){b.vx*=-.55;b.x=clamp(b.x,4,W-4)}
   if(b.contact){
     const drag=Math.max(0,1-body.rollDrag*dt);b.vx*=drag;b.vy*=drag;
-    const flat=(b.normal?.y??-1)<-.93;
-    if(flat&&Math.hypot(b.vx,b.vy)<14){b.restTime=(b.restTime||0)+dt;if(b.restTime>.2){b.resting=true;b.vx=0;b.vy=0}}else b.restTime=0;
+    // Props may come to rest on a slope (body.restOnSlope); ordnance keeps rolling until the ground is flat.
+    // Static friction for props (body.restOnSlope): a slow one sticks on slopes up to ~37 degrees.
+    // Ordnance keeps rolling until the ground is flat.
+    const ny=b.normal?.y??-1,still=body.restOnSlope?ny<-.8&&Math.hypot(b.vx,b.vy)<40:ny<-.93&&Math.hypot(b.vx,b.vy)<14;
+    if(still){b.restTime=(b.restTime||0)+dt;if(b.restTime>.2){b.resting=true;b.vx=0;b.vy=0}}else b.restTime=0;
   }else b.restTime=0;
   return events.impact;
 }

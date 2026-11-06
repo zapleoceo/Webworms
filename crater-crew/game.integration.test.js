@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AI_PROFILES,createTerrain,groundY,selectShot} from './engine.js';
+import {AI_PROFILES,W,H,R,WATER,createTerrain,groundY,selectShot} from './engine.js';
 import {PENDING_KEY,readPendingTurn,savePendingTurn,PENDING_AGE_MS} from './broker-resume.js';
+import {propsBusy} from './props.js';
 
 const elements=new Map();
 function element(id){if(!elements.has(id))elements.set(id,{id,style:{},classList:{add(){},remove(){},toggle(){}},dataset:{},listeners:{},textContent:'',innerHTML:'',value:'0',disabled:false,addEventListener(event,fn){this.listeners[event]=fn},appendChild(){},setPointerCapture(){},getBoundingClientRect(){return {left:0,top:0,width:1600,height:800}}});return elements.get(id)}
@@ -16,10 +17,26 @@ globalThis.sessionStorage={getItem:key=>sessionItems.get(key)??null,setItem:(key
 globalThis.requestAnimationFrame=()=>{};
 const game=await import('./game.js');
 const {state,newGame,fire,explosion,update,render,beginTurn,cycle,aimAt,aiAct,requestBrokerTurn,restorePendingBrokerTurn,setGrenadeFuse,toggleGrenadeBounce,toggleStrikeDirection,dropDynamite}=window.__craterCrew;
+// Older scenarios assume an empty battlefield; map props get their own test below.
+const {scheme}=window.__craterCrew;Object.assign(scheme,{mines:0,barrels:0,crateChance:0});
+// Flatten the whole world to one plain at y=top (the world is W x H, larger than the 1600x800 view).
+function flatten(t,top=600){t.top.fill(top);for(let y=0;y<H;y++)t.mask.fill(y>=top?1:0,y*W,(y+1)*W)}
+// Client coordinates (canvas rect is 1600x800 = the view) that point at world point (x,y) through the camera.
+function screen(x,y){const c=state.cam;return {clientX:(x-c.x)*c.zoom,clientY:(y-c.y)*c.zoom}}
+// Put target on the real ground beside shooter, at a horizontal gap in [near,far] where the footing is level
+// (|dy|<20), trying the right side first. Returns the side (+1/-1) the target ended up on.
+function placeBeside(shooter,target,near,far){
+ const t=state.terrain,gy=groundY(t,shooter.x);
+ for(const side of [1,-1])for(let d=near;d<=far;d+=5){const x=shooter.x+side*d,g=groundY(t,x);
+  if(Math.abs(g-gy)<20){target.x=x;target.y=g-R-1;target.vx=target.vy=0;target.grounded=true;return side}}
+ assert.fail(`no level ground ${near}..${far} px beside ${shooter.name} at x=${shooter.x}`);
+}
+// The duel plain keeps its old height above the sea (600 vs water 755), since AI jetpack/walk rules key off the water line.
+const PLAIN=WATER-155;
 function flatDuel(enemyX,difficulty=2,seed=807){
  newGame(0,difficulty,seed);beginTurn(1);const t=state.terrain;
- t.top.fill(600);for(let y=0;y<800;y++)t.mask.fill(y>=600?1:0,y*1600,(y+1)*1600);
- const ai=state.active,player=state.worms[0];ai.x=800;ai.y=583;ai.vx=ai.vy=0;ai.hp=100;player.x=enemyX;player.y=583;player.hp=100;
+ flatten(t,PLAIN);
+ const ai=state.active,player=state.worms[0];ai.x=800;ai.y=PLAIN-17;ai.vx=ai.vy=0;ai.hp=100;player.x=enemyX;player.y=PLAIN-17;player.hp=100;
  for(const w of state.worms)if(w!==ai&&w!==player)w.alive=false;
  state.wind=0;state.windTarget=0;return {ai,player,t};
 }
@@ -27,10 +44,10 @@ function flatDuel(enemyX,difficulty=2,seed=807){
 test('pointer aiming faces both directions and HUD tracks active worm',()=>{
  newGame(0,1);
  const w=state.active;
- aimAt({clientX:w.x-120,clientY:w.y-120});
+ aimAt(screen(w.x-120,w.y-120));
  assert.equal(state.dir,-1);assert.equal(w.face,-1);
  assert.ok(state.aim<-.1);
- aimAt({clientX:w.x+120,clientY:w.y-120});
+ aimAt(screen(w.x+120,w.y-120));
  assert.equal(state.dir,1);assert.equal(w.face,1);
  cycle();assert.equal(elements.get('active-name').textContent,state.active.name.toUpperCase());
 });
@@ -39,9 +56,9 @@ test('aim crosses the horizon with mouse, keyboard and touch in both directions'
  newGame(0,1,899);
  const w=state.active;
  for(const [side,dir] of [[-1,-1],[1,1]]){
-  aimAt({clientX:w.x+side*140,clientY:w.y+100});
+  aimAt(screen(w.x+side*140,w.y+100));
   assert.equal(state.dir,dir);assert.ok(state.aim>0,`downward aim on ${side}`);
-  aimAt({clientX:w.x+side*140,clientY:w.y-100});
+  aimAt(screen(w.x+side*140,w.y-100));
   assert.equal(state.dir,dir);assert.ok(state.aim<0,`upward aim on ${side}`);
  }
  state.aim=-.02;state.keys.KeyE=true;update(.04);state.keys.KeyE=false;assert.ok(state.aim>0);
@@ -50,8 +67,8 @@ test('aim crosses the horizon with mouse, keyboard and touch in both directions'
  const touch=touchButtons.find(b=>b.dataset.hold==='aimright');state.aim=-.01;
  touch.listeners.pointerdown({preventDefault(){},pointerId:3});update(.04);touch.listeners.pointerup();assert.ok(state.aim>0);
  cycle();assert.equal(state.active.name,'Bubbles');
- state.selected='grenade';const b=state.active;aimAt({clientX:b.x-110,clientY:b.y+70});assert.equal(state.dir,-1);assert.ok(state.aim>0);
- b.x=35;aimAt({clientX:0,clientY:b.y+60});assert.equal(state.dir,-1);assert.ok(state.aim>0);
+ state.selected='grenade';const b=state.active;aimAt(screen(b.x-110,b.y+70));assert.equal(state.dir,-1);assert.ok(state.aim>0);
+ b.x=35;aimAt(screen(0,b.y+60));assert.equal(state.dir,-1);assert.ok(state.aim>0);
 });
 
 test('each team rotates its active worm across turns and rematch resets rotation',()=>{
@@ -210,15 +227,15 @@ test('music and effects unlock only on a gesture, separate controls persist, and
  update(.04);assert.equal(globalThis.__audioStarts,startCount);
  element('music-on').checked=true;element('effects-on').checked=false;
  element('music-volume').value='40';element('effects-volume').value='80';
- element('start').onclick();assert.equal(state.audioUnlocked,true);assert.equal(state.musicEnabled,true);assert.equal(state.sound,false);
- update(.04);assert.ok(globalThis.__audioStarts>startCount);const step=state.musicStep;assert.ok(step>0);
- update(.04);assert.equal(state.musicStep,step,'one scheduler does not double schedule at the same clock time');
+ element('start').onclick();assert.equal(state.audioUnlocked,true,'start unlocks audio');assert.equal(state.musicEnabled,true,'music toggle kept');assert.equal(state.sound,false,'effects toggle kept');
+ update(.04);assert.ok(globalThis.__audioStarts>startCount,'music starts after the gesture');const step=globalThis.__audioStarts;
+ update(.04);assert.equal(globalThis.__audioStarts,step,'one scheduler does not double schedule at the same clock time');
  state.selected='bazooka';const fxStart=globalThis.__audioStarts;fire(.5);assert.equal(globalThis.__audioStarts,fxStart,'effects off leaves music alone');
  window.__craterCrew.finish(0);const endCount=globalThis.__audioStarts;update(.04);assert.equal(globalThis.__audioStarts,endCount,'finished match stops scheduling');
- element('rematch').onclick();assert.equal(state.musicStep,0);assert.equal(state.musicEnabled,true);assert.equal(state.sound,false);
- globalThis.__audioContext.currentTime+=.3;update(.04);assert.ok(state.musicStep>0);
- const prior=state.musicStep;element('music-on').checked=false;element('music-on').onchange();
- globalThis.__audioContext.currentTime+=.3;update(.04);assert.equal(state.musicStep,prior);
+ element('rematch').onclick();assert.equal(state.musicEnabled,true);assert.equal(state.sound,false);
+ const beforeRematchTick=globalThis.__audioStarts;globalThis.__audioContext.currentTime+=.3;update(.04);assert.ok(globalThis.__audioStarts>beforeRematchTick,'rematch music plays');
+ const prior=globalThis.__audioStarts;element('music-on').checked=false;element('music-on').onchange();
+ globalThis.__audioContext.currentTime+=.3;update(.04);assert.equal(globalThis.__audioStarts,prior,'music off schedules nothing');
  element('effects-on').checked=true;element('effects-on').onchange();assert.equal(state.sound,true);assert.equal(state.musicEnabled,false);
  state.sound=false;state.musicEnabled=false;
 });
@@ -252,7 +269,7 @@ test('grenade fuse and bounce controls persist through switch and reset on remat
 test('high-bounce grenade rebounds harder than low-bounce grenade',()=>{
  const rebound=mode=>{
   newGame(0,1,304);state.selected='grenade';state.grenadeBounce=mode;state.wind=0;state.windTarget=0;
-  const t=state.terrain;t.top.fill(600);for(let y=0;y<800;y++)t.mask.fill(y>=600?1:0,y*1600,(y+1)*1600);
+  flatten(state.terrain);
   fire(.5);const p=state.projectiles[0];p.x=800;p.y=591;p.vx=0;p.vy=240;update(.01);return p.vy;
  };
  const high=rebound('high'),low=rebound('low');assert.ok(high<low,`high=${high} low=${low}`);
@@ -283,10 +300,10 @@ test('jetpack can drop one dynamite mid-flight without ending flight or doubling
 test('shotgun retains a second aim and punch cuts ground without a target',()=>{
  newGame(0,1,204);state.selected='shotgun';fire();
  assert.equal(state.phase,'ready');assert.equal(state.shotgunLeft,1);
- const prior=state.aim;aimAt({clientX:state.active.x+100,clientY:state.active.y+45});assert.ok(state.aim>prior);
+ const prior=state.aim;aimAt(screen(state.active.x+100,state.active.y+45));assert.ok(state.aim>prior);
  fire();assert.equal(state.shotgunLeft,0);assert.equal(state.phase,'resolving');
  newGame(0,1,205);state.selected='punch';const w=state.active;
- const solids=()=>{let n=0;for(let y=Math.floor(w.y-5);y<w.y+31;y++)for(let x=Math.floor(w.x+15);x<w.x+65;x++)n+=state.terrain.mask[y*1600+x];return n};
+ const solids=()=>{let n=0;for(let y=Math.floor(w.y-5);y<w.y+31;y++)for(let x=Math.floor(w.x+15);x<w.x+65;x++)n+=state.terrain.mask[y*W+x];return n};
  const before=solids();fire();assert.equal(state.phase,'resolving');assert.ok(solids()<before);
  beginTurn(1);assert.ok(Math.cos(state.aim)*state.dir<0,'AI faces left at turn start');
 });
@@ -305,7 +322,7 @@ test('losing focus cancels a charged shot and clears held input',()=>{
 
 test('same seed resets terrain, wind and random decorations after previous action',()=>{
  newGame(1,2,7123);const snapshot=()=>({top:Array.from(state.terrain.top.slice(150,160)),wind:state.wind,decor:state.decor.slice(0,4).map(d=>[d.x,d.y,d.r,d.phase])});const first=snapshot();
- explosion(500,500,70,20,0);state.keys.KeyA=true;state.charging=true;state.airTarget=420;newGame(1,2,7123);assert.deepEqual(snapshot(),first);assert.equal(state.waterLevel,755);assert.equal(state.round,1);assert.deepEqual(state.keys,{});assert.equal(state.charging,false);assert.equal(state.airTarget,null);
+ explosion(500,500,70,20,0);state.keys.KeyA=true;state.charging=true;state.airTarget=420;newGame(1,2,7123);assert.deepEqual(snapshot(),first);assert.equal(state.waterLevel,WATER);assert.equal(state.round,1);assert.deepEqual(state.keys,{});assert.equal(state.charging,false);assert.equal(state.airTarget,null);
 });
 
 test('simulation sequence is identical with extra shake/render calls',()=>{
@@ -322,31 +339,37 @@ test('simulation sequence is identical with extra shake/render calls',()=>{
 test('sudden-death water rises after round eight and resets on rematch',()=>{
  newGame(0,1,991);state.round=8;state.team=1;state.phase='resolving';state.resolveTimer=0;
  for(let i=0;i<150&&state.round===8;i++)update(.04);
- assert.equal(state.round,9);assert.equal(state.waterLevel,743);
- newGame(0,1,991);assert.equal(state.waterLevel,755);assert.equal(state.round,1);
+ assert.equal(state.round,9);assert.equal(state.waterLevel,WATER-12);
+ newGame(0,1,991);assert.equal(state.waterLevel,WATER);assert.equal(state.round,1);
 });
 
-test('central rivals allow a real punch on every map',()=>{
+test('a rival placed next to the shooter takes a real punch on every map',()=>{
  for(let map=0;map<3;map++){
+  // Big-map spawns are spread out (spawnSpots), so the rival is set beside the shooter on the real terrain.
   newGame(map,0,991);cycle();cycle();const shooter=state.active,target=state.worms[3];
+  const side=placeBeside(shooter,target,40,60);
   assert.ok(Math.abs(target.x-shooter.x)<65&&Math.abs(target.y-shooter.y)<48);
   const before=state.terrain.mask.reduce((n,v)=>n+v,0);
-  state.selected='punch';state.dir=1;fire();
-  assert.equal(target.hp,70);assert.ok(target.vx>0&&target.vy<0);
+  state.selected='punch';state.dir=side;fire();
+  assert.equal(target.hp,70);assert.ok(target.vx*side>0&&target.vy<0);
   assert.ok(state.terrain.mask.reduce((n,v)=>n+v,0)<before);
  }
 });
 
 test('two close shotgun shots both damage the target and finish the turn',()=>{
- newGame(0,0,991);cycle();cycle();const target=state.worms[3];
- state.selected='shotgun';aimAt({clientX:target.x,clientY:target.y-8});
+ newGame(0,0,991);cycle();cycle();const target=state.worms[3],shooter=state.active;
+ // Rivals no longer spawn 50 px apart; set the target at that close range on the real terrain.
+ placeBeside(shooter,target,50,70);
+ state.selected='shotgun';aimAt(screen(target.x,target.y-8));
  fire();const afterFirst=target.hp;assert.ok(afterFirst<100);assert.equal(state.shotgunLeft,1);
- aimAt({clientX:target.x,clientY:target.y-8});fire();
+ aimAt(screen(target.x,target.y-8));fire();
  assert.ok(target.hp<afterFirst);assert.equal(state.shotgunLeft,0);assert.equal(state.phase,'resolving');
 });
 
 test('moving, jumping, cycling and seven weapons resolve without stuck turns',()=>{
- newGame(0,1);let start=state.active.x;
+ // Seeded: spawn spots now depend on the seed, and ~6% of random seeds put the first worm one step from
+ // a ledge or under a tunnel roof, where walking right drops it and a jump is (correctly) impossible.
+ newGame(0,1,1);let start=state.active.x;
  state.keys.KeyD=true;for(let i=0;i<25;i++)update(.04);state.keys.KeyD=false;
  assert.ok(state.active.x>start+15);
  state.keys.KeyW=true;update(.04);state.keys.KeyW=false;assert.ok(state.active.vy<0);
@@ -357,8 +380,8 @@ test('moving, jumping, cycling and seven weapons resolve without stuck turns',()
 
 test('blast damages enemies, destroys terrain, and match reaches victory',()=>{
  newGame(1,2);const enemy=state.worms[3],x=enemy.x,y=enemy.y;
- assert.ok(groundY(state.terrain,x)<700);
- explosion(x,y,100,80,0);assert.ok(enemy.hp<100);assert.equal(state.terrain.mask[Math.floor(y+25)*1600+Math.floor(x)],0);
+ assert.ok(groundY(state.terrain,x)<WATER-55);
+ explosion(x,y,100,80,0);assert.ok(enemy.hp<100);assert.equal(state.terrain.mask[Math.floor(y+25)*W+Math.floor(x)],0);
  for(const w of state.worms.filter(w=>w.team===1&&w.alive))explosion(w.x,w.y,110,200,0);
  for(let i=0;i<150;i++)update(.04);
  assert.equal(state.ended,true);assert.equal(elements.get('result-title').textContent,'VICTORY!');
@@ -386,16 +409,18 @@ test('AI selects punch, dynamite, shotgun, grenade and jetpack by situation',()=
  const dynamite=flatDuel(890).ai;aiAct();assert.equal(state.selected,'dynamite');assert.equal(state.phase,'retreat');for(let i=0;i<55;i++)update(.04);assert.ok(dynamite.x<800);
  flatDuel(960);aiAct();assert.equal(state.selected,'shotgun');
  flatDuel(1200);state.aiMoves=1;aiAct();assert.equal(state.selected,'grenade');
- const {ai,t}=flatDuel(1200);for(let x=770;x<=830;x++){t.top[x]=720;for(let y=600;y<720;y++)t.mask[y*1600+x]=0}ai.y=703;aiAct();assert.equal(state.selected,'jetpack');assert.equal(state.phase,'jetpack');for(let i=0;i<120;i++)update(.04);assert.ok(state.phase!=='jetpack');
+ const {ai,t}=flatDuel(1200);for(let x=770;x<=830;x++){t.top[x]=PLAIN+120;for(let y=PLAIN;y<PLAIN+120;y++)t.mask[y*W+x]=0}ai.y=PLAIN+103;aiAct();assert.equal(state.selected,'jetpack');assert.equal(state.phase,'jetpack');for(let i=0;i<120;i++)update(.04);assert.ok(state.phase!=='jetpack');
 });
 
 test('AI selects bazooka at range and airstrike when terrain blocks fire',()=>{
  flatDuel(1500);state.aiMoves=1;aiAct();assert.equal(state.selected,'bazooka');
- const {t}=flatDuel(1500);state.aiMoves=1;for(let x=900;x<=940;x++){t.top[x]=0;for(let y=0;y<600;y++)t.mask[y*1600+x]=1}aiAct();assert.equal(state.selected,'airstrike');
+ const {t}=flatDuel(1500);state.aiMoves=1;for(let x=900;x<=940;x++){t.top[x]=0;for(let y=0;y<PLAIN;y++)t.mask[y*W+x]=1}aiAct();assert.equal(state.selected,'airstrike');
 });
 
 test('AI takes a bounded safer walking position for a better shot',()=>{
- flatDuel(1270);state.terrain=createTerrain(0,42);state.wind=0;state.windTarget=0;state.difficulty=1;const ai=state.active,player=state.worms[0];ai.x=250;ai.y=groundY(state.terrain,250)-17;player.y=groundY(state.terrain,1270)-17;
+ // x=250 is now a beach at the water's edge (the AI rightly jetpacks out); x=350 is the analogous
+ // inland slope on the big map, with the player ~900 px to the right as before.
+ flatDuel(1250);state.terrain=createTerrain(0,42);state.wind=0;state.windTarget=0;state.difficulty=1;const ai=state.active,player=state.worms[0];ai.x=350;ai.y=groundY(state.terrain,350)-17;player.y=groundY(state.terrain,1250)-17;
  aiAct();assert.equal(state.phase,'reposition');assert.equal(state.aiMoves,1);const initial=ai.x;
  for(let i=0;i<100;i++)update(.04);
  assert.ok(ai.x>initial+15);assert.notEqual(state.phase,'reposition');
@@ -410,7 +435,7 @@ test('water and destroyed footing kill active unit and continue turn',()=>{
  newGame(2,1);const active=state.active,startY=active.y;explosion(active.x,active.y+12,100,0,3);
  for(let i=0;i<200;i++)update(.04);
  assert.ok(active.y>startY||!active.alive);
- active.y=750;update(.04);assert.equal(active.alive,false);
+ active.y=WATER-5;update(.04);assert.equal(active.alive,false);
  let advanced=false;for(let i=0;i<100&&!advanced;i++){update(.04);advanced=state.team===1||state.ended}
  assert.ok(advanced);
 });
@@ -435,3 +460,14 @@ test('complete autoplay battles terminate across maps, difficulties and seeds',(
  console.log('same-seed AI comparison',JSON.stringify(totals));
 });
 
+
+test('map props: mines and barrels are scattered, a mine stepped on blows and the turn still hands over',()=>{
+ Object.assign(scheme,{mines:8,barrels:6,crateChance:0});
+ try{newGame(0,1,4242);assert.ok(state.props.filter(p=>p.kind==='mine').length>=4,'mines placed');assert.ok(state.props.some(p=>p.kind==='barrel'),'barrels placed');
+  for(const p of state.props)assert.ok(p.y<WATER,'prop above water');
+  for(let i=0;i<60;i++)update(.04);
+  const mine=state.props.find(p=>p.kind==='mine'),w=state.active,hp=w.hp;w.x=mine.x+18;w.y=mine.y-6;w.grounded=false;
+  for(let i=0;i<60;i++)update(.04);assert.ok(!state.props.includes(mine),'mine went off');assert.ok(w.hp<hp||!w.alive,'nearby worm hurt');
+  for(let i=0;i<150;i++)update(.04);assert.equal(propsBusy(state),false,'nothing left holding the turn');
+ }finally{Object.assign(scheme,{mines:0,barrels:0,crateChance:0})}
+});

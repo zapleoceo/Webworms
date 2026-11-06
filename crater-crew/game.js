@@ -1,4 +1,4 @@
-import {drawEnvironment,drawCharacter,drawOrdnance} from './art.js';
+import {drawEnvironment,drawCharacter,drawOrdnance,TEAM_COLORS} from './art.js';
 import {bakeSoil,paintTerrain,grassDepths} from './terrain-art.js';
 import {themes} from './themes.js';
 import {drawHud} from './hud.js';
@@ -7,8 +7,12 @@ import {makeBlast,drawBlast} from './effects.js';
 import {bakeBackground,drawBackdrop,drawAmbient,drawWater} from './scenery.js';
 import {brokerTurnOptions,brokerSnapshot} from './broker-ai.js';
 import {clearPendingTurn,savePendingTurn,readPendingTurn} from './broker-resume.js';
-import {W,H,WATER,R,GRAVITY,WEAPONS,data,AI_PROFILES,clamp,seeded,createTerrain,solid,carve,groundY,blastDamage,selectShot,selectLob,AIM_MIN,AIM_MAX,aimAngle,BODIES,stepBody,crawl,wormFits,wormGrounded,WALK_SPEED} from './engine.js';
+import {W,H,WATER,R,GRAVITY,WEAPONS,data,AI_PROFILES,clamp,seeded,createTerrain,solid,carve,groundY,blastDamage,selectShot,selectLob,AIM_MIN,AIM_MAX,aimAngle,VIEW_W,VIEW_H,spawnSpots,BODIES,stepBody,crawl,wormFits,wormGrounded,WALK_SPEED} from './engine.js';
 import {voice,stopVoices,configureVoices,loadVoices} from './voice.js';
+import {createMusic} from './music.js';
+import {placeProps,dropCrate,blastProps,updateProps,drawProps,propsBusy} from './props.js';
+// Match settings, like a classic scheme: map props and how often a health crate drops at turn start.
+const scheme={mines:8,barrels:6,crateChance:.3};
 const $=id=>document.getElementById(id), canvas=$('game'),ctx=canvas.getContext('2d');
 const names=[['Pip','Bubbles','Mochi'],['Grub','Maverick','Nibbles']];
 const mapNames=['SUNSET COVE','CINDER PEAKS','MOONLIT ATOLL'];
@@ -19,10 +23,9 @@ const newMatchId=()=>{const bytes=new Uint8Array(8);globalThis.crypto.getRandomV
 let audio=null;
 function tone(freq=300,duration=.15,type='triangle',volume=.08,slide=0){if(!state.sound||state.fxVolume===0)return;try{audio??=new AudioContext();const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.setValueAtTime(freq,audio.currentTime);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,slide),audio.currentTime+duration);g.gain.setValueAtTime(volume*state.fxVolume,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+duration)}catch{}}
 function noise(duration=.18,volume=.07,cutoff=1400){if(!state.sound||state.fxVolume===0)return;try{audio??=new AudioContext();const frames=Math.ceil(audio.sampleRate*duration),buffer=audio.createBuffer(1,frames,audio.sampleRate),samples=buffer.getChannelData(0);for(let i=0;i<frames;i++)samples[i]=Math.random()*2-1;const source=audio.createBufferSource(),filter=audio.createBiquadFilter(),gain=audio.createGain();source.buffer=buffer;filter.type='lowpass';filter.frequency.value=cutoff;gain.gain.setValueAtTime(volume*state.fxVolume,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);source.connect(filter).connect(gain).connect(audio.destination);source.start();source.stop(audio.currentTime+duration)}catch{}}
-const melody=[0,null,3,7,null,10,7,null,5,null,3,0,null,-2,0,null,3,null,7,10,null,12,10,null,7,null,5,3,null,0,3,null,5,null,8,12,null,10,8,null,7,null,5,3,null,0,-2,null,0,null,4,7,null,11,7,null,4,null,2,0,null,-2,0,null];
-const bass=[-12,-14,-17,-7];
-function musicNote(freq,duration,at,type='triangle',level=.045){const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.setValueAtTime(freq,at);g.gain.setValueAtTime(.001,at);g.gain.exponentialRampToValueAtTime(Math.max(.001,level*state.musicVolume),at+.014);g.gain.exponentialRampToValueAtTime(.001,at+duration);o.connect(g).connect(audio.destination);o.start(at);o.stop(at+duration+.01)}
-function musicTick(){if(!state.audioUnlocked||!state.musicEnabled||!state.running||state.musicVolume===0||!audio)return;try{const beat=.215;if(!state.musicNextTime||state.musicNextTime<audio.currentTime-.2)state.musicNextTime=audio.currentTime+.02;while(state.musicNextTime<audio.currentTime+.18){const i=state.musicStep%64,at=state.musicNextTime,semi=melody[i],bar=Math.floor(i/16)%4;if(semi!==null)musicNote(293.66*2**(semi/12),beat*(i%4===0?2.4:1.5),at,'triangle',.04);if(i%4===0)musicNote(146.83*2**(bass[bar]/12),beat*3.1,at,'sawtooth',.055);if(i%8===0)musicNote(105,.12,at,'sine',.07);if(i%8===4)musicNote(190,.07,at,'square',.025);if(i%2===0)musicNote(1400,.024,at,'triangle',.008);state.musicStep++;state.musicNextTime+=beat}}catch{state.musicEnabled=false}}
+// Music: well-known public-domain tunes synthesised in music.js; one per match, a tense one for sudden death.
+const music=createMusic(()=>audio);
+function musicTick(){music.tick(state)}
 function unlockAudio(){if(!state.audioUnlocked){try{audio??=new AudioContext();audio.resume?.();state.audioUnlocked=true;loadVoices(audio)}catch{return}}if(state.musicEnabled){state.musicStep=0;state.musicNextTime=0}}
 function chirp(){tone(720,.12,'sine',.055,1040);tone(360,.17,'triangle',.025,520)}
 function wormCry(){tone(510,.11,'sawtooth',.026,290);tone(860,.18,'triangle',.022,420)}
@@ -48,11 +51,11 @@ function buildTerrain(rect=null){
 function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePending=false){
  stopVoices();if(!preservePending)clearPendingTurn();state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];state.brokerSequence=0;$('broker-panel').hidden=true;
  simRand=seeded((seed^0x9e3779b9)>>>0);visualRand=seeded((seed^0x7f4a7c15)>>>0);state.seed=seed;state.matchId=newMatchId();state.simDraws=0;state.map=map;state.difficulty=clamp(Number(difficulty)||0,0,2);state.musicStep=0;state.musicNextTime=0;state.terrain=createTerrain(map,seed);buildTerrain();state.worms=[];state.projectiles=[];state.particles=[];state.blasts=[];state.decor=[];state.team=0;state.active=null;state.lastActiveId=[0,-1];state.phase='ready';state.timer=35;state.round=1;state.waterLevel=WATER;state.ended=false;state.running=true;state.used=false;state.shotgunLeft=0;state.grenadeFuse=3;state.grenadeBounce='high';state.strikeDir=1;state.playerGrenadeFuse=3;state.playerGrenadeBounce='high';state.playerStrikeDir=1;state.jetDropped=false;state.selected='bazooka';state.playerWeapon='bazooka';state.airTarget=null;state.aim=-.72;state.dir=1;state.power=.5;state.charging=false;state.keys={};state.aiTimer=0;state.resolveTimer=0;state.jetTime=0;state.jetPulse=0;state.shake=0;state.wind=(simRandom()-.5)*72;state.windTarget=state.wind;state.aiMoves=0;state.aiTarget=0;state.aiMoveTime=0;state.aiRetreat=0;
- // Interleaved central rivals make close weapons tactically usable from round one.
- const spots=[[170,340,730],[780,1270,1450]];
- for(let team=0;team<2;team++)for(let i=0;i<3;i++){let x=spots[team][i],y=groundY(state.terrain,x)-R-2;state.worms.push({id:team*3+i,team,name:names[team][i],x,y,vx:0,vy:0,hp:100,alive:true,face:team? -1:1,grounded:true,flash:0,active:false});}
+ // Random level spots across the big map; teams alternate along it so rivals start within range.
+ const spots=spawnSpots(state.terrain,seed);
+ for(let team=0;team<2;team++)for(let i=0;i<3;i++){const s=spots[i*2+team]??{x:400+(i*2+team)*500,y:groundY(state.terrain,400+(i*2+team)*500)-R-2};let x=s.x,y=s.y;state.worms.push({id:team*3+i,team,name:names[team][i],x,y,vx:0,vy:0,hp:100,alive:true,face:team? -1:1,grounded:true,flash:0,active:false});}
  for(let i=0;i<42;i++)state.decor.push({x:visualRand()*W,y:visualRand()*H*.55,r:visualRand()*3+1,phase:visualRand()*6.28});
- state.active=state.worms[0];state.active.active=true;updateUI();say('YOUR TURN · TAKE AIM',2.5);
+ state.props=placeProps(state.terrain,state.worms,seed,scheme);state.propWait=0;music.next();music.setMood('battle');state.active=state.worms[0];state.active.active=true;state.cam={x:0,y:0,zoom:1,tz:1,free:false};centerCamera();updateUI();say('YOUR TURN · TAKE AIM',2.5);
 }
 function living(team){return state.worms.filter(w=>w.team===team&&w.alive)}
 function beginTurn(team){
@@ -61,27 +64,29 @@ function beginTurn(team){
  const alive=living(team);if(!alive.length){finish(1-team);return}
  const prior=state.lastActiveId[team];state.active=alive.find(w=>w.id>prior)||alive[0];state.active.active=true;state.lastActiveId[team]=state.active.id;state.dir=team? -1:1;state.aim=-.78;state.power=.55;
  updateUI();say(team?'DIRT DEVILS ARE THINKING...':'YOUR TURN · TAKE AIM',1.8);voice(state.active,'turn');
- state.aiTimer=team?1.1:0;
+ state.aiTimer=team?1.1:0;followAgain();if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
 }
-function finish(winner){clearPendingTurn();state.brokerController?.abort();state.brokerController=null;$('broker-panel').hidden=true;state.ended=true;state.running=false;state.phase='ended';state.musicNextTime=0;$('result-caption').textContent=winner===2?'THE ISLAND CLAIMS EVERYONE':winner?'THE DIRT DEVILS WIN':'SKY SQUAD WINS';$('result-title').textContent=winner===2?'DRAW':winner?'DEFEAT':'VICTORY!';$('result-text').textContent=winner===2?'Both teams went under. Try another island!':winner?'The Dirt Devils took this island. Try another tactic!':'The Dirt Devils have been sent packing. The island is yours!';$('result').classList.add('open');$('rematch').focus?.();tone(winner?180:600,.5,'sine',.1,winner?80:900);const champ=state.worms.find(w=>w.alive&&w.team===winner);if(champ)voice(champ,'win');else if(winner===2)voice(state.worms[0],'tie')}
-function nextTurn(){if(state.ended)return;const p=living(0).length,e=living(1).length;if(!p||!e){finish(!p&&!e?2:p?0:1);return}if(state.team===1){state.round++;if(state.round>8){state.waterLevel=Math.max(270,WATER-(state.round-8)*12);say('SUDDEN DEATH · WATER RISING!',1.7)}}beginTurn(1-state.team)}
+function finish(winner){clearPendingTurn();state.brokerController?.abort();state.brokerController=null;$('broker-panel').hidden=true;state.ended=true;state.running=false;state.phase='ended';state.musicNextTime=0;$('result-caption').textContent=winner===2?'THE ISLAND CLAIMS EVERYONE':winner?'THE DIRT DEVILS WIN':'SKY SQUAD WINS';$('result-title').textContent=winner===2?'DRAW':winner?'DEFEAT':'VICTORY!';$('result-text').textContent=winner===2?'Both teams went under. Try another island!':winner?'The Dirt Devils took this island. Try another tactic!':'The Dirt Devils have been sent packing. The island is yours!';$('result').classList.add('open');music.setMood(winner===0?'victory':'defeat');$('rematch').focus?.();tone(winner?180:600,.5,'sine',.1,winner?80:900);const champ=state.worms.find(w=>w.alive&&w.team===winner);if(champ)voice(champ,'win');else if(winner===2)voice(state.worms[0],'tie')}
+function nextTurn(){if(state.ended)return;const p=living(0).length,e=living(1).length;if(!p||!e){finish(!p&&!e?2:p?0:1);return}if(state.team===1){state.round++;if(state.round>8){state.waterLevel=Math.max(270,WATER-(state.round-8)*12);music.setMood('tense');say('SUDDEN DEATH · WATER RISING!',1.7)}}beginTurn(1-state.team)}
 function cycle(){if(!state.running||state.team!==0||state.used||state.shotgunLeft||state.phase!=='ready')return;const a=living(0),idx=a.indexOf(state.active);state.active.active=false;state.active=a[(idx+1)%a.length];state.active.active=true;state.lastActiveId[0]=state.active.id;updateUI();tone(450,.05)}
 function endTurn(){if(!state.running||state.team!==0||state.phase==='resolving')return;state.used=true;state.phase='resolving';state.resolveTimer=.5;state.charging=false;say('TURN PASSED',.8)}
 function emit(x,y,color,count=18,speed=180){for(let i=0;i<count;i++){const a=visualRand()*Math.PI*2,v=speed*(.25+visualRand()*.9);state.particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-50,life:.35+visualRand()*.6,max:1,r:1.5+visualRand()*5,color});}}
 function addBlast(x,y,r){state.blasts.push(makeBlast(x,y,r,visualRand));const th=themes[state.map];emit(x,y,th.dirt,26,330);emit(x,y,th.light,16,260);emit(x,y,th.dark,12,200)}
-function explosion(x,y,r,damage,source){state.shake=Math.max(state.shake,13);addBlast(x,y,r);tone(95,.36,'sawtooth',.13,38);noise(.34,.11,750);emit(x,y,'#ffdd82',42,310);emit(x,y,'#634957',22,230);carve(state.terrain,x,y,r*.78);buildTerrain({x0:Math.floor(x-r-6),x1:Math.ceil(x+r+6),y0:Math.floor(y-r-6)});
+function explosion(x,y,r,damage,source){state.shake=Math.max(state.shake,13);addBlast(x,y,r);tone(95,.36,'sawtooth',.13,38);noise(.34,.11,750);emit(x,y,'#ffdd82',42,310);emit(x,y,'#634957',22,230);blastProps(state,x,y,r,damage);carve(state.terrain,x,y,r*.78);buildTerrain({x0:Math.floor(x-r-6),x1:Math.ceil(x+r+6),y0:Math.floor(y-r-6)});
  for(const w of state.worms){if(!w.alive)continue;const d=Math.hypot(w.x-x,w.y-y);const hurt=blastDamage(d,r,damage);if(hurt){w.hp=Math.max(0,w.hp-hurt);w.flash=.7;wormCry();const push=(1-d/r)*400;w.vx+=(w.x-x)/(d||1)*push;w.vy-=Math.max(130,push*.7);w.grounded=false;emit(w.x,w.y,w.team?'#ff9980':'#8ef9e4',8,110);if(w.hp)voice(w,w.hp<35?'medic':'hurt');if(!w.hp)kill(w);}}
  for(const p of state.projectiles){if(p.dead||(p.type!=='grenade'&&p.type!=='dynamite'))continue;const d=Math.hypot(p.x-x,p.y-y);if(d<r*1.3){const push=(1-d/(r*1.3))*520;p.vx+=(p.x-x)/(d||1)*push;p.vy+=(p.y-y)/(d||1)*push-120;p.resting=false}}
  updateUI();if(state.phase==='retreat')state.phase='resolving';if(state.phase==='resolving')state.resolveTimer=Math.max(state.resolveTimer,1.3);
 }
 function kill(w){if(!w.alive)return;voice(w,w.y>state.waterLevel-12?'water':'die');const killer=state.active;if(killer?.alive&&killer.team!==w.team)setTimeout?.(()=>voice(killer,'kill'),1100);w.alive=false;w.active=false;emit(w.x,w.y,'#fff8d1',28,220);tone(230,.22,'square',.05,80);chirp();say(w.name.toUpperCase()+' IS OUT!',1.3);if((state.active===w&&state.phase==='ready')||living(w.team).length===0){state.phase='resolving';state.resolveTimer=1.5}updateUI()}
+// Hooks the map props call back into: blasts, heals, mine beeps and splashes.
+const propApi={explode:(x,y,r,d)=>explosion(x,y,r,d,-1),heal:(w,a)=>{w.hp+=a;w.flash=0;emit(w.x,w.y-10,'#7dffa8',14,120);tone(880,.12,'sine',.05,1320);say(`${w.name.toUpperCase()} +${a} HP`,1.2);updateUI()},beep:()=>tone(1150,.06,'square',.035),splash:(x,y)=>emit(x,y,'#d6f5ff',12,100)};
 function startResolution(wait=1){state.shotgunLeft=0;state.phase='resolving';state.resolveTimer=wait;state.used=true;state.charging=false}
 function setGrenadeFuse(value){if(!state.running||state.team!==0||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeFuse=clamp(Number(value)||3,1,5);state.playerGrenadeFuse=state.grenadeFuse;updateUI();tone(620,.05,'triangle',.025)}
 function toggleGrenadeBounce(){if(!state.running||state.team!==0||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeBounce=state.grenadeBounce==='high'?'low':'high';state.playerGrenadeBounce=state.grenadeBounce;updateUI();tone(540,.07,'triangle',.025)}
 function toggleStrikeDirection(){if(!state.running||state.team!==0||state.phase!=='ready'||state.selected!=='airstrike')return;state.strikeDir*=-1;state.playerStrikeDir=state.strikeDir;updateUI();tone(460,.07,'triangle',.025)}
 function dropDynamite(){if(!state.running||state.phase!=='jetpack'||state.jetDropped||!state.active?.alive)return false;const w=state.active;state.projectiles.push({type:'dynamite',x:w.x,y:w.y+R+3,vx:w.vx*.25,vy:w.vy,fuse:3,r:9,bounces:0,bounceFactor:.48,source:w.id,trail:[]});state.jetDropped=true;weaponSound('dynamite');say('DYNAMITE DROPPED!',1);updateUI();return true}
 function aimVector(){return {x:Math.cos(state.aim)*state.dir,y:Math.sin(state.aim)}}
-function fire(power=state.power){if(!state.running||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,weapon=state.selected,v=aimVector();state.charging=false;weaponSound(weapon);if(weapon!=='jetpack'&&!state.shotgunLeft)voice(w,weapon==='bazooka'||weapon==='shotgun'?weapon:'fire');if(weapon==='airstrike'){const foe=living(1-w.team)[0];if(foe)setTimeout?.(()=>voice(foe,'incoming'),700)}if(weapon==='shotgun')noise(.18,.065,2300);else if(weapon==='bazooka')noise(.1,.035,1400);
+function fire(power=state.power){if(!state.running||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,weapon=state.selected,v=aimVector();state.charging=false;followAgain();weaponSound(weapon);if(weapon!=='jetpack'&&!state.shotgunLeft)voice(w,weapon==='bazooka'||weapon==='shotgun'?weapon:'fire');if(weapon==='airstrike'){const foe=living(1-w.team)[0];if(foe)setTimeout?.(()=>voice(foe,'incoming'),700)}if(weapon==='shotgun')noise(.18,.065,2300);else if(weapon==='bazooka')noise(.1,.035,1400);
  if(weapon==='jetpack'){state.phase='jetpack';state.used=true;state.jetTime=4;if(state.team===1)w.jetUsed=true;say('JETPACK · STEER TO FLY',1.4);tone(480,.2,'sawtooth',.04,170);updateUI();return}
  if(weapon==='punch'){let hit=false;for(const target of state.worms){if(!target.alive||target.team===w.team)continue;const dx=target.x-w.x,dy=target.y-w.y;if(Math.abs(dx)<65&&Math.abs(dy)<48&&Math.sign(dx)===state.dir){target.hp=Math.max(0,target.hp-data.punch.damage);target.vx=state.dir*350;target.vy=-250;target.grounded=false;target.flash=.7;wormCry();voice(target,'hurt');emit(target.x,target.y,'#ffda8d',18,170);if(!target.hp)kill(target);hit=true;break}}carve(state.terrain,w.x+state.dir*39,w.y-3,24);buildTerrain();say(hit?'WHAM!':'SWUNG AND MISSED!',1.3);if(!hit)voice(w,'miss');tone(hit?190:350,.12,'square',.08);startResolution(1.3);updateUI();return}
  if(weapon==='shotgun'){if(!state.shotgunLeft)state.shotgunLeft=2;let hits=0;const chips=[];for(let i=0;i<5;i++){const a=state.aim+(simRandom()-.5)*.24,dir={x:Math.cos(a)*state.dir,y:Math.sin(a)},origin={x:w.x+dir.x*22,y:w.y-7+dir.y*22};for(let dist=0;dist<450;dist+=5){const x=origin.x+dir.x*dist,y=origin.y+dir.y*dist;if(x<0||x>=W||y<0||y>=H)break;if(solid(state.terrain,x,y)){chips.push([x,y]);break}let done=false;for(const target of state.worms){if(!target.alive||target===w)continue;if(Math.hypot(x-target.x,y-target.y)<R){target.hp=Math.max(0,target.hp-5);target.vx+=dir.x*32;target.vy-=24;target.flash=.6;hits++;if(!target.hp)kill(target);done=true;break}}if(done)break;}state.particles.push({x:origin.x,y:origin.y,vx:dir.x*340,vy:dir.y*340,life:.15,max:.15,r:2,color:'#fff3c9'});}for(const [x,y]of chips)carve(state.terrain,x,y,3);if(chips.length)buildTerrain();emit(w.x+v.x*25,w.y-7+v.y*25,'#ffda80',17,100);tone(180,.23,'sawtooth',.09,55);const result=hits?`${hits*5} DAMAGE`:'MISSED';if(!hits)voice(w,'miss');if(hits)wormCry();state.shotgunLeft--;if(state.shotgunLeft){say(`SHOTGUN · ${result} · SECOND SHOT!`,1.2);state.aiTimer=.4}else{say(`SHOTGUN · ${result}`,1.2);startResolution(1.2)}updateUI();return}
@@ -90,7 +95,8 @@ function fire(power=state.power){if(!state.running||state.phase!=='ready'||!stat
  const speed=(weapon==='grenade'?300:370)+(weapon==='grenade'?280:390)*power;
  state.projectiles.push({type:weapon,x:w.x+v.x*24,y:w.y-9+v.y*22,vx:v.x*speed,vy:v.y*speed,fuse:weapon==='grenade'?state.grenadeFuse:7,bounceFactor:weapon==='grenade'?(state.grenadeBounce==='high'?.55:.32):.48,r:weapon==='grenade'?8:6,source:w.id,trail:[]});emit(w.x+v.x*30,w.y-8+v.y*20,'#fff6bb',9,70);tone(weapon==='grenade'?330:130,.15,'sawtooth',.08,80);say(weapon==='grenade'?'GRENADE AWAY!':'ROCKET AWAY!',1);startResolution(weapon==='grenade'?state.grenadeFuse+.7:1.8);updateUI();
 }
-function safeWalk(a,b){const dir=Math.sign(b-a),t=state.terrain;if(!dir)return true;let prior=groundY(t,a);for(let x=a+dir*18;dir>0?x<=b:x>=b;x+=dir*18){const y=groundY(t,x);if(y>state.waterLevel-40||Math.abs(y-prior)>50)return false;prior=y}return groundY(t,b)<state.waterLevel-40}
+function safeWalk(a,b){const dir=Math.sign(b-a),t=state.terrain;if(!dir)return true;let prior=groundY(t,a);for(let x=a+dir*18;dir>0?x<=b:x>=b;x+=dir*18){const y=groundY(t,x);// Climbs must stay within what crawl() can manage; drops can be steeper.
+ if(y>state.waterLevel-40||prior-y>30||y-prior>50)return false;prior=y}return groundY(t,b)<state.waterLevel-40}
 function aiAct(){if(!state.running||state.team!==1||state.phase!=='ready')return;if(state.aiDriver==='broker'){requestBrokerTurn();return}const profile=AI_PROFILES[state.difficulty]??AI_PROFILES[1];const w=state.active,foes=living(0),friends=living(1),near=foes.reduce((a,b)=>Math.abs(a.x-w.x)<Math.abs(b.x-w.x)?a:b),dx=near.x-w.x,dy=near.y-w.y-7,dist=Math.hypot(dx,dy);
  if(state.shotgunLeft){const target=foes.reduce((a,b)=>Math.abs(a.x-w.x)<Math.abs(b.x-w.x)?a:b);state.selected='shotgun';state.dir=Math.sign(target.x-w.x)||1;state.aim=aimAngle(target.x-w.x,target.y-w.y-7);w.face=state.dir;fire();return}
  if(Math.abs(dx)<58&&Math.abs(dy)<48){state.selected='punch';state.dir=Math.sign(dx)||1;fire();return}
@@ -192,7 +198,7 @@ function land(w,jet){
  w.y=Math.floor(w.y);for(let k=0;k<3&&!wormGrounded(t,w.x,w.y)&&wormFits(t,w.x,w.y+1);k++)w.y++;
  w.vy=0;w.grounded=true;w.sliding=!jet&&Math.abs(w.vx)>60;if(!w.sliding)w.vx=0;
 }
-function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dynamite'&&Math.ceil(oldFuse)>Math.ceil(p.fuse)&&p.fuse>0)tone(920,.07,'square',.035,650);p.trail.push({x:p.x,y:p.y});if(p.trail.length>12)p.trail.shift();if(p.type==='grenade'||p.type==='dynamite'){const body=p.type==='dynamite'?BODIES.dynamite:(p.bounceFactor??.55)<.4?BODIES.grenadeLow:BODIES.grenadeHigh,hit=stepBody(state.terrain,p,dt,{body}).impact;if(hit>70){p.bounces++;if(p.type==='grenade')tone(650,.055,'triangle',clamp(hit/900,.008,.028),340);else tone(240,.05,'square',.018,160)}if(p.y>state.waterLevel){p.dead=true;emit(p.x,state.waterLevel,'#d6f5ff',15,110);tone(440,.12,'sine',.04);return}}
+function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dynamite'&&Math.ceil(oldFuse)>Math.ceil(p.fuse)&&p.fuse>0)tone(920,.07,'square',.035,650);p.trail.push({x:p.x,y:p.y});if(p.trail.length>12)p.trail.shift();if(p.type==='grenade'||p.type==='dynamite'){const body=p.type==='dynamite'?BODIES.dynamite:(p.bounceFactor??.55)<.4?BODIES.grenadeLow:BODIES.grenadeHigh,hit=stepBody(state.terrain,p,dt,{body,water:state.waterLevel}).impact;if(hit>70){p.bounces++;if(p.type==='grenade')tone(650,.055,'triangle',clamp(hit/900,.008,.028),340);else tone(240,.05,'square',.018,160)}if(p.sunk||p.y>state.waterLevel){p.dead=true;emit(p.x,state.waterLevel,'#d6f5ff',15,110);tone(440,.12,'sine',.04);return}}
  else{const sub=4;for(let i=0;i<sub;i++){const d=dt/sub;p.vx+=state.wind*(p.type==='airstrike'?0:.7)*d;p.vy+=GRAVITY*d;p.x+=p.vx*d;p.y+=p.vy*d;
   if(p.x<4||p.x>W-4){p.dead=true;return}
   if(p.y>state.waterLevel){p.dead=true;return}
@@ -209,8 +215,9 @@ function update(dt){if(!state.running)return;musicTick();if(state.team===1&&stat
  if(state.team===0&&state.phase==='ready'){if(state.keys.aimleft||state.keys.KeyQ)state.aim=clamp(state.aim-.95*dt,AIM_MIN,AIM_MAX);if(state.keys.aimright||state.keys.KeyE)state.aim=clamp(state.aim+.95*dt,AIM_MIN,AIM_MAX)}
  for(const w of state.worms)updateWorm(w,dt);
  for(const p of state.projectiles)if(!p.dead)updateProjectile(p,dt);state.projectiles=state.projectiles.filter(p=>!p.dead);
+ updateProps(state,dt,propApi);
  for(const p of state.particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=350*dt;p.life-=dt}state.particles=state.particles.filter(p=>p.life>0);state.blasts=state.blasts.filter(b=>(b.t+=dt)<1.3);
- if(state.phase==='resolving'||state.phase==='retreat'){state.resolveTimer-=dt;if(state.resolveTimer<=0&&state.projectiles.length===0&&state.worms.every(w=>!w.alive||w.grounded||w.y>state.waterLevel))nextTurn()}
+ if(state.phase==='resolving'||state.phase==='retreat'){state.resolveTimer-=dt;state.propWait=propsBusy(state)?state.propWait+dt:0;if(state.resolveTimer<=0&&state.projectiles.length===0&&(state.propWait===0||state.propWait>5)&&state.worms.every(w=>!w.alive||w.grounded||w.y>state.waterLevel))nextTurn()}
  updateUI();
 }
 function updateWeaponSettings(){
@@ -227,10 +234,37 @@ function updateWeaponSettings(){
 function updateUI(){const p=living(0),e=living(1);$('p-count').textContent=`${p.length} WORM${p.length===1?'':'IES'}`;$('e-count').textContent=`${e.length} WORM${e.length===1?'':'IES'}`;$('p-health').style.width=`${p.reduce((s,w)=>s+w.hp,0)/3}%`;$('e-health').style.width=`${e.reduce((s,w)=>s+w.hp,0)/3}%`;$('timer').textContent=Math.ceil(state.timer);$('turn-label').textContent=state.team?(state.aiDriver==='broker'&&(state.phase==='broker-wait'||state.phase==='broker-error')?'LLM THINKING':'AI TURN'):'YOUR TURN';$('active-name').textContent=state.active?.alive?state.active.name.toUpperCase():'K.O.';$('wind').textContent=`WIND · ${Math.abs(Math.round(state.wind))} ${state.wind<0?'←':'→'}`;$('power').style.width=`${Math.round(state.power*100)}%`;$('power-text').textContent=`${Math.round(state.power*100)}%`;$('map-name').textContent=mapNames[state.map];$('round').textContent=`ROUND ${state.round}`;$('ai-level').textContent=AI_PROFILES[state.difficulty].name+(state.aiDriver==='broker'?' · BROKER LLM':' · LOCAL');document.querySelectorAll('.weapon').forEach(b=>b.classList.toggle('selected',b.dataset.weapon===state.selected));$('fire').disabled=!state.running||state.team!==0||state.phase!=='ready';$('end-turn').disabled=!state.running||state.team!==0||state.phase==='resolving';updateWeaponSettings()}
 let lastFrame=0,frameDt=.016;
 function graveY(w){const gy=groundY(state.terrain,w.x);if(w.y>state.waterLevel-6||gy>state.waterLevel-6)return null;if(w.gy==null)w.gy=Math.min(w.y+14,gy);if(w.gy<gy)w.gy=Math.min(gy,w.gy+420*frameDt);return w.gy}
-function drawBackground(now){
+// Sky and far ridges live in screen space and scroll slower than the battlefield (parallax).
+const SKY_W=VIEW_W+800,MIN_ZOOM=Math.max(VIEW_W/W,VIEW_H/H);
+function drawSky(now){
  const th=themes[state.map];
- if(!state.bg||state.bg.map!==state.map)state.bg={map:state.map,...bakeBackground(()=>document.createElement('canvas'),state.map,th,W,H)};
- drawBackdrop(ctx,state,state.bg,W,now,frameDt);drawAmbient(ctx,state,th,W,H,now,frameDt);drawWater(ctx,state,th,W,H,now,false);
+ if(!state.bg||state.bg.map!==state.map)state.bg={map:state.map,...bakeBackground(()=>document.createElement('canvas'),state.map,th,SKY_W,VIEW_H)};
+ const c=state.cam,span=Math.max(1,W-VIEW_W/c.zoom);
+ ctx.save();ctx.translate(-(c.x/span)*(SKY_W-VIEW_W),0);drawBackdrop(ctx,state,state.bg,SKY_W,now,frameDt);ctx.restore();
+}
+function drawWorldBack(now){const th=themes[state.map];drawAmbient(ctx,state,th,W,H,now,frameDt);drawWater(ctx,state,th,W,H,now,false)}
+// Camera: follows the shot in flight, otherwise the active worm. Wheel or Z zooms out to the whole map,
+// right-drag looks around freely (the turn clock keeps running), C or the next shot snaps back.
+function camFocus(){return state.projectiles.find(p=>!p.dead&&p.type!=='airstrike')||state.projectiles.find(p=>!p.dead&&p.y>0)||state.active}
+function clampCam(c){c.x=clamp(c.x,0,Math.max(0,W-VIEW_W/c.zoom));c.y=clamp(c.y,0,Math.max(0,H-VIEW_H/c.zoom))}
+function centerCamera(){const c=state.cam,f=camFocus();if(!c||!f)return;c.x=f.x-VIEW_W/c.zoom/2;c.y=f.y-VIEW_H/c.zoom*.55;clampCam(c)}
+function updateCamera(dt){
+ const c=state.cam;if(!c)return;
+ if(Math.abs(c.tz-c.zoom)>1e-3){const mx=c.x+VIEW_W/c.zoom/2,my=c.y+VIEW_H/c.zoom/2;c.zoom+=(c.tz-c.zoom)*Math.min(1,dt*9);c.x=mx-VIEW_W/c.zoom/2;c.y=my-VIEW_H/c.zoom/2}
+ if(!c.free){const f=camFocus();if(f){const k=Math.min(1,dt*(f===state.active?4:7));c.x+=(f.x-VIEW_W/c.zoom/2-c.x)*k;c.y+=(f.y-VIEW_H/c.zoom*.55-c.y)*k}}
+ clampCam(c);
+}
+function zoomBy(factor){const c=state.cam;if(c)c.tz=clamp(c.tz*factor,MIN_ZOOM,1.25)}
+function followAgain(){if(state.cam){state.cam.free=false}}
+// Arrows on the screen edge point at worms outside the view.
+function drawOffscreen(){
+ const c=state.cam;if(!c)return;
+ for(const w of state.worms){
+  if(!w.alive)continue;const sx=(w.x-c.x)*c.zoom,sy=(w.y-c.y)*c.zoom;if(sx>=-10&&sx<=VIEW_W+10&&sy>=-10&&sy<=VIEW_H+10)continue;
+  const ex=clamp(sx,22,VIEW_W-22),ey=clamp(sy,22,VIEW_H-120);
+  ctx.save();ctx.translate(ex,ey);ctx.rotate(Math.atan2(sy-ey,sx-ex));ctx.beginPath();ctx.moveTo(13,0);ctx.lineTo(-8,-9);ctx.lineTo(-8,9);ctx.lineTo(13,0);
+  ctx.fillStyle=TEAM_COLORS[w.team?1:0];ctx.fill();ctx.lineWidth=2.5;ctx.strokeStyle='#1c1420';ctx.stroke();ctx.restore();
+ }
 }
 function drawWorm(w){if(!w.alive)return;const active=w===state.active&&state.running;ctx.save();ctx.translate(w.x,w.y);if(w.flash>0&&Math.sin(w.flash*30)>0)ctx.globalAlpha=.55;
  if(active){ctx.strokeStyle=w.team?'#ffbb80':'#fff2a0';ctx.lineWidth=3;ctx.setLineDash([5,5]);ctx.beginPath();ctx.ellipse(0,4,24,29,0,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
@@ -271,9 +305,9 @@ function drawWormDetails(w){
 }
 function drawProjectile(p){ctx.save();if(p.trail.length){ctx.beginPath();ctx.moveTo(p.trail[0].x,p.trail[0].y);for(const point of p.trail)ctx.lineTo(point.x,point.y);ctx.lineTo(p.x,p.y);ctx.strokeStyle=p.type==='airstrike'?'#fff6a6aa':'#fff9dda6';ctx.lineWidth=p.type==='airstrike'?5:3;ctx.stroke()}ctx.translate(p.x,p.y);ctx.rotate(Math.atan2(p.vy,p.vx));ctx.fillStyle=p.type==='grenade'?'#4e796a':p.type==='dynamite'?'#db6260':p.type==='airstrike'?'#fff0a5':'#fbdf89';ctx.beginPath();ctx.ellipse(0,0,p.type==='dynamite'?10:12,5,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fcf5d7';ctx.fillRect(-6,-2,5,4);ctx.restore()}
 function drawAim(){if(!state.running||state.team!==0||state.phase!=='ready'||!state.active?.alive)return;const w=state.active,v=aimVector();ctx.save();ctx.strokeStyle='#fff8d9';ctx.lineWidth=3;ctx.setLineDash([8,8]);ctx.beginPath();ctx.moveTo(w.x+v.x*27,w.y-8+v.y*27);ctx.lineTo(w.x+v.x*125,w.y-8+v.y*125);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#fff9dd';ctx.beginPath();ctx.arc(w.x+v.x*125,w.y-8+v.y*125,6,0,Math.PI*2);ctx.fill();const ax=state.airTarget??state.airHover;if(state.selected==='airstrike'&&ax!=null){ctx.strokeStyle='#ffefaa';ctx.lineWidth=2;if(state.airTarget==null)ctx.setLineDash?.([6,6]);ctx.beginPath();ctx.moveTo(ax,120);ctx.lineTo(ax,groundY(state.terrain,ax)-30);ctx.stroke();ctx.beginPath();ctx.arc(ax,groundY(state.terrain,ax)-25,28,0,Math.PI*2);ctx.stroke();ctx.setLineDash?.([])}ctx.restore()}
-function render(){if(!state.terrain)return;const now=performance.now();frameDt=lastFrame?Math.min(.05,(now-lastFrame)/1000):.016;lastFrame=now;ctx.save();if(state.shake){ctx.translate((visualRand()-.5)*state.shake,(visualRand()-.5)*state.shake)}drawBackground(now);drawEnvironment(ctx,state,groundY);ctx.drawImage(state.terrainCanvas,0,0);for(const p of state.projectiles)drawOrdnance(ctx,p);for(const w of state.worms)drawCharacter(ctx,w,{active:w===state.active&&state.running,weapon:state.selected,aim:state.aim,phase:state.phase,now,graveY:w.alive?null:graveY(w)});for(const b of state.blasts)drawBlast(ctx,b);drawAim();for(const p of state.particles){ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();if(p.r>3.4){ctx.lineWidth=1.5;ctx.strokeStyle='#2b1a1c';ctx.stroke()}}ctx.globalAlpha=1;drawWater(ctx,state,themes[state.map],W,H,now,true);ctx.restore();drawHud(ctx,state,W,H,now)}
+function render(){if(!state.terrain)return;const now=performance.now();frameDt=lastFrame?Math.min(.05,(now-lastFrame)/1000):.016;lastFrame=now;updateCamera(frameDt);drawSky(now);const cam=state.cam;ctx.save();ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.x,-cam.y);if(state.shake){ctx.translate((visualRand()-.5)*state.shake,(visualRand()-.5)*state.shake)}drawWorldBack(now);drawEnvironment(ctx,state,groundY);ctx.drawImage(state.terrainCanvas,0,0);drawProps(ctx,state.props,now);for(const p of state.projectiles)drawOrdnance(ctx,p);for(const w of state.worms)drawCharacter(ctx,w,{active:w===state.active&&state.running,weapon:state.selected,aim:state.aim,phase:state.phase,now,graveY:w.alive?null:graveY(w)});for(const b of state.blasts)drawBlast(ctx,b);drawAim();for(const p of state.particles){ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();if(p.r>3.4){ctx.lineWidth=1.5;ctx.strokeStyle='#2b1a1c';ctx.stroke()}}ctx.globalAlpha=1;drawWater(ctx,state,themes[state.map],W,H,now,true);ctx.restore();drawOffscreen();drawHud(ctx,state,VIEW_W,VIEW_H,now)}
 let last=performance.now();function loop(now){const dt=Math.min((now-last)/1000,.04);last=now;update(dt);render();requestAnimationFrame(loop)}requestAnimationFrame(loop);
-function pointerCoords(ev){const r=canvas.getBoundingClientRect();return{x:(ev.clientX-r.left)/r.width*W,y:(ev.clientY-r.top)/r.height*H}}
+function pointerCoords(ev){const r=canvas.getBoundingClientRect(),c=state.cam,sx=(ev.clientX-r.left)/r.width*VIEW_W,sy=(ev.clientY-r.top)/r.height*VIEW_H;return{x:c.x+sx/c.zoom,y:c.y+sy/c.zoom}}
 function aimAt(ev){if(!state.running||state.team!==0||state.phase!=='ready')return;const m=pointerCoords(ev),w=state.active,dx=m.x-w.x,dy=m.y-w.y+8;if(state.selected==='airstrike'){if(ev.type==='pointerdown'&&(ev.button===0||ev.pointerType!=='mouse')){state.airTarget=m.x;state.airHover=null}else if(state.airTarget==null)state.airHover=m.x;return}state.dir=dx<0?-1:1;state.aim=aimAngle(dx,dy);w.face=state.dir}
 function chargeStart(){if(!state.running||state.team!==0||state.phase!=='ready'||state.charging)return;if(['punch','dynamite','airstrike','jetpack','shotgun'].includes(state.selected)){fire();return}state.charging=true;state.chargeDir=1;state.power=.22;tone(480,.08,'sine',.03,650)}
 function chargeEnd(){if(state.charging)fire()}
@@ -282,6 +316,12 @@ for(const button of document.querySelectorAll('[data-fuse]'))button.addEventList
 $('bounce-toggle').addEventListener('click',toggleGrenadeBounce);
 $('strike-direction').addEventListener('click',toggleStrikeDirection);
 $('drop-dynamite').addEventListener('click',dropDynamite);
+let panFrom=null;
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('wheel',e=>{e.preventDefault();zoomBy(e.deltaY>0?.88:1/.88)},{passive:false});
+canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&(e.button===2||e.button===1)&&state.cam){panFrom={x:e.clientX,y:e.clientY,cx:state.cam.x,cy:state.cam.y};canvas.setPointerCapture?.(e.pointerId)}});
+window.addEventListener('pointerup',e=>{if(e.button===2||e.button===1)panFrom=null});
+canvas.addEventListener('pointermove',e=>{if(!panFrom)return;const r=canvas.getBoundingClientRect(),c=state.cam,k=VIEW_W/r.width/c.zoom;c.free=true;c.x=panFrom.cx-(e.clientX-panFrom.x)*k;c.y=panFrom.cy-(e.clientY-panFrom.y)*k;clampCam(c)});
 canvas.addEventListener('pointermove',aimAt);canvas.addEventListener('pointerdown',e=>{document.activeElement?.blur?.();aimAt(e);if(e.pointerType==='mouse'&&e.button===0)chargeStart()});window.addEventListener('pointerup',chargeEnd);
 $('fire').addEventListener('pointerdown',e=>{e.preventDefault();chargeStart()});$('fire').addEventListener('pointerup',e=>{e.preventDefault();chargeEnd();$('fire').blur?.()});$('fire').addEventListener('focus',()=>{const y=window.scrollY;requestAnimationFrame?.(()=>window.scrollTo?.(0,y))});$('fire').addEventListener('pointerleave',chargeEnd);
 document.addEventListener?.('click',e=>{const b=e.target?.closest?.('button');if(b&&!b.closest('.modal')&&e.detail>0)b.blur()});
@@ -296,6 +336,8 @@ window.addEventListener('keydown',e=>{
  state.keys[e.code]=true;
  if(e.code==='Space')chargeStart();if(e.code==='Tab')cycle();if(e.code==='Enter')endTurn();
  if(e.code==='KeyX')dropDynamite();
+ if(e.code==='KeyC'&&state.cam){followAgain();state.cam.tz=1}
+ if(e.code==='KeyZ'&&state.cam){followAgain();state.cam.tz=state.cam.tz>MIN_ZOOM+.01?MIN_ZOOM:1}
  if(e.code==='KeyR')toggleStrikeDirection();
  if(e.code==='Minus'||e.code==='Equal')toggleGrenadeBounce();
  if(e.shiftKey&&/^Digit[1-5]$/.test(e.code)){setGrenadeFuse(Number(e.code.slice(-1)));return}
@@ -332,5 +374,5 @@ function restorePendingBrokerTurn(record){
 const pendingOnLoad=readPendingTurn();
 newGame(0,1,undefined,Boolean(pendingOnLoad));
 if(!restorePendingBrokerTurn(pendingOnLoad)){state.running=false;$('intro').classList.add('open')}
-window.__craterCrew={state,newGame,fire,explosion,finish,beginTurn,update,render,cycle,aimAt,aiAct,requestBrokerTurn,restorePendingBrokerTurn,setGrenadeFuse,toggleGrenadeBounce,toggleStrikeDirection,dropDynamite};
+window.__craterCrew={scheme,state,newGame,fire,explosion,finish,beginTurn,update,render,cycle,aimAt,aiAct,requestBrokerTurn,restorePendingBrokerTurn,setGrenadeFuse,toggleGrenadeBounce,toggleStrikeDirection,dropDynamite};
 
