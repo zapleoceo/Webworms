@@ -5,7 +5,7 @@ import {validHistory,JOURNAL_ACTIONS} from './journal.js';
 export const PENDING_KEY='crater-crew-broker-pending-v1';
 export const PENDING_AGE_MS=8*60*60_000;
 const fields=['seed','map','difficulty','matchId','simDraws','round','waterLevel','wind','windTarget','timer','lastActiveId','selected','playerWeapon','shotgunLeft','grenadeFuse','grenadeBounce','strikeDir','playerGrenadeFuse','playerGrenadeBounce','playerStrikeDir','brokerSequence','used','aim','dir','power','controllers','journal','firstTeam','localAiTeams','ammo'];
-const agentFields=['props','crateHeal','suddenDeathRound','agentRules','agentStepCount','agentUtilityCount','agentLastAction','turnLog'];
+const agentFields=['props','crateHeal','suddenDeathRound','agentRules','agentStepCount','agentUtilityCount','agentLastAction','agentSimulationCount','turnLog'];
 const CONTROLLERS=new Set(['human','easy','hard','ultra','god']);
 function validTurnLog(t,g){
  if(!t||typeof t!=='object'||Array.isArray(t)||Object.keys(t).length!==10||!['r','t','w','wd','before','a','u','aim','tg','land'].every(k=>Object.hasOwn(t,k)))return false;
@@ -61,6 +61,7 @@ export function readPendingTurn(storage=globalThis.sessionStorage,now=Date.now()
   if(r.difficulty!==g.difficulty&&!(r.difficulty===3&&g.difficulty===2))return null;
   if(open){
    if(!validTurnLog(g.turnLog,g))return null;
+   if(g.agentSimulationCount!==undefined&&(!Number.isInteger(g.agentSimulationCount)||g.agentSimulationCount<0||g.agentSimulationCount>2))return null;
    if(!Number.isInteger(g.agentStepCount)||g.agentStepCount<0||g.agentStepCount>=MAX_AGENT_STEPS||!Number.isInteger(g.agentUtilityCount)||g.agentUtilityCount<0||g.agentUtilityCount>MAX_UTILITY_STEPS||g.agentLastAction!==null&&!validAgentAction(g.agentLastAction))return null;
    if(!Array.isArray(g.props)||g.props.length>1000||!g.props.every(p=>p&&['mine','barrel','crate'].includes(p.kind)&&Number.isFinite(p.x)&&Number.isFinite(p.y)))return null;
    if(!g.agentRules||!['gravity','waterRise','turnTime','walkSpeed','windDrift','windCap'].every(k=>Number.isFinite(g.agentRules[k]))||!Number.isFinite(g.crateHeal)||!Number.isFinite(g.suddenDeathRound))return null;

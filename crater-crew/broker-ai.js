@@ -77,13 +77,18 @@ export function brokerAgentSnapshot(state,{windBlind=false}={}){
   cells.push(line);
  }
  const limited=state.shotgunLeft>0,canMove=!limited&&(state.agentUtilityCount||0)<MAX_UTILITY_STEPS;
+ const selectableWormIds=!limited&&!state.used&&!state.rope?state.worms.filter(w=>w.alive&&w.team===state.active.team).map(w=>w.id):[];
+ const sight=(a,b)=>{const steps=Math.ceil(Math.hypot(b.x-a.x,b.y-a.y));for(let i=1;i<steps;i++)if(solid(state.terrain,a.x+(b.x-a.x)*i/steps,a.y+(b.y-a.y)*i/steps))return false;return true};
+ const tactics=state.worms.filter(w=>w.alive).map(w=>({worm_id:w.id,waterClearance:Math.round(state.waterLevel+R-w.y),grounded:Boolean(w.grounded),velocity:[Math.round(w.vx||0),Math.round(w.vy||0)],clearSightTo:state.worms.filter(t=>t.alive&&t.id!==w.id&&sight(w,t)).map(t=>t.id)}));
  const ammo=state.ammo?.[state.active.team]??{airstrike:0,teleport:0};
  return {...snapshot,wind:windBlind?null:snapshot.wind,windKnown:!windBlind,
   props:(state.props||[]).slice().sort((a,b)=>Math.hypot(a.x-state.active.x,a.y-state.active.y)-Math.hypot(b.x-state.active.x,b.y-state.active.y)).slice(0,200).map(p=>({kind:p.kind==='crate'?'health_crate':p.kind,x:Math.round(p.x),y:Math.round(p.y),...(p.kind==='mine'?{armed:Boolean(p.armed)}:{})})),
   propsTotal:(state.props||[]).length,propsTruncated:(state.props||[]).length>200,
+  selectableWormIds,tactics,remainingSimulations:Math.max(0,2-(state.agentSimulationCount||0)),
+  ...(state.agentLastSimulation?{previousSimulation:{action:state.agentLastSimulation.action,approximate:true,horizonSeconds:9,result:Object.fromEntries(['enemyDmg','allyDmg','kills','losses','drowned','hits','settled','positions'].map(k=>[k,state.agentLastSimulation.result[k]]))}}:{}),
   team:state.active.team,shotgunLeft:state.shotgunLeft||0,
   ammo:{airstrike:ammo.airstrike,teleport:ammo.teleport},
-  availableActions:limited?['shoot','pass']:['shoot','punch','dynamite',...(ammo.airstrike>0?['airstrike']:[]),...(!state.active.jetUsed?['jetpack']:[]),...(canMove?['walk','rope',...(ammo.teleport>0?['teleport']:[])]:[]),'pass'],
+  availableActions:limited?['shoot','pass']:['shoot','punch','dynamite',...(ammo.airstrike>0?['airstrike']:[]),...(!state.active.jetUsed?['jetpack']:[]),...(state.timer>7&&(state.agentSimulationCount||0)<2?['simulate']:[]),...(selectableWormIds.length>1?['select_worm']:[]),...(canMove?['walk',...(state.active.grounded&&!state.used?['jump']:[]),'rope',...(ammo.teleport>0?['teleport']:[])]:[]),'pass'],
   remainingDecisions:Math.max(0,MAX_AGENT_STEPS-(state.agentStepCount||0)),
   remainingUtilities:Math.max(0,MAX_UTILITY_STEPS-(state.agentUtilityCount||0)),
   ...(state.agentLastAction?{previousAction:state.agentLastAction}:{}),

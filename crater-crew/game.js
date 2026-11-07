@@ -106,7 +106,7 @@ function beginTurn(team){
  const prior=state.lastActiveId[team];state.active=alive.find(w=>w.id>prior)||alive[0];state.active.active=true;state.lastActiveId[team]=state.active.id;state.dir=team? -1:1;state.aim=-.78;state.power=.55;state.turnLog=openTurn(state);
  updateUI();say(isBot(team)?thinkingText():(isBot(1-team)?'YOUR TURN · TAKE AIM':TEAM_NAMES[team]+' · YOUR TURN'),1.8,TEAM_COLORS[team]);voice(state.active,'turn');
  // The Broker model needs several seconds, so its request leaves the moment the AI turn starts.
- state.aiTimer=team?(usesBroker(state.team)?0:1.1):0;pickTarget(null);state.rope=null;state.aiRope=null;state.aiUtilityUsed=false;state.aiFollowUp=false;state.agentStepCount=0;state.agentUtilityCount=0;state.agentLastAction=null;if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
+ state.aiTimer=team?(usesBroker(state.team)?0:1.1):0;pickTarget(null);state.rope=null;state.aiRope=null;state.aiUtilityUsed=false;state.aiFollowUp=false;state.agentStepCount=0;state.agentUtilityCount=0;state.agentLastAction=null;state.agentSimulationCount=0;state.agentLastSimulation=null;state.agentJump=false;state.agentRetreatDirection=undefined;state.agentJetDropAfter=undefined;if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
 }
 function finish(winner){clearPendingTurn();state.brokerController?.abort();state.brokerController=null;$('broker-panel').hidden=true;state.ended=true;state.running=false;state.phase='ended';state.musicNextTime=0;// Results read from the human's side; a bot-vs-bot match and a two-player match just name the winner.
  const solo=isHuman(0)!==isHuman(1),humanWon=solo&&winner!==2&&isHuman(winner),loser=TEAM_TITLES[1-winner];
@@ -166,7 +166,7 @@ function settled(dt){
  return state.calm>0&&(state.sim||state.calm>=SETTLE_PAUSE-1e-9);
 }
 function startResolution(wait=1){if(['broker-wait','broker-error'].includes(state.phase)){state.brokerController?.abort();state.brokerController=null;state.brokerTurnId=null;state.brokerTicket=null;state.brokerRequest=null;clearPendingTurn();$('broker-panel').hidden=true}if(state.rope&&state.active){releaseRope(state.active,state.rope);state.active.grounded=false}state.rope=null;state.shotgunLeft=0;state.phase='resolving';state.resolveTimer=wait;state.used=true;state.charging=false}
-function startRetreat(){state.phase='retreat';state.used=true;state.charging=false;state.resolveTimer=0;state.calm=0;state.settleWait=0;state.aiRetreat=-state.dir}
+function startRetreat(){state.phase='retreat';state.used=true;state.charging=false;state.resolveTimer=0;state.calm=0;state.settleWait=0;state.aiRetreat=state.agentRetreatDirection??-state.dir}
 function setGrenadeFuse(value){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeFuse=clamp(Number(value)||3,1,5);state.playerGrenadeFuse=state.grenadeFuse;updateUI();tone(620,.05,'triangle',.025)}
 function toggleGrenadeBounce(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeBounce=state.grenadeBounce==='high'?'low':'high';state.playerGrenadeBounce=state.grenadeBounce;updateUI();tone(540,.07,'triangle',.025)}
 function toggleStrikeDirection(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='airstrike')return;state.strikeDir*=-1;state.playerStrikeDir=state.strikeDir;updateUI();tone(460,.07,'triangle',.025)}
@@ -244,7 +244,7 @@ function brokerFailure(message){state.phase='broker-error';state.brokerError=mes
 // happens (state.sim mutes effects, UI, terrain repaint and camera) and the match is restored bit for bit,
 // including the simulation random stream.
 function applyAction(a){
- state.phase='ready';state.selected=a.weapon;if(a.dir)state.dir=a.dir;if(Number.isFinite(a.aim))state.aim=clamp(a.aim,AIM_MIN,AIM_MAX);if(Number.isFinite(a.power))state.power=clamp(a.power,.18,1);
+ state.phase='ready';state.agentRetreatDirection=a.retreatDirection;state.selected=a.weapon;if(a.dir)state.dir=a.dir;if(Number.isFinite(a.aim))state.aim=clamp(a.aim,AIM_MIN,AIM_MAX);if(Number.isFinite(a.power))state.power=clamp(a.power,.18,1);
  if(a.fuse)state.grenadeFuse=a.fuse;if(a.bounce)state.grenadeBounce=a.bounce;if(a.strikeDir)state.strikeDir=a.strikeDir;
  if(Number.isFinite(a.targetX)){state.aiTarget=a.targetX;if(a.weapon==='airstrike')state.airTarget=a.targetX}
  if(state.active)state.active.face=state.dir;fire();
@@ -256,12 +256,12 @@ function simulateAction(a,{maxSeconds=9}={}){
  // Arrays the move pushes into (fire() adds to state.projectiles in place) are restored from copies.
  const deep={stats:state.stats&&structuredClone(state.stats),ammo:state.ammo&&structuredClone(state.ammo),cam:state.cam&&{...state.cam},keys:{...state.keys},projectiles:state.projectiles.slice(),particles:state.particles.slice(),blasts:state.blasts.slice()};
  const before=state.worms.map(w=>({id:w.id,team:w.team,name:w.name,hp:w.hp,alive:w.alive}));
- let after;
+ let after,settledPreview=false;
  try{
   state.sim=true;state.simDone=false;state.particles=[];state.blasts=[];
   applyAction(a);
   for(let time=0;time<maxSeconds&&!state.simDone&&state.running;time+=1/30)update(1/30);
-  after=state.worms.map(w=>({hp:w.hp,alive:w.alive,drowned:!w.alive&&wormDrowned(w,state.waterLevel)}));
+  settledPreview=!!state.simDone;after=state.worms.map(w=>({x:w.x,y:w.y,hp:w.hp,alive:w.alive,drowned:!w.alive&&wormDrowned(w,state.waterLevel)}));
  }finally{
   t.mask.set(mask);t.top.set(top);
   for(const k of Object.keys(state))if(!(k in snap))delete state[k];Object.assign(state,snap);
@@ -272,7 +272,7 @@ function simulateAction(a,{maxSeconds=9}={}){
   Object.assign(state,deep);
   simRand=seeded((state.seed^0x9e3779b9)>>>0);for(let i=0;i<(state.simDraws||0);i++)simRand();
  }
- const me=state.active,res={enemyDmg:0,allyDmg:0,kills:[],losses:[],drowned:[],hits:[]};
+ const me=state.active,res={settled:settledPreview,positions:after.map((w,i)=>({id:before[i].id,x:Math.round(w.x),y:Math.round(w.y),alive:w.alive})),enemyDmg:0,allyDmg:0,kills:[],losses:[],drowned:[],hits:[]};
  before.forEach((b,i)=>{
   const a2=after[i],lost=Math.max(0,b.hp-(a2.alive?a2.hp:0));if(!b.alive||lost<=0)return;
   const foe=b.team!==me.team,died=b.alive&&!a2.alive;
@@ -300,12 +300,17 @@ function applyBrokerChoice(id){const choice=state.brokerOptions.find(o=>o.id===i
  state.brokerTicket=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];clearPendingTurn();$('broker-panel').hidden=true;noteTarget(state.turnLog,targetFromCandidate(id));applyAction(a);return true}
 // A model-selected control is checked again against the current local match before any side effect.
 // This is an action interface, not arbitrary code execution; Broker never gets filesystem/network tools.
+function agentAttack(a){return {weapon:a.type==='shoot'?a.weapon:a.type,aim:Number.isFinite(a.angle_deg)?a.angle_deg*Math.PI/180:undefined,dir:a.direction,power:Number.isFinite(a.power)?a.power/100:undefined,fuse:a.fuse,bounce:a.bounce,strikeDir:a.direction,targetX:a.target_x,retreatDirection:a.retreat_direction}}
 function applyAgentAction(a){
  const w=state.active;
  if(!validAgentAction(a)||!w?.alive||!isBot(state.team)||!usesBroker(state.team)||!['ready','broker-wait'].includes(state.phase))return false;
  if((state.agentStepCount||0)>=MAX_AGENT_STEPS)return false;
  if(state.shotgunLeft&&!(a.type==='pass'||a.type==='shoot'&&a.weapon==='shotgun'))return false;
- const utility=['walk','teleport','rope'].includes(a.type);
+ const utility=['walk','teleport','rope','jump'].includes(a.type);
+ if(a.type==='jump'&&(!w.grounded||state.used))return false;
+ const selected=a.type==='select_worm'?state.worms.find(x=>x.id===a.worm_id&&x.alive&&x.team===w.team):null;
+ if(a.type==='select_worm'&&(!selected||state.used||state.shotgunLeft||state.rope))return false;
+ if(a.type==='simulate'&&((state.agentSimulationCount||0)>=2||state.timer<=7||state.shotgunLeft||a.action.type==='airstrike'&&(!(state.ammo?.[w.team]?.airstrike>0)||a.action.target_x>W-75)))return false;
  if(utility&&(state.agentUtilityCount||0)>=MAX_UTILITY_STEPS)return false;
  if('target_x' in a&&(a.target_x<R||a.target_x>W-R))return false;
  if(a.type==='airstrike'&&(!(state.ammo?.[w.team]?.airstrike>0)||a.target_x<75||a.target_x>W-75))return false;
@@ -314,17 +319,24 @@ function applyAgentAction(a){
  // Reaching the decision bound is an explicit pass, not a hidden local-AI substitute.
  state.agentStepCount=(state.agentStepCount||0)+1;
  if(utility)state.agentUtilityCount=(state.agentUtilityCount||0)+1;
- state.agentLastAction={...a};state.aiFollowUp=false;
+ state.agentLastAction={...a};if(a.type!=='simulate')state.agentLastSimulation=null;state.aiFollowUp=false;
  state.phase='ready';state.brokerTicket=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];clearPendingTurn();$('broker-panel').hidden=true;
+ if(a.type==='jetpack')state.agentJetDropAfter=a.drop_after;
  if(a.type==='pass'){startResolution(.5);return true}
+ if(a.type==='select_worm'){w.active=false;state.active=selected;selected.active=true;state.lastActiveId[state.team]=selected.id;if(state.turnLog)state.turnLog.w=selected.id;state.aiTimer=.1;updateUI();return true}
+ if(a.type==='jump'){state.dir=a.direction;w.face=a.direction;w.vx=a.kind==='backflip'?-a.direction*55:a.direction*135;w.vy=a.kind==='backflip'?-440:-320;w.grounded=false;w.sliding=false;state.agentJump=true;state.aiTarget=w.x;state.aiMoveTime=3;state.phase='reposition';return true}
+ if(a.type==='simulate'){
+  const q=a.action;
+  state.agentSimulationCount=(state.agentSimulationCount||0)+1;
+  state.agentLastSimulation={action:q,approximate:true,horizonSeconds:9,result:simulateAction(agentAttack(q))};state.aiTimer=.1;return true;
+ }
  if(a.type==='walk'){state.aiTarget=a.target_x;state.aiMoveTime=Math.min(a.seconds,Math.max(.1,state.timer));state.phase='reposition';state.aiMoves++;return true}
  if(a.type==='teleport'){state.selected='teleport';state.airTarget=a.x;state.airTargetY=a.y;fire();state.aiTimer=.3;return true}
  if(a.type==='rope'){
   state.selected='rope';state.dir=a.direction;state.aim=a.angle_deg*Math.PI/180;w.face=state.dir;fire();
   state.aiRope={plan:{agent:true,swing:a.swing,reel:a.reel,releaseAt:a.release_after},t:0};return true;
  }
- if(a.type==='shoot'){applyAction({weapon:a.weapon,aim:a.angle_deg*Math.PI/180,dir:a.direction,power:a.power/100,fuse:a.fuse,bounce:a.bounce});return true}
- applyAction({weapon:a.type,dir:a.direction,strikeDir:a.direction,targetX:a.target_x});return true;
+ applyAction(agentAttack(a));return true;
 }
 function brokerWait(ms,signal){return new Promise((resolve,reject)=>{const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(new DOMException('aborted','AbortError'))};const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve()},ms);signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort()})}
 function brokerAbortable(promise,signal){return new Promise((resolve,reject)=>{const abort=()=>{signal.removeEventListener('abort',abort);reject(new DOMException('aborted','AbortError'))};signal.addEventListener('abort',abort,{once:true});Promise.resolve(promise).then(value=>{signal.removeEventListener('abort',abort);resolve(value)},error=>{signal.removeEventListener('abort',abort);reject(error)});if(signal.aborted)abort()})}
@@ -398,7 +410,7 @@ async function requestBrokerTurn(resume=false){
  }catch(error){if(current()&&!controller.signal.aborted){diagnostic('failed');brokerFailure(String(error.message||'Broker unavailable.').slice(0,140))}}
  finally{clearTimeout(deadline);clearInterval(checkpoint);if(state.brokerController===controller)state.brokerController=null}
 }
-function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);const player=isHuman(state.team)&&state.active===w&&state.running&&(state.phase==='ready'||state.phase==='jetpack'||state.phase==='retreat');const ai=isBot(state.team)&&state.active===w&&['reposition','jetpack','retreat'].includes(state.phase);const aiDir=state.phase==='retreat'?state.aiRetreat:Math.sign(state.aiTarget-w.x);const aiDrive=ai&&(state.phase==='retreat'?safeWalk(w.x,w.x+aiDir*35)&&!state.props.some(p=>p.kind==='mine'&&Math.hypot(p.x-(w.x+aiDir*35),p.y-w.y)<62):Math.abs(state.aiTarget-w.x)>18);const aiLeft=aiDrive&&aiDir<0,aiRight=aiDrive&&aiDir>0;const ahead=w.x+aiDir*35,aiCliff=ai&&aiDir!==0&&(groundY(state.terrain,ahead)>state.waterLevel-25||groundY(state.terrain,ahead)-groundY(state.terrain,w.x)>55);const left=player&&(state.keys.left||state.keys.KeyA||state.keys.ArrowLeft)||aiLeft,right=player&&(state.keys.right||state.keys.KeyD||state.keys.ArrowRight)||aiRight,jump=player&&(state.keys.jump||state.keys.KeyW||state.keys.ArrowUp)||aiCliff&&state.phase!=='retreat';
+function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);const player=isHuman(state.team)&&state.active===w&&state.running&&(state.phase==='ready'||state.phase==='jetpack'||state.phase==='retreat');const ai=isBot(state.team)&&state.active===w&&['reposition','jetpack','retreat'].includes(state.phase);const aiDir=state.phase==='retreat'?state.aiRetreat:Math.sign(state.aiTarget-w.x);const aiDrive=ai&&!state.agentJump&&(state.phase==='retreat'?safeWalk(w.x,w.x+aiDir*35)&&!state.props.some(p=>p.kind==='mine'&&Math.hypot(p.x-(w.x+aiDir*35),p.y-w.y)<62):Math.abs(state.aiTarget-w.x)>18);const aiLeft=aiDrive&&aiDir<0,aiRight=aiDrive&&aiDir>0;const ahead=w.x+aiDir*35,aiCliff=ai&&aiDir!==0&&(groundY(state.terrain,ahead)>state.waterLevel-25||groundY(state.terrain,ahead)-groundY(state.terrain,w.x)>55);const left=player&&(state.keys.left||state.keys.KeyA||state.keys.ArrowLeft)||aiLeft,right=player&&(state.keys.right||state.keys.KeyD||state.keys.ArrowRight)||aiRight,jump=player&&(state.keys.jump||state.keys.KeyW||state.keys.ArrowUp)||aiCliff&&state.phase!=='retreat';
  // Ninja rope: while the hook flies the worm keeps its normal physics; once hooked it swings on the rope.
  if(state.rope&&state.active===w){
   const rp=state.rope,k=state.keys,ai=isBot(state.team)?state.aiRope:null;
@@ -458,11 +470,12 @@ function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dyn
  if(p.fuse<=0){p.dead=true;if(p.type==='grenade'||p.type==='dynamite'){explosion(p.x,p.y,data[p.type].radius,data[p.type].damage,p.source)}else if(p.type==='airstrike'){explosion(p.x,p.y,data.airstrike.radius,data.airstrike.damage,p.source)}else if(p.type==='bazooka'){p.dead=true}}
 }
 function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musicTick();if(state.camImpactTime>0)state.camImpactTime-=dt;state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
- if(['ready','jetpack','reposition','broker-wait','broker-error'].includes(state.phase)){{const before=state.timer;state.timer-=dt;if(before>5&&state.timer<=5&&state.active?.alive)voice(state.active,'hurry')}if(!state.sim&&['broker-wait','broker-error'].includes(state.phase)&&(state.timer<=5||Number.isFinite(state.brokerDeadlineAt)&&Date.now()>=state.brokerDeadlineAt))brokerTimeLimit();if(state.timer<=0){state.timer=0;say('TIME IS UP!',1);startResolution(.7)}if(state.phase==='jetpack'){state.jetTime-=dt;state.jetPulse=(state.jetPulse||0)-dt;if(state.jetPulse<=0){noise(.19,.018,1800);state.jetPulse=.44}if(state.jetTime<=0)startResolution(.8)}if(state.phase==='reposition'){state.aiMoveTime-=dt;if(state.aiMoveTime<=0||Math.abs(state.active.x-state.aiTarget)<20){state.phase='ready';state.aiTimer=.25}}}
+ if(['ready','jetpack','reposition','broker-wait','broker-error'].includes(state.phase)){{const before=state.timer;state.timer-=dt;if(before>5&&state.timer<=5&&state.active?.alive)voice(state.active,'hurry')}if(!state.sim&&['broker-wait','broker-error'].includes(state.phase)&&(state.timer<=5||Number.isFinite(state.brokerDeadlineAt)&&Date.now()>=state.brokerDeadlineAt))brokerTimeLimit();if(state.timer<=0){state.timer=0;say('TIME IS UP!',1);startResolution(.7)}if(state.phase==='jetpack'){state.jetTime-=dt;state.jetPulse=(state.jetPulse||0)-dt;if(state.jetPulse<=0){noise(.19,.018,1800);state.jetPulse=.44}if(state.jetTime<=0)startResolution(.8)}if(state.phase==='reposition'){state.aiMoveTime-=dt;if(state.aiMoveTime<=0||(state.agentJump?state.active.grounded:Math.abs(state.active.x-state.aiTarget)<20)){state.agentJump=false;state.phase='ready';state.aiTimer=.25}}}
  if(isBot(state.team)&&state.phase==='ready'&&!state.sim){state.aiTimer-=dt;if(state.aiTimer<=0)aiAct()}
  if(state.phase==='broker-error'&&state.brokerRequest){state.brokerCheckpointTime=(state.brokerCheckpointTime||0)+dt;if(state.brokerCheckpointTime>=1){state.brokerCheckpointTime=0;savePendingTurn(state)}}
  // Network waiting never pauses the match: the clock, crates, mines and damage keep advancing.
  if(state.phase==='broker-wait'){state.brokerElapsed=(state.brokerElapsed||0)+dt;setText($('message'),thinkingText(Math.floor(state.brokerElapsed)))}
+ if(isBot(state.team)&&state.phase==='jetpack'&&Number.isFinite(state.agentJetDropAfter)&&4-state.jetTime>=state.agentJetDropAfter)dropDynamite();
  if(isBot(state.team)&&state.phase==='jetpack'&&!state.jetDropped&&state.active?.alive&&!(usesBroker(state.team)&&state.agentLastAction?.type==='jetpack')){const w=state.active;const target=living(1-w.team).find(f=>Math.abs(f.x-w.x)<62&&f.y-w.y>45);if(target&&living(w.team).every(f=>f===w||Math.hypot(f.x-w.x,f.y-w.y)>125))dropDynamite()}
  if(state.charging){state.power+=state.chargeDir*dt*.85;if(state.power>=1){state.power=1;state.chargeDir=-1}else if(state.power<=.18){state.power=.18;state.chargeDir=1}}
  if(isHuman(state.team)&&state.phase==='ready'){if(state.keys.aimleft||state.keys.KeyQ)state.aim=clamp(state.aim-.95*dt,AIM_MIN,AIM_MAX);if(state.keys.aimright||state.keys.KeyE)state.aim=clamp(state.aim+.95*dt,AIM_MIN,AIM_MAX)}
