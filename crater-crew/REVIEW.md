@@ -118,3 +118,11 @@ The optional Broker LLM driver requests an external model decision on each AI ac
 ## 3 November integration note
 
 This file is the historical Codex acceptance log of 2 November; its test counts (35/35, 38/38) and LAN addresses describe that time. The referenced screenshots stay in the Codex task folder and are not part of the repository. The manual link points to a third-party archive mirror, not to Team17. After integrating the visual redraw in a Worms Armageddon-inspired style (original Canvas/SVG art only) on top of this patch, `npm test` passes 65/65, and `server.mjs` binds to `127.0.0.1` unless `HOST` is set for an approved LAN deployment.
+
+## Pending Broker terrain recovery (2026-11-07)
+
+A refreshed pending turn now regenerates deterministic bridge/tunnel/landmark metadata from its map and seed while retaining the saved, damaged collision mask and height map. Legacy v1 saves need no schema migration. Recovery reads validate dimensions against the saved map rather than the currently displayed world, including Grand Expedition. The simulation RNG is restored before re-ranking the frozen request so the first candidate does not use the new match's random stream.
+
+Regression: all four maps, a carved bridge, startup on map 0, unchanged saved mask/top and job request, reconstructed features, correct world dimensions, and a headless render. Broker responses are mocked; no live model call or browser visual acceptance is claimed. Team-0 pending recovery and props persistence are separate existing limitations, unchanged here.
+
+Validation: `npm test` passed 215/215 after the RNG correction; changed JavaScript passes `node --check`, and `git -c core.whitespace=cr-at-eol diff --check` passes. Independent review found no blocking defects. These are local/headless results, not live Broker acceptance.

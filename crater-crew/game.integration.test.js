@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AI_PROFILES,W,H,R,WATER,VIEW_W,VIEW_H,createTerrain,groundY,selectShot} from './engine.js';
+import {AI_PROFILES,W,H,R,WATER,VIEW_W,VIEW_H,createTerrain,groundY,selectShot,carve} from './engine.js';
 import {PENDING_KEY,readPendingTurn,savePendingTurn,PENDING_AGE_MS} from './broker-resume.js';
 import {propsBusy} from './props.js';
 
@@ -700,4 +700,27 @@ test('coin-toss opening bots use their selected profile and Broker difficulty im
    assert.deepEqual(state.controllers,controllers,'the selected controller settings are unchanged');
   }
  }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,5252)}
+});
+
+test('pending recovery rebuilds map features without healing craters, including Expedition after a reload',async()=>{
+ const prior=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({status:'unavailable',error:'mock offline'}),{status:503});
+ try{
+  for(const map of [0,1,2,3]){
+   delete state.controllers;state.aiDriver='local';newGame(map,2,8080);state.controllers=['human','god'];beginTurn(1);
+   const expectedFeatures=structuredClone(state.terrain.features),width=W,height=H;
+   assert.ok(expectedFeatures.length>0);
+   const bridge=expectedFeatures.find(f=>f.kind==='bridge'),x=Math.round((bridge.x0+bridge.x1)/2),y=groundY(state.terrain,x);
+   carve(state.terrain,x,y,45);const mask=state.terrain.mask.slice(),top=state.terrain.top.slice();
+   aiAct();await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(state.phase,'broker-error');const request=structuredClone(state.brokerRequest);
+   // A real page load starts on map 0 before reading/restoring a pending larger world.
+   newGame(0,1,8081,true);const saved=readPendingTurn();assert.ok(saved,`map ${map} is readable`);
+   assert.equal(W,3600,'reading storage alone does not resize the live world');
+   assert.equal(restorePendingBrokerTurn(saved),true,`map ${map} restores`);
+   assert.deepEqual([W,H],[width,height]);assert.deepEqual(state.terrain.features,expectedFeatures);
+   assert.deepEqual(state.terrain.mask,mask);assert.deepEqual(state.terrain.top,top);
+   assert.deepEqual(state.brokerRequest,request,'the existing job request stays identical');
+   assert.equal(state.phase,'broker-error');render();
+  }
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,8082)}
 });

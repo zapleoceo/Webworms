@@ -642,10 +642,13 @@ function restorePendingBrokerTurn(record){
  if(!record)return false;
  try{
   const {terrain,worms,activeId,top,maskRuns,...values}=record.game;
-  Object.assign(state,values);state.terrain=terrain;state.worms=worms;state.active=worms[activeId];
+  // Rebuild deterministic art metadata (also for old saves), but keep every saved crater.
+  // createTerrain also restores the map-specific world dimensions before physics/ranking.
+  Object.assign(state,values);state.terrain={...createTerrain(values.map,values.seed),...terrain};state.worms=worms;state.active=worms[activeId];
   state.worms.forEach(w=>w.active=w===state.active);state.team=1;state.aiDriver='broker';state.running=true;state.ended=false;
   state.projectiles=[];state.particles=[];state.blasts=[];state.brokerController=null;state.brokerRequest=record.request;
   state.brokerTurnId=record.request.turnId;state.brokerTicket=record.ticket;state.brokerSavedAt=record.savedAt;
+  simRand=seeded((state.seed^0x9e3779b9)>>>0);for(let i=0;i<state.simDraws;i++)simRand();
   state.brokerOptions=withSimText(rankOptions(brokerTurnOptions(state,{windBlind:ctrl(state.team)==='hard'})));
   const offered=state.brokerOptions.map(({id,description})=>({id,description}));
   if(JSON.stringify(offered)!==JSON.stringify(record.request.candidates)||JSON.stringify(brokerSnapshot(state,{windBlind:ctrl(state.team)==='hard'}))!==JSON.stringify(record.request.snapshot))throw Error('stale pending state');
