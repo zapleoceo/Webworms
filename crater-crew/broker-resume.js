@@ -38,7 +38,7 @@ export function savePendingTurn(state,storage=globalThis.sessionStorage){
   game.activeId=state.active?.id;game.worms=state.worms.map(w=>({...w}));
   game.top=Array.from(state.terrain.top);game.maskRuns=packMask(state.terrain.mask);
   const savedAt=state.brokerSavedAt||Date.now();if(Date.now()-savedAt>PENDING_AGE_MS)return false;
-  const record={version:1,savedAt,request:state.brokerRequest,ticket:state.brokerTicket,game};
+  const record={version:1,savedAt,checkpointAt:Date.now(),deadlineAt:state.brokerDeadlineAt>=savedAt&&state.brokerDeadlineAt<=Date.now()+Math.max(0,(state.timer-5)*1000)+1000?state.brokerDeadlineAt:null,request:state.brokerRequest,ticket:state.brokerTicket,game};
   const text=JSON.stringify(record);if(text.length>500000)return false;
   storage.setItem(PENDING_KEY,text);return true;
  }catch{return false}
@@ -47,6 +47,8 @@ export function readPendingTurn(storage=globalThis.sessionStorage,now=Date.now()
  try{
   const raw=storage?.getItem(PENDING_KEY);if(!raw||raw.length>500000)return null;
   const record=JSON.parse(raw),g=record.game,r=record.request;
+  if(record.checkpointAt!==undefined&&(!Number.isFinite(record.checkpointAt)||record.checkpointAt<record.savedAt||record.checkpointAt>now))return null;
+  if(record.deadlineAt!==undefined&&record.deadlineAt!==null&&(!Number.isFinite(record.deadlineAt)||record.deadlineAt<record.savedAt||record.deadlineAt>(record.checkpointAt??record.savedAt)+Math.max(0,(g?.timer-5)*1000)+1000))return null;
   const open=r?.protocol===OPEN_PROTOCOL;if(r?.protocol!==undefined&&!open)return null;
   if(record.version!==1||!Number.isFinite(record.savedAt)||record.savedAt>now||now-record.savedAt>PENDING_AGE_MS)return null;
   if(!g||!r||!Array.isArray(g.worms)||g.worms.length!==6||!g.worms.every((w,i)=>w.id===i&&w.team===Math.floor(i/3)&&Number.isFinite(w.x)&&Number.isFinite(w.y)&&Number.isFinite(w.hp)))return null;
@@ -71,6 +73,6 @@ export function readPendingTurn(storage=globalThis.sessionStorage,now=Date.now()
   const [width,height]=WORLD_SIZES[g.map];
   if(!Array.isArray(g.top)||g.top.length!==width||!g.top.every(y=>Number.isInteger(y)&&y>=0&&y<=height))return null;
   const mask=unpackMask(g.maskRuns,width,height);if(!mask)return null;
-  return {savedAt:record.savedAt,request:r,ticket:record.ticket,game:{...g,terrain:{mask,top:Int16Array.from(g.top),map:g.map,seed:g.seed}}};
+  return {savedAt:record.savedAt,checkpointAt:record.checkpointAt??record.savedAt,deadlineAt:record.deadlineAt??(record.checkpointAt??record.savedAt)+Math.max(0,(g.timer-5)*1000),request:r,ticket:record.ticket,game:{...g,terrain:{mask,top:Int16Array.from(g.top),map:g.map,seed:g.seed}}};
  }catch{return null}
 }

@@ -86,6 +86,8 @@ test('open submit and poll use structured controls, no candidates, exact model a
  const user=JSON.parse(posted.messages[1].content);assert.deepEqual(Object.keys(user),['turn_id','difficulty','snapshot']);assert.deepEqual(user.snapshot,base);
  const prompt=posted.messages[0].content;
  assert.match(prompt,/goal is to win/);assert.match(prompt,/How will you move/);assert.match(prompt,/not native model tool calls/);
+ assert.match(prompt,/assess the whole route/);assert.match(prompt,/reachable health crates/);assert.match(prompt,/every teammate/);
+ assert.match(prompt,/no automatic safe pathfinder or friendly-fire veto/);assert.match(prompt,/cannot request a generic move-after-shot/);assert.match(prompt,/turn clock continue while you decide/);
  assert.match(prompt,/snapshot\.rules/);assert.match(prompt,/snapshot\.weapons/);assert.match(prompt,/snapshot\.availableActions/);
  assert.doesNotMatch(prompt,/pick the highest|prefer KILLs|maximises kills|SIMULATED|candidate_id|up to 58|round 9/);
  const result=await turn.fetch(poll(pending.ticket));assert.equal(result.status,200);assert.deepEqual(await result.json(),{status:'done',turnId:'topen_2_3_1',action:actions[0]});

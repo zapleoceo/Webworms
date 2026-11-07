@@ -106,3 +106,5 @@ button:disabled{opacity:.5;cursor:not-allowed}
  .grid{grid-template-columns:1fr}
  .savebar{flex-wrap:wrap}.savebar .primary{flex:1}
 }
+
+.agent-contract{white-space:pre-wrap;overflow-wrap:anywhere;max-height:36rem;overflow:auto;background:#171624;color:#eee;padding:14px;border-radius:8px;font-size:12px;line-height:1.5} details>summary{cursor:pointer;margin:12px 0;font-weight:700}
