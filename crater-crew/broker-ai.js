@@ -1,5 +1,6 @@
 import {W,H,R,data,groundY,solid,selectShot,selectLob,aimAngle,clamp,blastDamage} from './engine.js';
 import {planTeleport,planCrate,planRope} from './ai-utility.js';
+import {MAX_AGENT_STEPS,MAX_UTILITY_STEPS} from './agent-contract.js';
 
 export const TERRAIN_SAMPLES=64;
 
@@ -59,4 +60,40 @@ export function brokerSnapshot(state,{windBlind=false}={}){
   worms:state.worms.map(w=>({id:w.id,name:w.name,team:w.team,x:Math.round(w.x),y:Math.round(w.y),hp:Math.ceil(w.hp),alive:w.alive})),
   props:(state.props||[]).slice(0,60).map(p=>({kind:p.kind==='crate'?'health_crate':p.kind,x:Math.round(p.x),y:Math.round(p.y),...(p.kind==='mine'?{armed:Boolean(p.armed)}:{})})),
   terrain:Array.from({length:TERRAIN_SAMPLES},(_,i)=>Math.round(groundY(state.terrain,Math.round(i*(W-1)/(TERRAIN_SAMPLES-1)))))};
+}
+
+// Open-agent observations: no ranked moves or suggested targeting. The coarse occupancy grid
+// includes cavities/bridges (unlike a height profile), but is explicitly not a pixel-accurate map.
+export function brokerAgentSnapshot(state,{windBlind=false}={}){
+ const snapshot=brokerSnapshot(state,{windBlind});
+ const columns=96,rows=48,cells=[];
+ for(let row=0;row<rows;row++){
+  let line='';const y0=Math.floor(row*H/rows),y1=Math.floor((row+1)*H/rows);
+  for(let col=0;col<columns;col++){
+   const x0=Math.floor(col*W/columns),x1=Math.floor((col+1)*W/columns);let air=false,rock=false;
+   scan:for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){if(state.terrain.mask[y*W+x])rock=true;else air=true;if(air&&rock)break scan}
+   line+=rock?(air?'1':'2'):'0';
+  }
+  cells.push(line);
+ }
+ const limited=state.shotgunLeft>0,canMove=!limited&&(state.agentUtilityCount||0)<MAX_UTILITY_STEPS;
+ const ammo=state.ammo?.[state.active.team]??{airstrike:0,teleport:0};
+ return {...snapshot,wind:windBlind?null:snapshot.wind,windKnown:!windBlind,
+  props:(state.props||[]).slice().sort((a,b)=>Math.hypot(a.x-state.active.x,a.y-state.active.y)-Math.hypot(b.x-state.active.x,b.y-state.active.y)).slice(0,200).map(p=>({kind:p.kind==='crate'?'health_crate':p.kind,x:Math.round(p.x),y:Math.round(p.y),...(p.kind==='mine'?{armed:Boolean(p.armed)}:{})})),
+  propsTotal:(state.props||[]).length,propsTruncated:(state.props||[]).length>200,
+  team:state.active.team,shotgunLeft:state.shotgunLeft||0,
+  ammo:{airstrike:ammo.airstrike,teleport:ammo.teleport},
+  availableActions:limited?['shoot','pass']:['shoot','punch','dynamite',...(ammo.airstrike>0?['airstrike']:[]),...(!state.active.jetUsed?['jetpack']:[]),...(canMove?['walk','rope',...(ammo.teleport>0?['teleport']:[])]:[]),'pass'],
+  remainingDecisions:Math.max(0,MAX_AGENT_STEPS-(state.agentStepCount||0)),
+  remainingUtilities:Math.max(0,MAX_UTILITY_STEPS-(state.agentUtilityCount||0)),
+  ...(state.agentLastAction?{previousAction:state.agentLastAction}:{}),
+  rules:{...(state.agentRules??{}),wormRadius:R,crateHeal:state.crateHeal??25,suddenDeathRound:state.suddenDeathRound??9},
+  weapons:{bazooka:{damage:data.bazooka.damage,radius:data.bazooka.radius,speedBase:370,speedPerPower:3.9,windAcceleration:.7,fuse:7},
+   grenade:{damage:data.grenade.damage,radius:data.grenade.radius,speedBase:300,speedPerPower:2.8,windAcceleration:0,fuseRange:[1,5],bounce:{high:.55,low:.32}},
+   shotgun:{pellets:5,damagePerPellet:5,shotsPerTurn:2,range:450,spreadRadians:.24},
+   dynamite:{damage:data.dynamite.damage,radius:data.dynamite.radius,fuse:3},
+   punch:{damage:data.punch.damage,rangeX:65,rangeY:48,knockback:[350,-250]},
+   airstrike:{missiles:5,damage:data.airstrike.damage,radius:data.airstrike.radius,windAcceleration:0},
+   jetpack:{seconds:4},rope:{maxLength:520}},
+  terrainGrid:{columns,rows,cells,legend:'0=empty, 1=mixed, 2=solid; each cell covers a rectangle of size width/columns by height/rows. Approximate: mixed cells do not reveal exact collision geometry.'}};
 }

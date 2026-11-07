@@ -153,9 +153,9 @@ test('Broker mode shows outage and never silently fires with the local bot',asyn
  }finally{state.aiDriver='local';globalThis.fetch=prior;newGame(0,1,981)}
 });
 
-test('Broker mode applies only the selected legal candidate from mocked job polling',async()=>{
+test('Broker mode applies a validated free action from mocked job polling',async()=>{
  const prior=globalThis.fetch;let selectedId,turnId,postCount=0;
- globalThis.fetch=async (_url,options)=>{if(options?.method==='POST'){postCount++;const body=JSON.parse(options.body);turnId=body.turnId;selectedId=body.candidates.find(c=>c.id.startsWith('air_'))?.id;assert.ok(selectedId);return new Response(JSON.stringify({status:'pending',ticket:'mock-ticket',pollAfter:0}),{status:202})}return new Response(JSON.stringify({status:'done',turnId,candidateId:selectedId}),{status:200})};
+ globalThis.fetch=async (_url,options)=>{if(options?.method==='POST'){postCount++;const body=JSON.parse(options.body);turnId=body.turnId;assert.equal(body.protocol,'open-v1');assert.equal(body.candidates,undefined);return new Response(JSON.stringify({status:'pending',ticket:'mock-ticket',pollAfter:0}),{status:202})}return new Response(JSON.stringify({status:'done',turnId,action:{type:'airstrike',target_x:1200,direction:1}}),{status:200})};
  try{newGame(0,2,982);state.aiDriver='broker';beginTurn(1);aiAct();assert.equal(state.phase,'broker-wait');for(const end=Date.now()+10000;state.phase==='broker-wait'&&Date.now()<end;)await new Promise(resolve=>setTimeout(resolve,50));// wait for the answer, not a fixed time (slow under a parallel run)
   assert.equal(postCount,1);assert.equal(state.selected,'airstrike');assert.equal(state.projectiles.length,5);assert.equal(state.phase,'resolving');
  }finally{state.brokerController?.abort();state.aiDriver='local';globalThis.fetch=prior;newGame(0,1,983)}
@@ -167,7 +167,7 @@ test('A lost Broker submit response retries the frozen turn instead of generatin
   if(options?.method==='POST'){
    posted.push(JSON.parse(options.body));
    if(posted.length===1)throw Error('response lost after acceptance');
-   return new Response(JSON.stringify({status:'done',turnId:posted[0].turnId,candidateId:posted[0].candidates.find(c=>c.id.startsWith('air_')).id}),{status:200});
+   return new Response(JSON.stringify({status:'done',turnId:posted[0].turnId,action:{type:'airstrike',target_x:1200,direction:1}}),{status:200});
   }
   throw Error('replay already completed');
  };
@@ -184,10 +184,10 @@ test('Refresh restores a bounded pending Broker job and Retry only polls its exi
  const prior=globalThis.fetch;let posts=0,polls=0,turnId,choiceId;
  globalThis.fetch=async (_url,options)=>{
   if(options?.method==='POST'){
-   posts++;const body=JSON.parse(options.body);turnId=body.turnId;choiceId=body.candidates.find(c=>c.id.startsWith('air_')).id;
+   posts++;const body=JSON.parse(options.body);turnId=body.turnId;assert.equal(body.protocol,'open-v1');
    return new Response(JSON.stringify({status:'pending',ticket:'saved-job-ticket',pollAfter:1}),{status:202});
   }
-  polls++;return new Response(JSON.stringify({status:'done',turnId,candidateId:choiceId}),{status:200});
+  polls++;return new Response(JSON.stringify({status:'done',turnId,action:{type:'airstrike',target_x:1200,direction:1}}),{status:200});
  };
  try{
   newGame(1,2,990);state.aiDriver='broker';beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));
@@ -616,7 +616,7 @@ test('the match journal records the action and the real outcome of a turn: a pun
  delete state.controllers;
 });
 
-test('PC GOD sends the journal after the snapshot and candidates; PC Ultra does not; the pending GOD turn survives a reload',async()=>{
+test('PC GOD sends the journal after the open snapshot; PC Ultra does not; the pending GOD turn survives a reload',async()=>{
  const prior=globalThis.fetch,posts=[];
  globalThis.fetch=async (_url,options)=>{if(options?.method==='POST'){posts.push(JSON.parse(options.body));return new Response(JSON.stringify({status:'pending',ticket:'god-ticket',pollAfter:5}),{status:202})}return new Response(JSON.stringify({status:'pending',pollAfter:5}))};
  try{
@@ -628,7 +628,7 @@ test('PC GOD sends the journal after the snapshot and candidates; PC Ultra does 
   aiAct();await new Promise(resolve=>setImmediate(resolve));
   assert.match(element('message').textContent,/PC GOD IS THINKING/);
   assert.equal(posts.length,1);const god=posts[0];
-  assert.deepEqual(Object.keys(god),['turnId','difficulty','snapshot','candidates','history']);
+  assert.deepEqual(Object.keys(god),['protocol','turnId','difficulty','snapshot','history']);
   assert.equal(god.difficulty,3);assert.deepEqual(god.history,state.journal);assert.equal(state.difficulty,2,'the local profile stays at its sharpest');
   const saved=readPendingTurn();assert.ok(saved,'a GOD request (difficulty 3) is a valid pending turn');assert.deepEqual(saved.game.controllers,['human','god']);assert.deepEqual(saved.game.journal,state.journal);
   state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));
@@ -723,4 +723,125 @@ test('pending recovery rebuilds map features without healing craters, including 
    assert.equal(state.phase,'broker-error');render();
   }
  }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;state.aiDriver='local';newGame(0,1,8082)}
+});
+
+// Free controls must be actual engine actions, not a new prompt over the old candidate selector.
+test('open agent shoots its own angle/power and cannot execute unknown or illegal controls',()=>{
+ const {applyAgentAction}=window.__craterCrew;
+ try{
+  flatDuel(1500);state.aiDriver='broker';state.phase='broker-wait';
+  const a={type:'shoot',weapon:'grenade',angle_deg:17.25,direction:-1,power:63.5,fuse:5,bounce:'low'};
+  assert.equal(applyAgentAction({...a,angle_deg:Infinity}),false);assert.equal(state.projectiles.length,0);
+  assert.equal(applyAgentAction({type:'nuke'}),false);assert.equal(state.projectiles.length,0);
+  assert.equal(applyAgentAction(a),true);assert.equal(state.selected,'grenade');
+  assert.equal(state.grenadeFuse,5);assert.equal(state.grenadeBounce,'low');
+  assert.ok(Math.abs(state.aim-17.25*Math.PI/180)<1e-9);assert.equal(state.power,.635);assert.equal(state.dir,-1);
+  assert.equal(state.agentStepCount,1);assert.equal(state.projectiles[0].fuse,5);
+  assert.equal(applyAgentAction(a),false,'cannot fire twice during resolving');
+  flatDuel(1500);state.aiDriver='broker';state.phase='broker-wait';state.ammo[1].airstrike=0;
+  assert.equal(applyAgentAction({type:'airstrike',target_x:1200,direction:1}),false);
+  assert.equal(applyAgentAction({type:'airstrike',target_x:5000,direction:1}),false);
+  assert.equal(applyAgentAction({type:'teleport',x:500,y:PLAIN+40}),false,'rock');
+  state.ammo[1].teleport=0;
+  assert.equal(applyAgentAction({type:'teleport',x:500,y:PLAIN-50}),false,'no ammo');
+  assert.equal(state.agentStepCount,0);assert.equal(state.phase,'broker-wait');
+ }finally{newGame(0,1,9971);state.aiDriver='local'}
+});
+
+test('open agent observes movement and chooses the follow-up shot through Broker again',async()=>{
+ const prior=globalThis.fetch,posts=[];
+ globalThis.fetch=async (_url,options)=>{
+  const b=JSON.parse(options.body);posts.push(b);
+  const action=posts.length===1?{type:'walk',target_x:850,seconds:1.5}:{type:'shoot',weapon:'bazooka',angle_deg:-42.5,direction:1,power:73,fuse:3,bounce:'high'};
+  return new Response(JSON.stringify({status:'done',turnId:b.turnId,action}));
+ };
+ try{
+  flatDuel(1500);state.aiDriver='broker';state.active.grounded=true;
+  await requestBrokerTurn();assert.equal(state.phase,'reposition');assert.equal(state.projectiles.length,0);const x=state.active.x;
+  for(let i=0;i<100&&posts.length<2;i++){update(.04);await new Promise(resolve=>setImmediate(resolve))}
+  assert.equal(posts.length,2);assert.ok(state.active.x>x);assert.equal(state.aiFollowUp,false);
+  assert.notEqual(posts[0].turnId,posts[1].turnId);assert.equal(posts[1].snapshot.previousAction.type,'walk');
+  assert.ok(posts[1].snapshot.worms.find(w=>w.id===state.active.id).x>posts[0].snapshot.worms.find(w=>w.id===state.active.id).x);
+  assert.equal(posts[1].snapshot.remainingUtilities,2);assert.equal(state.selected,'bazooka');assert.equal(state.power,.73);
+  assert.equal(posts[0].candidates,undefined);assert.equal(posts[0].snapshot.terrainGrid.cells.length,48);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,9972);state.aiDriver='local'}
+});
+
+test('open agent teleport/rope keep agency; shotgun and decision bounds reject illegal continuations',()=>{
+ const {applyAgentAction}=window.__craterCrew;
+ try{
+  flatDuel(1500);state.aiDriver='broker';
+  assert.equal(applyAgentAction({type:'teleport',x:600,y:PLAIN-60}),true);assert.equal(state.active.x,600);assert.equal(state.ammo[1].teleport,1);assert.equal(state.aiFollowUp,false);assert.equal(state.agentUtilityCount,1);
+  state.active.grounded=true;state.phase='ready';
+  assert.equal(applyAgentAction({type:'rope',angle_deg:-80,direction:-1,swing:1,reel:-1,release_after:1.25}),true);assert.equal(state.aiRope.plan.agent,true);assert.equal(state.aiRope.plan.releaseAt,1.25);assert.equal(state.aiFollowUp,false);
+  state.rope=null;state.aiRope=null;state.phase='ready';state.agentUtilityCount=3;
+  assert.equal(applyAgentAction({type:'walk',target_x:700,seconds:1}),false);
+  state.shotgunLeft=1;
+  assert.equal(applyAgentAction({type:'punch',direction:1}),false);
+  assert.equal(applyAgentAction({type:'shoot',weapon:'bazooka',angle_deg:-30,direction:1,power:60,fuse:3,bounce:'high'}),false);
+  assert.equal(applyAgentAction({type:'shoot',weapon:'shotgun',angle_deg:-30,direction:1,power:60,fuse:3,bounce:'high'}),true);
+  state.phase='ready';state.agentStepCount=6;
+  assert.equal(applyAgentAction({type:'pass'}),false);
+ }finally{newGame(0,1,9973);state.aiDriver='local'}
+});
+
+test('open agent pending job restores both teams, props, live rules and decision counters',async()=>{
+ const prior=globalThis.fetch;globalThis.fetch=async()=>{throw Error('offline')};
+ try{
+  for(const team of [0,1]){
+   state.controllers=['ultra','ultra'];newGame(0,2,9974);beginTurn(team);
+   state.crateHeal=50;state.agentRules.waterRise=19;state.agentStepCount=2;state.agentUtilityCount=1;state.agentLastAction={type:'walk',target_x:900,seconds:1};
+   state.props=[{kind:'crate',x:900,y:500,vx:0,vy:0,r:11,resting:true,hp:10,boom:0}];
+   await requestBrokerTurn();const saved=readPendingTurn();assert.ok(saved,`team ${team}`);assert.equal(saved.request.snapshot.rules.crateHeal,50);
+   newGame(0,1,9975,true);assert.equal(restorePendingBrokerTurn(saved),true);assert.equal(state.team,team);assert.equal(state.agentStepCount,2);assert.equal(state.agentUtilityCount,1);assert.equal(state.crateHeal,50);assert.equal(state.props[0].x,900);
+  }
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;newGame(0,1,9976);state.aiDriver='local'}
+});
+
+
+test('open agent rematch resets decision bounds before the opening bot acts',async()=>{
+ const prior=globalThis.fetch;let body;globalThis.fetch=async(_url,options)=>{body=JSON.parse(options.body);return new Response(JSON.stringify({status:'done',turnId:body.turnId,action:{type:'pass'}}))};
+ try{
+  state.controllers=['ultra','ultra'];state.agentStepCount=6;state.agentUtilityCount=3;state.aiFollowUp=true;
+  newGame(0,2,8919);assert.equal(state.agentStepCount,0);assert.equal(state.agentUtilityCount,0);assert.equal(state.aiFollowUp,false);
+  await requestBrokerTurn();assert.equal(body.snapshot.remainingDecisions,6);assert.equal(state.phase,'resolving');
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;newGame(0,1,8920);state.aiDriver='local'}
+});
+
+
+test('open agent freezes the same frame on second-shot submit so polling saves a matching snapshot',async()=>{
+ const prior=globalThis.fetch;let unblock;globalThis.fetch=async()=>await new Promise(resolve=>{unblock=()=>resolve(new Response(JSON.stringify({status:'pending',ticket:'open-freeze',pollAfter:5}),{status:202}))});
+ try{
+  flatDuel(920);state.aiDriver='broker';state.active.grounded=true;
+  assert.equal(window.__craterCrew.applyAgentAction({type:'shoot',weapon:'shotgun',angle_deg:0,direction:1,power:50,fuse:3,bounce:'high'}),true);state.aiTimer=0;
+  const victim=state.worms[0];victim.grounded=false;victim.vx=100;victim.vy=-100;
+  update(.04);assert.equal(state.phase,'broker-wait');unblock();await new Promise(resolve=>setImmediate(resolve));
+  const saved=readPendingTurn();assert.ok(saved);assert.equal(saved.request.snapshot.worms[0].x,Math.round(saved.game.worms[0].x));assert.equal(saved.request.snapshot.worms[0].y,Math.round(saved.game.worms[0].y));
+  state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));assert.equal(restorePendingBrokerTurn(saved),true);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;newGame(0,1,8921);state.aiDriver='local'}
+});
+
+test('open agent jetpack steering does not make an unrequested local tactical bomb decision',()=>{
+ try{
+  flatDuel(810);state.aiDriver='broker';state.active.y=PLAIN-180;state.active.grounded=false;
+  assert.equal(window.__craterCrew.applyAgentAction({type:'jetpack',target_x:900}),true);update(.02);
+  assert.equal(state.jetDropped,false);assert.equal(state.projectiles.some(p=>p.type==='dynamite'),false);
+ }finally{newGame(0,1,8922);state.aiDriver='local'}
+});
+
+
+test('open agent reload retains first-shot damage and action in the God journal',async()=>{
+ const prior=globalThis.fetch;globalThis.fetch=async()=>{throw Error('offline')};
+ try{
+  flatDuel(920);state.aiDriver='broker';state.active.grounded=true;state.controllers=['human','god'];
+  // Open a turn log after the explicit fixture setup, before the first model action.
+  const {openTurn}=await import('./journal.js');state.turnLog=openTurn(state);
+  assert.equal(window.__craterCrew.applyAgentAction({type:'shoot',weapon:'shotgun',angle_deg:0,direction:1,power:50,fuse:3,bounce:'high'}),true);
+  const lost=100-state.worms[0].hp;assert.ok(lost>0);state.brokerSequence=1200;
+  await requestBrokerTurn();const saved=readPendingTurn();assert.ok(saved);assert.equal(saved.game.turnLog.a,'shotgun');
+  const goodRecord=JSON.parse(sessionItems.get(PENDING_KEY));
+  for(const mutate of [r=>r.game.turnLog.w=0,r=>r.game.turnLog.aim.ang=999,r=>r.game.turnLog.aim.d=0,r=>r.game.turnLog.land=[.5,10]]){const broken=structuredClone(goodRecord);mutate(broken);sessionItems.set(PENDING_KEY,JSON.stringify(broken));assert.equal(readPendingTurn(),null)}
+  assert.equal(restorePendingBrokerTurn(saved),true);state.phase='ready';assert.equal(window.__craterCrew.applyAgentAction({type:'pass'}),true);
+  window.__craterCrew.nextTurn();const last=state.journal.at(-1);assert.equal(last.a,'shotgun');assert.deepEqual(last.h,[[0,lost]]);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;newGame(0,1,8923);state.aiDriver='local'}
 });
