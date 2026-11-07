@@ -317,11 +317,26 @@ $('login-form').addEventListener('submit',async e=>{
 });
 $('logout').addEventListener('click',async()=>{if(dirty&&!confirm('Discard unsaved changes and sign out?'))return;try{await api('/api/admin/logout',{method:'POST'})}catch{}setDirty(false);showLogin()});
 
+async function loadAgentContract(){
+ $('agent-contract-refresh').disabled=true;$('agent-contract-status').textContent='Loading…';
+ try{
+  const r=await api('/api/admin/agent-contract');
+  $('agent-system-prompt').textContent=r.systemPrompt;
+  $('agent-input-description').textContent=r.inputDescription;
+  $('agent-input-template').textContent=JSON.stringify(r.inputTemplate,null,2);
+  $('agent-action-schema').textContent=JSON.stringify(r.actionSchema,null,2);
+  $('agent-execution').textContent=r.execution;
+  $('agent-contract-status').textContent=`${r.protocol} · ${r.limits.decisions} decisions / ${r.limits.utilities} utilities per turn · loaded ${new Date().toLocaleTimeString()}`;
+ }catch(e){for(const id of ['agent-system-prompt','agent-input-description','agent-input-template','agent-action-schema','agent-execution'])$(id).textContent='';$('agent-contract-status').textContent='Contract unavailable. '+(e.silent?'Sign in again.':e.message)}
+ finally{$('agent-contract-refresh').disabled=false}
+}
+$('agent-contract-refresh').addEventListener('click',loadAgentContract);
+
 async function loadConfig(){
  if(!passwordSource){try{passwordSource=(await api('/api/admin/session')).passwordSource}catch{}}
  const r=await api('/api/admin/settings');settings=r.settings;storage=r.storage;
  $('storage-notice').hidden=storage;for(const id of ['save','upload-button'])$(id).disabled=!storage;
- loadModels();
+ loadModels();loadAgentContract();
  $('password-card').hidden=passwordSource!=='stored';$('env-password-note').hidden=passwordSource!=='env';
  fillForm(settings);setDirty(false);showErrors([]);show('config');
 }

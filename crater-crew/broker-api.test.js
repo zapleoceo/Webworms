@@ -205,3 +205,13 @@ test('An API model without chat:fast or a format list is usable and runs on its 
  const r=await turn.fetch(request('POST',body));assert.equal(r.status,202);
  assert.deepEqual(calls,['/v1/models','/v1/jobs?capability=chat:smart']);
 }));
+
+for(const status of [400,401,403,408,409,422,429,500,502,503,504])test(`Broker HTTP ${status} exposes explicit safe retryability`,async()=>configured(async()=>{
+ globalThis.fetch=async(input)=>new URL(input).pathname==='/v1/models'?response(catalog()):response({error:'upstream_failure'},status);
+ const result=await (await turn.fetch(request('POST',body))).json();
+ assert.equal(result.status,'unavailable');assert.equal(result.retryable,[408,429,500,502,503,504].includes(status));
+}));
+for(const name of ['TypeError','TimeoutError','AbortError'])test(`Broker ${name} exposes retryable transport failure`,async()=>configured(async()=>{
+ globalThis.fetch=async(input)=>{if(new URL(input).pathname==='/v1/models')return response(catalog());const e=new Error('transport failed');e.name=name;throw e};
+ assert.equal((await (await turn.fetch(request('POST',body))).json()).retryable,true);
+}));

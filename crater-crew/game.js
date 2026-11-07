@@ -39,7 +39,7 @@ const names=[['Pip','Bubbles','Mochi'],['Grub','Maverick','Nibbles']],TEAM_NAMES
 // single-player defaults apply: humans are team 0, the AI is team 1 driven by state.aiDriver.
 // Local fallback overrides a team only for this match; the setup choice stays intact.
 const ctrl=t=>state.localAiTeams?.[t]?'easy':state.controllers?.[t]??(t?(state.aiDriver==='broker'?'ultra':'local'):'human');
-const isHuman=t=>ctrl(t)==='human',isBot=t=>!isHuman(t),usesBroker=t=>['hard','ultra','god'].includes(ctrl(t));
+const isHuman=t=>ctrl(t)==='human',isBot=t=>!isHuman(t),usesBroker=t=>!(state.brokerFallbackTurn&&t===state.team)&&['hard','ultra','god'].includes(ctrl(t));
 export const CONTROLLER_LABELS={human:'HUMAN',easy:'PC EASY',hard:'PC HARD',ultra:'PC ULTRA',god:'PC GOD'};
 const mapNames=['SUNSET COVE','RUST RIDGE','CRYSTAL ATOLL','GRAND EXPEDITION'];
 const state={running:false,ended:false,map:0,difficulty:1,aiDriver:'local',brokerController:null,brokerTicket:null,brokerTurnId:null,brokerRequest:null,brokerSavedAt:null,brokerSequence:0,brokerOptions:[],brokerError:'',terrain:null,terrainCanvas:null,worms:[],projectiles:[],particles:[],blasts:[],decor:[],team:0,active:null,lastActiveId:[-1,-1],selected:'bazooka',playerWeapon:'bazooka',phase:'ready',timer:35,round:1,waterLevel:WATER,wind:0,windTarget:0,aim:-0.75,dir:1,power:.5,charging:false,chargeDir:1,used:false,shotgunLeft:0,grenadeFuse:3,grenadeBounce:'high',strikeDir:1,playerGrenadeFuse:3,playerGrenadeBounce:'high',playerStrikeDir:1,jetDropped:false,keys:{},aiTimer:0,aiMoves:0,aiTarget:0,aiMoveTime:0,aiRetreat:0,resolveTimer:0,message:'',messageTimer:0,shake:0,sound:false,musicEnabled:false,fxVolume:.65,musicVolume:.42,audioUnlocked:false,musicStep:0,musicNextTime:0,jetTime:0};
@@ -78,7 +78,7 @@ function buildTerrain(rect=null){if(state.sim)return;
  state.terrainCanvas=off;
 }
 function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePending=false){
- state.localAiTeams=[false,false];
+ state.localAiTeams=[false,false];state.brokerFallbackTurn=false;
  if(pendingSettings){const s=pendingSettings;pendingSettings=null;useSettings(s)}
  stopVoices();if(!preservePending)clearPendingTurn();state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];state.brokerSequence=0;state.agentStepCount=0;state.agentUtilityCount=0;state.agentLastAction=null;state.aiUtilityUsed=false;state.aiFollowUp=false;state.journal=[];state.turnLog=null;$('broker-panel').hidden=true;
  simRand=seeded((seed^0x9e3779b9)>>>0);visualRand=seeded((seed^0x7f4a7c15)>>>0);state.seed=seed;state.matchId=newMatchId();state.simDraws=0;state.map=map;state.difficulty=clamp(Number(difficulty)||0,0,2);state.musicStep=0;state.musicNextTime=0;state.terrain=createTerrain(map,seed);buildTerrain();state.worms=[];state.projectiles=[];state.particles=[];state.blasts=[];state.decor=[];state.active=null;state.phase='ready';state.timer=rules.turnTime;state.round=1;state.waterLevel=WATER;state.ended=false;state.running=true;state.used=false;state.shotgunLeft=0;state.grenadeFuse=3;state.grenadeBounce='high';state.strikeDir=1;state.playerGrenadeFuse=3;state.playerGrenadeBounce='high';state.playerStrikeDir=1;state.jetDropped=false;state.selected='bazooka';state.playerWeapon='bazooka';state.airTarget=null;state.aim=-.72;state.dir=1;state.power=.5;state.charging=false;state.keys={};state.aiTimer=0;state.resolveTimer=0;state.jetTime=0;state.jetPulse=0;state.rope=null;state.aiRope=null;state.shake=0;state.wind=(simRandom()-.5)*rules.windStart*2;state.agentRules={gravity:GRAVITY,waterRise:rules.waterRise,turnTime:rules.turnTime,walkSpeed:WALK_SPEED,windDrift:rules.windDrift,windCap:rules.windCap};state.crateHeal=rules.crateHeal;state.suddenDeathRound=rules.suddenDeathRound;state.windTarget=state.wind;state.aiMoves=0;state.aiTarget=0;state.aiMoveTime=0;state.aiRetreat=0;
@@ -98,7 +98,7 @@ function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePend
 }
 function living(team){return state.worms.filter(w=>w.team===team&&w.alive)}
 function beginTurn(team){
- if(state.ended)return;state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];clearPendingTurn();$('broker-panel').hidden=true;state.team=team;state.timer=state.agentRules?.turnTime??rules.turnTime;state.phase='ready';state.used=false;state.shotgunLeft=0;state.jetDropped=false;state.charging=false;state.jetTime=0;state.aiMoves=0;state.aiMoveTime=0;state.aiRetreat=0;state.airTarget=null;if(isHuman(team)){state.selected=state.playerWeapon;state.grenadeFuse=state.playerGrenadeFuse;state.grenadeBounce=state.playerGrenadeBounce;state.strikeDir=state.playerStrikeDir}state.windTarget=clamp(state.wind+(simRandom()-.5)*(state.agentRules?.windDrift??rules.windDrift)*2,-(state.agentRules?.windCap??rules.windCap),state.agentRules?.windCap??rules.windCap);
+ if(state.ended)return;state.brokerFallbackTurn=false;state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];clearPendingTurn();$('broker-panel').hidden=true;state.team=team;state.camImpact=null;state.camImpactTime=0;state.camHoldId=null;state.timer=state.agentRules?.turnTime??rules.turnTime;state.phase='ready';state.used=false;state.shotgunLeft=0;state.jetDropped=false;state.charging=false;state.jetTime=0;state.aiMoves=0;state.aiMoveTime=0;state.aiRetreat=0;state.airTarget=null;if(isHuman(team)){state.selected=state.playerWeapon;state.grenadeFuse=state.playerGrenadeFuse;state.grenadeBounce=state.playerGrenadeBounce;state.strikeDir=state.playerStrikeDir}state.windTarget=clamp(state.wind+(simRandom()-.5)*(state.agentRules?.windDrift??rules.windDrift)*2,-(state.agentRules?.windCap??rules.windCap),state.agentRules?.windCap??rules.windCap);
  state.worms.forEach(w=>w.active=false);
  const alive=living(team);if(!alive.length){finish(1-team);return}
  // Bots: the local algorithm always plays its sharpest profile; Broker levels name themselves in the prompt.
@@ -144,12 +144,12 @@ function resultStats(winner){
 }
 // Banner shown while a bot thinks: the worm, its team and level, in the team colour.
 function thinkingText(seconds){const w=state.active;return `${w?w.name.toUpperCase()+' · ':''}${TEAM_NAMES[state.team]} · ${CONTROLLER_LABELS[ctrl(state.team)]||'AI'} IS THINKING${seconds==null?'...':' · '+seconds+'s'}`}
-function explosion(x,y,r,damage,source){state.shake=Math.max(state.shake,13);addBlast(x,y,r);tone(95,.36,'sawtooth',.13,38);noise(.34,.11,750);emit(x,y,'#ffdd82',42,310);emit(x,y,'#634957',22,230);blastProps(state,x,y,r,damage);carve(state.terrain,x,y,r*.78);buildTerrain({x0:Math.floor(x-r-6),x1:Math.ceil(x+r+6),y0:Math.floor(y-r-6)});
+function explosion(x,y,r,damage,source){state.camImpact={x,y};state.camImpactTime=1.3;state.shake=Math.max(state.shake,13);addBlast(x,y,r);tone(95,.36,'sawtooth',.13,38);noise(.34,.11,750);emit(x,y,'#ffdd82',42,310);emit(x,y,'#634957',22,230);blastProps(state,x,y,r,damage);carve(state.terrain,x,y,r*.78);buildTerrain({x0:Math.floor(x-r-6),x1:Math.ceil(x+r+6),y0:Math.floor(y-r-6)});
  for(const w of state.worms){if(!w.alive)continue;const d=Math.hypot(w.x-x,w.y-y);const hurt=blastDamage(d,r,damage);if(hurt){{const before=w.hp;w.hp=Math.max(0,w.hp-hurt);record(w,before-w.hp,source)}w.flash=.7;wormCry();const push=(1-d/r)*damage*knock.perDamage;w.vx+=(w.x-x)/(d||1)*push;w.vy-=Math.max(knock.lift,push*.7);w.grounded=false;emit(w.x,w.y,w.team?'#ff9980':'#8ef9e4',8,110);if(w.hp)voice(w,w.hp<35?'medic':'hurt');if(!w.hp)kill(w);}}
  for(const p of state.projectiles){if(p.dead||(p.type!=='grenade'&&p.type!=='dynamite'))continue;const d=Math.hypot(p.x-x,p.y-y);if(d<r*1.3){const push=(1-d/(r*1.3))*520;p.vx+=(p.x-x)/(d||1)*push;p.vy+=(p.y-y)/(d||1)*push-120;p.resting=false}}
  updateUI();if(state.phase==='retreat')state.phase='resolving';if(state.phase==='resolving')state.resolveTimer=Math.max(state.resolveTimer,1.3);
 }
-function kill(w){if(!w.alive)return;const drowned=wormDrowned(w,state.waterLevel);recordDeath(w,drowned);voice(w,drowned?'water':'die');const killer=state.active;if(!state.sim&&killer?.alive&&killer.team!==w.team)setTimeout?.(()=>voice(killer,'kill'),1100);w.alive=false;w.active=false;emit(w.x,w.y,'#fff8d1',28,220);tone(230,.22,'square',.05,80);chirp();say(w.name.toUpperCase()+' IS OUT!',1.3);if((state.active===w&&state.phase==='ready')||living(w.team).length===0){state.phase='resolving';state.resolveTimer=1.5}updateUI()}
+function kill(w){if(!w.alive)return;const drowned=wormDrowned(w,state.waterLevel);recordDeath(w,drowned);voice(w,drowned?'water':'die');const killer=state.active;if(!state.sim&&killer?.alive&&killer.team!==w.team)setTimeout?.(()=>voice(killer,'kill'),1100);w.alive=false;w.active=false;emit(w.x,w.y,'#fff8d1',28,220);tone(230,.22,'square',.05,80);chirp();say(w.name.toUpperCase()+' IS OUT!',1.3);if((state.active===w&&['ready','broker-wait','broker-error'].includes(state.phase))||living(w.team).length===0){startResolution(1.5)}updateUI()}
 // Hooks the map props call back into: blasts, heals, mine beeps and splashes.
 const propApi={explode:(x,y,r,d)=>explosion(x,y,r,d,-1),heal:(w,a)=>{w.hp+=a;w.flash=0;emit(w.x,w.y-10,'#7dffa8',14,120);tone(880,.12,'sine',.05,1320);say(`${w.name.toUpperCase()} +${a} HP`,1.2);updateUI()},beep:()=>tone(1150,.06,'square',.035),splash:(x,y)=>emit(x,y,'#d6f5ff',12,100)};
 // A worm still flying, falling, sinking or skidding after a hit.
@@ -162,10 +162,10 @@ function settled(dt){
  const busy=state.projectiles.length>0||propsBusy(state)||state.worms.some(wormMoving);
  state.calm=busy?0:(state.calm||0)+dt;
  if(state.resolveTimer>0)return false;state.settleWait=(state.settleWait||0)+dt;
- if(state.projectiles.length)return false;
+ if(state.projectiles.length||state.props.some(p=>p.armed||p.boom>0)||state.blasts.some(b=>b.t<1.3))return false;
  return state.calm>0&&(state.sim||state.calm>=SETTLE_PAUSE-1e-9)||state.settleWait>=SETTLE_CAP;
 }
-function startResolution(wait=1){if(state.rope&&state.active){releaseRope(state.active,state.rope);state.active.grounded=false}state.rope=null;state.shotgunLeft=0;state.phase='resolving';state.resolveTimer=wait;state.used=true;state.charging=false}
+function startResolution(wait=1){if(['broker-wait','broker-error'].includes(state.phase)){state.brokerController?.abort();state.brokerController=null;state.brokerTurnId=null;state.brokerTicket=null;state.brokerRequest=null;clearPendingTurn();$('broker-panel').hidden=true}if(state.rope&&state.active){releaseRope(state.active,state.rope);state.active.grounded=false}state.rope=null;state.shotgunLeft=0;state.phase='resolving';state.resolveTimer=wait;state.used=true;state.charging=false}
 function setGrenadeFuse(value){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeFuse=clamp(Number(value)||3,1,5);state.playerGrenadeFuse=state.grenadeFuse;updateUI();tone(620,.05,'triangle',.025)}
 function toggleGrenadeBounce(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeBounce=state.grenadeBounce==='high'?'low':'high';state.playerGrenadeBounce=state.grenadeBounce;updateUI();tone(540,.07,'triangle',.025)}
 function toggleStrikeDirection(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='airstrike')return;state.strikeDir*=-1;state.playerStrikeDir=state.strikeDir;updateUI();tone(460,.07,'triangle',.025)}
@@ -325,49 +325,77 @@ function applyAgentAction(a){
  if(a.type==='shoot'){applyAction({weapon:a.weapon,aim:a.angle_deg*Math.PI/180,dir:a.direction,power:a.power/100,fuse:a.fuse,bounce:a.bounce});return true}
  applyAction({weapon:a.type,dir:a.direction,strikeDir:a.direction,targetX:a.target_x});return true;
 }
-function brokerWait(ms,signal){return new Promise((resolve,reject)=>{if(signal.aborted){reject(Error('aborted'));return}const timer=setTimeout(resolve,ms);signal.addEventListener('abort',()=>{clearTimeout(timer);reject(Error('aborted'))},{once:true})})}
+function brokerWait(ms,signal){return new Promise((resolve,reject)=>{const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(new DOMException('aborted','AbortError'))};const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve()},ms);signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort()})}
+function brokerAbortable(promise,signal){return new Promise((resolve,reject)=>{const abort=()=>{signal.removeEventListener('abort',abort);reject(new DOMException('aborted','AbortError'))};signal.addEventListener('abort',abort,{once:true});Promise.resolve(promise).then(value=>{signal.removeEventListener('abort',abort);resolve(value)},error=>{signal.removeEventListener('abort',abort);reject(error)});if(signal.aborted)abort()})}
+function brokerTimeLimit(){
+ if(!state.running||state.ended||!state.active?.alive||state.brokerFallbackTurn)return;
+ const wallRemaining=Number.isFinite(state.brokerDeadlineAt)?(state.brokerDeadlineAt+5000-Date.now())/1000:state.timer;
+ state.timer=Math.max(0,Math.min(state.timer,wallRemaining));
+ state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerDeadlineAt=null;clearPendingTurn();$('broker-panel').hidden=true;
+ state.brokerFallbackTurn=true;state.difficulty=2;state.aiUtilityUsed=true;state.aiFollowUp=false;state.aiTimer=0;state.phase='ready';
+ if(state.timer<=0)startResolution(.7);else aiAct();
+ say('LOCAL BACKFILL · THIS TURN',2);updateUI();
+}
 async function requestBrokerTurn(resume=false){
  if(!state.running||!isBot(state.team)||!usesBroker(state.team)||!['ready','broker-error'].includes(state.phase))return;
+ const started=Date.now(),budget=Math.max(0,(state.timer-5)*1000);
  if(!resume||!state.brokerRequest){
   if((state.agentStepCount||0)>=MAX_AGENT_STEPS){say('AGENT DECISION LIMIT · TURN ENDED',1.2);startResolution(.5);return}
-  state.brokerOptions=[];
-  state.brokerTurnId=`t${state.matchId}_${state.round}_${state.active.id}_${++state.brokerSequence}`;
-  // PC GOD is ultra plus the match journal (after the snapshot and candidates, see api/ai/turn.mjs).
+  state.brokerOptions=[];state.brokerTurnId=`t${state.matchId}_${state.round}_${state.active.id}_${++state.brokerSequence}`;
   const god=ctrl(state.team)==='god';
   state.brokerRequest={protocol:OPEN_PROTOCOL,turnId:state.brokerTurnId,difficulty:god?3:state.difficulty,snapshot:brokerAgentSnapshot(state,{windBlind:ctrl(state.team)==='hard'}),...(god?{history:(state.journal||[]).slice(-JOURNAL_MAX)}:{})};
-  state.brokerTicket=null;state.brokerSavedAt=Date.now();
+  state.brokerTicket=null;state.brokerSavedAt=started;state.brokerDeadlineAt=started+budget;
  }
+ state.brokerDeadlineAt=Math.min(state.brokerDeadlineAt||started+budget,started+budget);
+ if(state.brokerDeadlineAt<=started){brokerTimeLimit();return}
  const turnId=state.brokerTurnId,activeId=state.active.id,controller=new AbortController();
- const current=()=>state.running&&state.active?.id===activeId&&state.brokerTurnId===turnId&&state.phase==='broker-wait';
+ const current=()=>state.running&&!state.ended&&state.active?.alive&&state.active.id===activeId&&state.brokerTurnId===turnId&&state.phase==='broker-wait';
+ const diagnostic=(event,extra={})=>console.info('[Broker turn]',{event,elapsedMs:Date.now()-started,...extra});
  state.brokerController=controller;state.phase='broker-wait';state.brokerElapsed=0;$('broker-panel').hidden=true;say(thinkingText(0),20,TEAM_COLORS[state.team]);updateUI();
- const deadline=setTimeout(()=>controller.abort(),28000);
+ const deadline=setTimeout(()=>{if(current()){diagnostic('deadline');brokerTimeLimit()}else controller.abort()},state.brokerDeadlineAt-started);
+ const checkpoint=setInterval(()=>{if(current())savePendingTurn(state)},1000);
+ // Each transport attempt is bounded separately. A lost POST is retried with the identical
+ // body/idempotency identity; once ticketed, only that existing job is polled.
+ const request=async()=>{
+  let attempt=0;
+  while(current()&&!controller.signal.aborted){
+   if(Date.now()>=state.brokerDeadlineAt){brokerTimeLimit();return null}
+   const child=new AbortController(),abort=()=>child.abort();controller.signal.addEventListener('abort',abort,{once:true});
+   const timeout=setTimeout(abort,Math.min(5000,Math.max(1,state.brokerDeadlineAt-Date.now())));
+   try{
+    const response=await brokerAbortable(fetch(state.brokerTicket?'/api/ai/turn?ticket='+encodeURIComponent(state.brokerTicket):'/api/ai/turn',state.brokerTicket?{signal:child.signal}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(state.brokerRequest),signal:child.signal}),child.signal);
+    if(!current()||controller.signal.aborted)return null;
+    const result=await brokerAbortable(response.json(),child.signal);
+    if(result.status==='unavailable'&&result.retryable===true)throw Object.assign(Error('transient Broker transport'),{httpStatus:response.status});
+    if(result.status==='error'||result.status==='unavailable')throw Object.assign(Error(result.error||'Broker unavailable.'),{terminal:true});
+    if(!response.ok){if(response.status===408||response.status===429||response.status>=500)throw Object.assign(Error('transient HTTP'),{httpStatus:response.status});throw Object.assign(Error(result.error||'Broker request rejected.'),{terminal:true})}
+    if(!['pending','done'].includes(result.status))throw Object.assign(Error('Broker returned an invalid response.'),{terminal:true});
+    return result;
+   }catch(error){
+    if(!current()||controller.signal.aborted)return null;
+    if(error.terminal)throw error;
+    diagnostic('transport-retry',{attempt:++attempt,reason:child.signal.aborted?'attempt-timeout':error.name==='SyntaxError'?'invalid-json':error.httpStatus?'http':'network',...(error.httpStatus?{httpStatus:error.httpStatus}:{})});
+   }finally{clearTimeout(timeout);controller.signal.removeEventListener('abort',abort)}
+   await brokerWait(Math.min(1000,Math.max(1,state.brokerDeadlineAt-Date.now())),controller.signal);
+  }
+  return null;
+ };
  try{
-  let result;
   if(!savePendingTurn(state))throw Error('Cannot safely save this pending Broker turn in the browser.');
-  if(!state.brokerTicket){
-   const response=await fetch('/api/ai/turn',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(state.brokerRequest),signal:controller.signal});
-   result=await response.json();if(!current())return;
-   if(!response.ok||!['pending','done'].includes(result.status))throw Error(result.error||'Broker is not configured.');
-   if(result.status==='pending'){
-    if(!result.ticket)throw Error('Broker returned no job ticket.');
-    state.brokerTicket=result.ticket;
-    if(!savePendingTurn(state))throw Error('Cannot save the Broker job ticket for recovery.');
-   }
+  let result;
+  while(current()&&!controller.signal.aborted){
+   result=await request();if(!current()||controller.signal.aborted)return;
+   if(result?.status==='done')break;
+   if(!state.brokerTicket){if(!result?.ticket)throw Error('Broker returned no job ticket.');state.brokerTicket=result.ticket}
+   if(!savePendingTurn(state))throw Error('Cannot save the Broker job ticket for recovery.');
+   await brokerWait(Math.min(Math.max(800,Math.min(2000,(Number(result.pollAfter)||2)*1000)),Math.max(1,state.brokerDeadlineAt-Date.now())),controller.signal);
   }
-  const until=Date.now()+25_000;
-  while(result?.status!=='done'&&Date.now()<until){
-   await brokerWait(Math.max(800,Math.min(5000,(Number(result?.pollAfter)||2)*1000)),controller.signal);
-   if(!current())return;
-   const response=await fetch('/api/ai/turn?ticket='+encodeURIComponent(state.brokerTicket),{signal:controller.signal});
-   result=await response.json();if(!current())return;
-   if(result.status==='error')throw Error(result.error||'Broker turn failed.');
-   if(!response.ok)throw Error(result.error||'Broker unavailable.');
-  }
-  if(result?.status!=='done')throw Error('Broker is taking too long. Retry to read the same job.');
-  if(!current())return;
+  if(!current()||controller.signal.aborted)return;
+  if(Date.now()>=state.brokerDeadlineAt){brokerTimeLimit();return}
   if(result.turnId!==turnId||!(state.brokerRequest?.protocol===OPEN_PROTOCOL?applyAgentAction(result.action):applyBrokerChoice(result.candidateId)))throw Error('Broker returned an invalid move.');
- }catch(error){if(current())brokerFailure(error.name==='AbortError'?'Broker timed out. Retry this turn.':error.name==='SyntaxError'?'Broker endpoint unavailable on this server.':String(error.message||'Broker unavailable.').slice(0,140))}
- finally{clearTimeout(deadline);if(state.brokerController===controller)state.brokerController=null}
+  diagnostic('completed');
+ }catch(error){if(current()&&!controller.signal.aborted){diagnostic('failed');brokerFailure(String(error.message||'Broker unavailable.').slice(0,140))}}
+ finally{clearTimeout(deadline);clearInterval(checkpoint);if(state.brokerController===controller)state.brokerController=null}
 }
 function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);const player=isHuman(state.team)&&state.active===w&&state.running&&(state.phase==='ready'||state.phase==='jetpack'||state.phase==='retreat');const ai=isBot(state.team)&&state.active===w&&['reposition','jetpack','retreat'].includes(state.phase);const aiDir=state.phase==='retreat'?state.aiRetreat:Math.sign(state.aiTarget-w.x);const aiDrive=ai&&Math.abs(state.aiTarget-w.x)>18||ai&&state.phase==='retreat';const aiLeft=aiDrive&&aiDir<0,aiRight=aiDrive&&aiDir>0;const ahead=w.x+aiDir*35,aiCliff=ai&&aiDir!==0&&(groundY(state.terrain,ahead)>state.waterLevel-25||groundY(state.terrain,ahead)-groundY(state.terrain,w.x)>55);const left=player&&(state.keys.left||state.keys.KeyA||state.keys.ArrowLeft)||aiLeft,right=player&&(state.keys.right||state.keys.KeyD||state.keys.ArrowRight)||aiRight,jump=player&&(state.keys.jump||state.keys.KeyW||state.keys.ArrowUp)||aiCliff&&state.phase!=='retreat';
  // Ninja rope: while the hook flies the worm keeps its normal physics; once hooked it swings on the rope.
@@ -428,11 +456,12 @@ function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dyn
  }}
  if(p.fuse<=0){p.dead=true;if(p.type==='grenade'||p.type==='dynamite'){explosion(p.x,p.y,data[p.type].radius,data[p.type].damage,p.source)}else if(p.type==='airstrike'){explosion(p.x,p.y,data.airstrike.radius,data.airstrike.damage,p.source)}else if(p.type==='bazooka'){p.dead=true}}
 }
-function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musicTick();if(isBot(state.team)&&usesBroker(state.team)&&['broker-wait','broker-error'].includes(state.phase)){if(state.phase==='broker-wait'){state.brokerElapsed=(state.brokerElapsed||0)+dt;setText($('message'),thinkingText(Math.floor(state.brokerElapsed)))}updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
- if(state.phase==='ready'||state.phase==='jetpack'||state.phase==='reposition'){{const before=state.timer;state.timer-=dt;if(before>5&&state.timer<=5&&state.active?.alive)voice(state.active,'hurry')}if(state.timer<=0){state.timer=0;say('TIME IS UP!',1);startResolution(.7)}if(state.phase==='jetpack'){state.jetTime-=dt;state.jetPulse=(state.jetPulse||0)-dt;if(state.jetPulse<=0){noise(.19,.018,1800);state.jetPulse=.44}if(state.jetTime<=0)startResolution(.8)}if(state.phase==='reposition'){state.aiMoveTime-=dt;if(state.aiMoveTime<=0||Math.abs(state.active.x-state.aiTarget)<20){state.phase='ready';state.aiTimer=.25}}}
+function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musicTick();if(state.camImpactTime>0)state.camImpactTime-=dt;state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
+ if(['ready','jetpack','reposition','broker-wait','broker-error'].includes(state.phase)){{const before=state.timer;state.timer-=dt;if(before>5&&state.timer<=5&&state.active?.alive)voice(state.active,'hurry')}if(!state.sim&&['broker-wait','broker-error'].includes(state.phase)&&(state.timer<=5||Number.isFinite(state.brokerDeadlineAt)&&Date.now()>=state.brokerDeadlineAt))brokerTimeLimit();if(state.timer<=0){state.timer=0;say('TIME IS UP!',1);startResolution(.7)}if(state.phase==='jetpack'){state.jetTime-=dt;state.jetPulse=(state.jetPulse||0)-dt;if(state.jetPulse<=0){noise(.19,.018,1800);state.jetPulse=.44}if(state.jetTime<=0)startResolution(.8)}if(state.phase==='reposition'){state.aiMoveTime-=dt;if(state.aiMoveTime<=0||Math.abs(state.active.x-state.aiTarget)<20){state.phase='ready';state.aiTimer=.25}}}
  if(isBot(state.team)&&state.phase==='ready'&&!state.sim){state.aiTimer-=dt;if(state.aiTimer<=0)aiAct()}
- // requestBrokerTurn freezes and saves synchronously. Do not advance this same frame after the snapshot.
- if(isBot(state.team)&&usesBroker(state.team)&&['broker-wait','broker-error'].includes(state.phase)){updateUI();return}
+ if(state.phase==='broker-error'&&state.brokerRequest){state.brokerCheckpointTime=(state.brokerCheckpointTime||0)+dt;if(state.brokerCheckpointTime>=1){state.brokerCheckpointTime=0;savePendingTurn(state)}}
+ // Network waiting never pauses the match: the clock, crates, mines and damage keep advancing.
+ if(state.phase==='broker-wait'){state.brokerElapsed=(state.brokerElapsed||0)+dt;setText($('message'),thinkingText(Math.floor(state.brokerElapsed)))}
  if(isBot(state.team)&&state.phase==='jetpack'&&!state.jetDropped&&state.active?.alive&&!(usesBroker(state.team)&&state.agentLastAction?.type==='jetpack')){const w=state.active;const target=living(1-w.team).find(f=>Math.abs(f.x-w.x)<62&&f.y-w.y>45);if(target&&living(w.team).every(f=>f===w||Math.hypot(f.x-w.x,f.y-w.y)>125))dropDynamite()}
  if(state.charging){state.power+=state.chargeDir*dt*.85;if(state.power>=1){state.power=1;state.chargeDir=-1}else if(state.power<=.18){state.power=.18;state.chargeDir=1}}
  if(isHuman(state.team)&&state.phase==='ready'){if(state.keys.aimleft||state.keys.KeyQ)state.aim=clamp(state.aim-.95*dt,AIM_MIN,AIM_MAX);if(state.keys.aimright||state.keys.KeyE)state.aim=clamp(state.aim+.95*dt,AIM_MIN,AIM_MAX)}
@@ -486,8 +515,9 @@ function camFocus(){
  if(state.phase==='resolving'||state.phase==='retreat'){
   const held=state.worms.find(w=>w.id===state.camHoldId);if(held&&wormMoving(held))return held;
   let fast=null;for(const w of state.worms)if(wormMoving(w)&&(!fast||Math.hypot(w.vx,w.vy)>Math.hypot(fast.vx,fast.vy)))fast=w;
-  if(fast){state.camHoldId=fast.id;return fast}if(held)return held;
+  if(fast){state.camHoldId=fast.id;return fast}if(held)return held;if(state.camImpact)return state.camImpact;
  }
+ if(state.camImpactTime>0&&state.camImpact)return state.camImpact;
  return state.active;
 }
 function clampCam(c){c.x=clamp(c.x,0,Math.max(0,W-VIEW_W/c.zoom));c.y=clamp(c.y,0,Math.max(0,H-VIEW_H/c.zoom))}
@@ -639,7 +669,7 @@ window.addEventListener('keydown',e=>{
 window.addEventListener('keyup',e=>{state.keys[e.code]=false;if(e.code==='Space')chargeEnd()});window.addEventListener('blur',()=>{state.keys={};state.charging=false;state.power=.5;updateUI()});
 
 // Battle setup: a row of player buttons per team; the choice is remembered on this device.
-const CTRL_HINTS={human:'You play this team.',easy:'Local algorithm at its sharpest: instant turns, exact physics.',hard:'Broker LLM, about 8 s a turn; it gets no wind information, so its shots drift.',ultra:'Broker LLM, about 8 s a turn, with everything: wind, mines, barrels, crates and predicted damage.',god:'PC Ultra plus the whole match history: it studies earlier shots and their results to correct its aim and pick targets.'};
+const CTRL_HINTS={human:'You play this team.',easy:'Local algorithm at its sharpest: instant turns, exact physics.',hard:'Async Broker LLM; local backfill takes over with 5 s left; wind is unknown.',ultra:'Async Broker LLM; local backfill takes over with 5 s left; observes wind, terrain, mines, barrels, crates and every worm.',god:'PC Ultra plus the whole match history: it studies earlier shots and their results to correct its aim and pick targets.'};
 // Saved player preferences (prefs.js): players, map and sound; with storage blocked the defaults stay.
 const prefs=readPrefs();
 let setupCtrls=['human','easy'];if(prefs.controllers?.every(c=>c in CONTROLLER_LABELS)){setupCtrls=[...prefs.controllers];ctrlsSaved=true}
@@ -679,11 +709,11 @@ function restorePendingBrokerTurn(record){
   Object.assign(state,values);state.terrain={...createTerrain(values.map,values.seed),...terrain};state.worms=worms;state.active=worms[activeId];
   state.worms.forEach(w=>w.active=w===state.active);state.team=state.active.team;state.aiDriver='broker';state.running=true;state.ended=false;
   state.projectiles=[];state.particles=[];state.blasts=[];state.brokerController=null;state.brokerRequest=record.request;
-  state.brokerTurnId=record.request.turnId;state.brokerTicket=record.ticket;state.brokerSavedAt=record.savedAt;
+  state.brokerTurnId=record.request.turnId;state.brokerTicket=record.ticket;state.brokerSavedAt=record.savedAt;state.brokerDeadlineAt=record.deadlineAt;state.brokerFallbackTurn=false;
   simRand=seeded((state.seed^0x9e3779b9)>>>0);for(let i=0;i<state.simDraws;i++)simRand();
   if(record.request.protocol===OPEN_PROTOCOL){
    state.brokerOptions=[];
-   if(JSON.stringify(brokerAgentSnapshot(state,{windBlind:ctrl(state.team)==='hard'}))!==JSON.stringify(record.request.snapshot))throw Error('stale pending state');
+   if(record.request.snapshot?.activeId!==activeId||record.request.snapshot?.round!==state.round)throw Error('stale pending identity');
   }else{
    state.brokerOptions=withSimText(rankOptions(brokerTurnOptions(state,{windBlind:ctrl(state.team)==='hard'})));
    const offered=state.brokerOptions.map(({id,description})=>({id,description}));
@@ -691,7 +721,10 @@ function restorePendingBrokerTurn(record){
   }
   simRand=seeded((state.seed^0x9e3779b9)>>>0);for(let i=0;i<state.simDraws;i++)simRand();
   buildTerrain();state.turnLog=record.request.protocol===OPEN_PROTOCOL?record.game.turnLog:openTurn(state);state.phase='broker-error';state.brokerError='Pending Broker turn recovered. Retry to read the same job.';
-  $('broker-error').textContent=state.brokerError;$('broker-panel').hidden=false;$('intro').classList.remove('open');updateUI();return true;
+  state.timer=Math.max(0,state.timer-Math.max(0,Date.now()-(record.checkpointAt??record.savedAt))/1000);
+  $('broker-error').textContent=state.brokerError;$('broker-panel').hidden=false;$('intro').classList.remove('open');
+  if(state.timer<=5||Date.now()>=(record.deadlineAt??record.savedAt+Math.max(0,(record.game.timer-5)*1000)))brokerTimeLimit();
+  updateUI();return true;
  }catch{clearPendingTurn();return false}
 }
 // ---- Admin settings: fetched once at startup; without the API (file://, offline) the defaults stay. ----
@@ -721,5 +754,5 @@ globalThis.fetch?.('api/settings').then(r=>r.ok?r.json():null).then(s=>{if(s)app
 const pendingOnLoad=readPendingTurn();
 newGame(0,1,undefined,Boolean(pendingOnLoad));
 if(!restorePendingBrokerTurn(pendingOnLoad)){state.running=false;$('intro').classList.add('open')}
-window.__craterCrew={applyAgentAction,simulateAction,rankOptions,chooseController,scheme,rules,knock,applySettings,state,newGame,nextTurn,fire,explosion,finish,beginTurn,update,render,cycle,aimAt,aiAct,requestBrokerTurn,restorePendingBrokerTurn,setGrenadeFuse,toggleGrenadeBounce,toggleStrikeDirection,dropDynamite};
+window.__craterCrew={camFocus,applyAgentAction,simulateAction,rankOptions,chooseController,scheme,rules,knock,applySettings,state,newGame,nextTurn,fire,explosion,finish,beginTurn,update,render,cycle,aimAt,aiAct,requestBrokerTurn,restorePendingBrokerTurn,setGrenadeFuse,toggleGrenadeBounce,toggleStrikeDirection,dropDynamite};
 

@@ -108,6 +108,17 @@
     <p class="error" data-error="ai.model"></p>
    </section>
 
+   <section class="card" aria-labelledby="h-agent-contract">
+    <h2 id="h-agent-contract">Agent prompt &amp; inputs</h2>
+    <p class="hint">Read-only inspection of the actual deployed open-agent contract. No model call, secrets or other players’ requests.</p>
+    <button type="button" class="ghost" id="agent-contract-refresh">Refresh contract</button>
+    <p id="agent-contract-status" role="status" aria-live="polite">Not loaded.</p>
+    <p id="agent-execution" class="hint"></p>
+    <details open><summary>Actual system prompt</summary><pre id="agent-system-prompt" class="agent-contract"></pre></details>
+    <details><summary>Input template (not live match data)</summary><p id="agent-input-description" class="hint"></p><pre id="agent-input-template" class="agent-contract"></pre></details>
+    <details><summary>Actual action JSON schema</summary><pre id="agent-action-schema" class="agent-contract"></pre></details>
+   </section>
+
    <section class="card" aria-labelledby="h-audio">
     <h2 id="h-audio">Audio defaults</h2>
     <p class="hint">Starting values on the setup screen; each player can still change them in the ♫ panel.</p>

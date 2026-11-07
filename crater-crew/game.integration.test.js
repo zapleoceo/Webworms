@@ -161,7 +161,7 @@ test('Broker mode applies a validated free action from mocked job polling',async
  }finally{state.brokerController?.abort();state.aiDriver='local';globalThis.fetch=prior;newGame(0,1,983)}
 });
 
-test('A lost Broker submit response retries the frozen turn instead of generating another match action',async()=>{
+test('A lost Broker submit response automatically retries the same turn instead of generating another match action',async()=>{
  const prior=globalThis.fetch,posted=[];
  globalThis.fetch=async (_url,options)=>{
   if(options?.method==='POST'){
@@ -173,8 +173,8 @@ test('A lost Broker submit response retries the frozen turn instead of generatin
  };
  try{
   newGame(0,2,988);state.aiDriver='broker';beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(state.phase,'broker-error');assert.equal(posted.length,1);assert.ok(sessionItems.has(PENDING_KEY));
-  element('broker-retry').onclick();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.phase,'broker-wait');assert.equal(posted.length,1);assert.ok(sessionItems.has(PENDING_KEY));
+  for(const end=Date.now()+3000;posted.length<2&&Date.now()<end;)await new Promise(resolve=>setTimeout(resolve,50));
   assert.equal(posted.length,2);assert.deepEqual(posted[1],posted[0]);assert.equal(state.selected,'airstrike');
   assert.equal(sessionItems.has(PENDING_KEY),false);
  }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,989)}
@@ -196,7 +196,7 @@ test('Refresh restores a bounded pending Broker job and Retry only polls its exi
   state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));
   newGame(0,1,991,true);assert.equal(restorePendingBrokerTurn(readPendingTurn()),true);
   assert.equal(state.phase,'broker-error');assert.equal(state.active.id,saved.game.activeId);assert.equal(state.brokerTicket,'saved-job-ticket');
-  const frozenX=state.active.x,frozenWind=state.wind;update(1);assert.equal(state.active.x,frozenX);assert.equal(state.wind,frozenWind);
+  const remaining=state.timer;update(.04);assert.ok(state.timer<remaining,'recovered wait consumes turn time');
   element('broker-retry').onclick();for(const end=Date.now()+10000;state.phase==='broker-wait'&&Date.now()<end;)await new Promise(resolve=>setTimeout(resolve,50));
   assert.equal(posts,1);assert.equal(polls,1);assert.equal(state.selected,'airstrike');assert.equal(sessionItems.has(PENDING_KEY),false);
  }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,992)}
@@ -786,7 +786,7 @@ test('open agent teleport/rope keep agency; shotgun and decision bounds reject i
 });
 
 test('open agent pending job restores both teams, props, live rules and decision counters',async()=>{
- const prior=globalThis.fetch;globalThis.fetch=async()=>{throw Error('offline')};
+ const prior=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({status:'unavailable',error:'offline'}),{status:503});
  try{
   for(const team of [0,1]){
    state.controllers=['ultra','ultra'];newGame(0,2,9974);beginTurn(team);
@@ -809,14 +809,15 @@ test('open agent rematch resets decision bounds before the opening bot acts',asy
 });
 
 
-test('open agent freezes the same frame on second-shot submit so polling saves a matching snapshot',async()=>{
+test('open agent checkpoints live physics while keeping the original request immutable',async()=>{
  const prior=globalThis.fetch;let unblock;globalThis.fetch=async()=>await new Promise(resolve=>{unblock=()=>resolve(new Response(JSON.stringify({status:'pending',ticket:'open-freeze',pollAfter:5}),{status:202}))});
  try{
   flatDuel(920);state.aiDriver='broker';state.active.grounded=true;
   assert.equal(window.__craterCrew.applyAgentAction({type:'shoot',weapon:'shotgun',angle_deg:0,direction:1,power:50,fuse:3,bounce:'high'}),true);state.aiTimer=0;
   const victim=state.worms[0];victim.grounded=false;victim.vx=100;victim.vy=-100;
   update(.04);assert.equal(state.phase,'broker-wait');unblock();await new Promise(resolve=>setImmediate(resolve));
-  const saved=readPendingTurn();assert.ok(saved);assert.equal(saved.request.snapshot.worms[0].x,Math.round(saved.game.worms[0].x));assert.equal(saved.request.snapshot.worms[0].y,Math.round(saved.game.worms[0].y));
+  const request=JSON.stringify(state.brokerRequest);update(.04);assert.equal(savePendingTurn(state),true);
+  const saved=readPendingTurn();assert.ok(saved);assert.equal(JSON.stringify(saved.request),request);assert.notEqual(saved.request.snapshot.worms[0].x,Math.round(saved.game.worms[0].x));
   state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));assert.equal(restorePendingBrokerTurn(saved),true);
  }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;newGame(0,1,8921);state.aiDriver='local'}
 });
@@ -831,7 +832,7 @@ test('open agent jetpack steering does not make an unrequested local tactical bo
 
 
 test('open agent reload retains first-shot damage and action in the God journal',async()=>{
- const prior=globalThis.fetch;globalThis.fetch=async()=>{throw Error('offline')};
+ const prior=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({status:'unavailable',error:'offline'}),{status:503});
  try{
   flatDuel(920);state.aiDriver='broker';state.active.grounded=true;state.controllers=['human','god'];
   // Open a turn log after the explicit fixture setup, before the first model action.
@@ -844,4 +845,59 @@ test('open agent reload retains first-shot damage and action in the God journal'
   assert.equal(restorePendingBrokerTurn(saved),true);state.phase='ready';assert.equal(window.__craterCrew.applyAgentAction({type:'pass'}),true);
   window.__craterCrew.nextTurn();const last=state.journal.at(-1);assert.equal(last.a,'shotgun');assert.deepEqual(last.h,[[0,lost]]);
  }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;newGame(0,1,8923);state.aiDriver='local'}
+});
+
+test('Broker deadline uses local backfill, ignores late result and restores Broker next turn',async()=>{
+ const prior=globalThis.fetch;let release,body,posts=0;
+ globalThis.fetch=async(_url,options)=>{posts++;body=JSON.parse(options.body);return new Promise(resolve=>{release=()=>resolve(new Response(JSON.stringify({status:'done',turnId:body.turnId,action:{type:'pass'}}),{status:200}))})};
+ try{
+  const {ai}=flatDuel(920);state.aiDriver='broker';state.controllers=['human','ultra'];ai.grounded=true;state.timer=5.25;
+  await requestBrokerTurn();assert.equal(state.brokerFallbackTurn,true);assert.equal(state.selected,'shotgun');assert.equal(state.shotgunLeft,1);assert.equal(sessionItems.has(PENDING_KEY),false);assert.match(state.message,/LOCAL BACKFILL/);assert.ok(state.timer<=5);
+  release?.();await new Promise(resolve=>setImmediate(resolve));assert.equal(state.brokerFallbackTurn,true);assert.equal(state.shotgunLeft,1);
+  aiAct();assert.equal(state.phase,'resolving');assert.equal(posts,1,'second local shot does not submit another Broker job');
+  beginTurn(1);assert.equal(state.brokerFallbackTurn,false);assert.deepEqual(state.controllers,['human','ultra']);
+  globalThis.fetch=async(_url,options)=>{posts++;return new Response(JSON.stringify({status:'done',turnId:JSON.parse(options.body).turnId,action:{type:'pass'}}),{status:200})};
+  await requestBrokerTurn();assert.equal(posts,2,'next turn returns to Broker');
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;delete state.controllers;newGame(0,1,9802)}
+});
+
+test('Reload consumes offline time and cannot renew an expired Broker budget',async()=>{
+ const prior=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({status:'unavailable',error:'offline'}),{status:503});
+ try{
+  newGame(0,2,9803);state.aiDriver='broker';beginTurn(1);await requestBrokerTurn();
+  const saved=readPendingTurn();assert.ok(saved);const request=JSON.stringify(saved.request),remaining=saved.game.timer;
+  saved.checkpointAt=Date.now()-2000;saved.deadlineAt=Date.now()+5000;
+  assert.equal(restorePendingBrokerTurn(saved),true);assert.ok(state.timer<=remaining-2);assert.equal(JSON.stringify(state.brokerRequest),request);
+  saved.deadlineAt=Date.now()-1;assert.equal(restorePendingBrokerTurn(saved),true);assert.equal(state.brokerFallbackTurn,true);assert.ok(state.timer<=5);assert.equal(state.brokerRequest,null);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,9804)}
+});
+
+test('Broker retryable 503 retries exactly the same body; permanent refusal never retries',async()=>{
+ const prior=globalThis.fetch,posted=[];
+ try{
+  globalThis.fetch=async(_url,options)=>{posted.push(options.body);return posted.length===1?new Response(JSON.stringify({status:'unavailable',retryable:true,error:'temporary upstream failure'}),{status:503}):new Response(JSON.stringify({status:'done',turnId:JSON.parse(options.body).turnId,action:{type:'pass'}}),{status:200})};
+  newGame(0,2,9805);state.aiDriver='broker';beginTurn(1);await requestBrokerTurn();
+  assert.equal(posted.length,2);assert.equal(posted[0],posted[1]);assert.equal(state.phase,'resolving');
+  posted.length=0;globalThis.fetch=async(_url,options)=>{posted.push(options.body);return new Response(JSON.stringify({status:'unavailable',retryable:false,error:'project denied'}),{status:503})};
+  newGame(0,2,9806);state.aiDriver='broker';beginTurn(1);await requestBrokerTurn();assert.equal(posted.length,1);assert.equal(state.phase,'broker-error');
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,9807)}
+});
+
+test('Broker waits until five seconds remain without a 12-second cap; simulation threshold backfills',async()=>{
+ const prior=globalThis.fetch;
+ globalThis.fetch=async()=>new Promise(()=>{});
+ try{
+  const {ai}=flatDuel(920);state.aiDriver='broker';ai.grounded=true;state.timer=40;
+  const pending=requestBrokerTurn();assert.ok(state.brokerDeadlineAt-state.brokerSavedAt>=34999);
+  state.timer=5.01;update(.02);await pending;
+  assert.equal(state.brokerFallbackTurn,true);assert.equal(state.selected,'shotgun');assert.ok(state.timer<5);assert.equal(state.brokerRequest,null);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,9808)}
+});
+
+test('An entirely elapsed Broker turn resolves without shooting or extending the clock',async()=>{
+ const prior=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;throw Error('unexpected')};
+ try{
+  const {ai}=flatDuel(920);state.aiDriver='broker';ai.grounded=true;state.timer=0;
+  await requestBrokerTurn();assert.equal(calls,0);assert.equal(state.phase,'resolving');assert.equal(state.timer,0);assert.equal(state.shotgunLeft,0);assert.equal(state.projectiles.length,0);
+ }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,9809)}
 });

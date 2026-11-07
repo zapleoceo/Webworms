@@ -1,3 +1,5 @@
+import {OPEN_RULES} from './agent-instructions.mjs';
+import {OPEN_PROTOCOL,ACTION_SCHEMA,MAX_AGENT_STEPS,MAX_UTILITY_STEPS} from '../agent-contract.js';
 // Admin and settings API. Every Vercel function under api/admin/** and api/settings.mjs routes through here,
 // and server.mjs uses the same handler locally.
 //   GET    /api/settings                public, merged defaults + stored settings (enabled sponsors only)
@@ -225,6 +227,13 @@ async function admin(request,path){
  if(path==='/api/admin/session')return json({authenticated:authed,setupRequired:false,storage:Boolean(store),passwordSource:auth.mode});
  if(!authed)return err(401,'not signed in');
  if(path==='/api/admin/password')return changePassword(request,store,auth);
+ if(path==='/api/admin/agent-contract'){
+  if(request.method!=='GET')return err(405,'method not allowed');
+  return json({protocol:OPEN_PROTOCOL,systemPrompt:OPEN_RULES,actionSchema:ACTION_SCHEMA,limits:{decisions:MAX_AGENT_STEPS,utilities:MAX_UTILITY_STEPS},
+   inputDescription:'Template only, not a live request. The user message is JSON with turn_id, difficulty and snapshot. PC God also receives history (up to 40 turns). PC Hard hides wind. Values come from the current match.',
+   inputTemplate:{turn_id:'<current decision ID>',difficulty:'<hard | ultra | god>',snapshot:{map:'<map ID>',size:'[width,height]',round:'<round>',suddenDeath:'<boolean>',timer:'<remaining seconds>',wind:'<number or null for Hard>',windKnown:'<boolean>',water:'<waterline y>',activeId:'<active worm ID>',team:'<team ID>',worms:'[{id,name,team,x,y,hp,alive}]',props:'[{kind,x,y,armed?}] (nearest 200)',propsTotal:'<count>',propsTruncated:'<boolean>',terrain:'<sampled surface heights>',terrainGrid:'<96×48 coarse occupancy plus legend>',shotgunLeft:'<0 or 1>',ammo:'<remaining team ammunition>',availableActions:'<currently allowed action names>',remainingDecisions:'<decision budget>',remainingUtilities:'<utility budget>',previousAction:'<optional prior action>',rules:'<actual match physics and rules>',weapons:'<actual weapon properties>'},history:'<God only: recorded outcomes of recent turns>'},
+   execution:'This game request defines no native tool calls; the game control interface is the JSON action schema. Provider runtime permissions are not represented here. The returned action is validated by the browser against the current match. The clock and physics keep running. With 5 seconds left, local AI takes over this turn; late model results are ignored. This page is read-only and does not start a model job.'});
+ }
  if(path==='/api/admin/models')return listModels(request);
  if(path==='/api/admin/models/test')return testModel(request);
  if(path==='/api/admin/settings'){

@@ -94,13 +94,13 @@ test('the clock runs out in every phase where the turn is played and the turn is
  }
 });
 
-test('the clock stands still while the Broker thinks, in flight/fuse resolution and after game over',async()=>{
+test('the clock runs during Broker thinking, but pauses for flight/fuse resolution and game over',async()=>{
  const prior=globalThis.fetch;
  globalThis.fetch=(_url,options)=>new Promise((_resolve,reject)=>options?.signal?.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError'))));// a Broker request that never answers (the 28 s deadline aborts it)
  try{
   newGame(0,1,990);state.controllers=['human','ultra'];beginTurn(1);aiAct();assert.equal(state.phase,'broker-wait');
-  const t0=state.timer;run(3);assert.equal(state.timer,t0,'broker-wait freezes the clock on purpose');
-  state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));assert.equal(state.phase,'broker-error');
+  const t0=state.timer;run(3);assert.ok(state.timer<t0-2.9,'broker-wait consumes the turn clock');
+  state.brokerController?.abort();await new Promise(resolve=>setImmediate(resolve));
  }finally{globalThis.fetch=prior;delete state.controllers}
  newGame(0,1,991);flatten(state.terrain);state.selected='dynamite';fire();assert.equal(state.phase,'retreat');
  const t1=state.timer;run(10,()=>state.team===1);assert.equal(state.timer,t1,'retreat and resolving keep the clock');assert.equal(state.team,1);
@@ -146,4 +146,25 @@ test('legacy Broker fallback also resets on rematch',async()=>{
   element('broker-local').onclick();assert.equal(state.difficulty,2);beginTurn(1);aiAct();assert.equal(posts,1);
   element('rematch').onclick();beginTurn(1);aiAct();await new Promise(resolve=>setImmediate(resolve));assert.equal(posts,2);
  }finally{state.brokerController?.abort();globalThis.fetch=prior;state.aiDriver='local';newGame(0,1,4647)}
+});
+
+
+test('waiting AI still simulates falling crates and armed mines; timeout ends the turn',()=>{
+ newGame(0,1,1983);state.controllers=['human','ultra'];beginTurn(1);flatten(state.terrain);
+ for(const w of state.worms){w.y=PLAIN-R-1;w.grounded=true;w.x=500+w.id*250}
+ state.phase='broker-wait';state.aiTimer=99;state.timer=1;
+ const crate={kind:'crate',x:2000,y:PLAIN-400,vx:0,vy:0,r:11,parachute:true,hp:10,boom:0};
+ state.props=[crate,{kind:'mine',x:100,y:PLAIN-8,vx:0,vy:0,r:7,resting:true,armed:true,fuse:.1,hp:1,boom:0}];
+ update(.2);assert.ok(crate.y>PLAIN-400,'crate keeps falling');assert.equal(state.props.some(p=>p.kind==='mine'),false,'mine detonates during network wait');
+ assert.ok(state.timer<1,'clock keeps ticking');state.timer=.01;update(.02);assert.equal(state.phase,'resolving');assert.equal(state.timer,0);
+ delete state.controllers;
+});
+
+test('camera holds the last impact through aftermath, even with no surviving moving target',()=>{
+ newGame(0,1,1984);flatten(state.terrain);state.phase='resolving';state.resolveTimer=0;
+ for(const w of state.worms){w.y=PLAIN-R-1;w.grounded=true;w.vx=0;w.vy=0}
+ explosion(2300,PLAIN-400,20,1,state.active.id);
+ const focus=window.__craterCrew.camFocus();assert.equal(focus.x,2300);assert.equal(focus.y,PLAIN-400);
+ const team=state.team;run(.7);assert.equal(state.team,team,'full explosion aftermath remains visible');
+ beginTurn(1-team);assert.equal(state.camImpact,null,'next turn releases impact focus');
 });
