@@ -901,3 +901,51 @@ test('An entirely elapsed Broker turn resolves without shooting or extending the
   await requestBrokerTurn();assert.equal(calls,0);assert.equal(state.phase,'resolving');assert.equal(state.timer,0);assert.equal(state.shotgunLeft,0);assert.equal(state.projectiles.length,0);
  }finally{state.brokerController?.abort();globalThis.fetch=prior;newGame(0,1,9809)}
 });
+
+test('agent selects only a living teammate before attack without resetting the clock',()=>{
+ const apply=window.__craterCrew.applyAgentAction;
+ delete state.controllers;newGame(0,2,12001);state.controllers=['human','ultra'];beginTurn(1);state.timer=22;
+ const old=state.active,target=state.worms.find(w=>w.team===1&&w!==old);
+ assert.equal(apply({type:'select_worm',worm_id:0}),false);
+ assert.equal(apply({type:'select_worm',worm_id:target.id}),true);
+ assert.equal(state.active,target);assert.equal(old.active,false);assert.equal(state.timer,22);assert.equal(state.turnLog.w,target.id);
+ state.used=true;assert.equal(apply({type:'select_worm',worm_id:old.id}),false);
+ delete state.controllers;
+});
+test('agent jumps and backflips with real impulses and waits for landing',()=>{
+ for(const kind of ['forward','backflip']){
+  const {ai}=flatDuel(1400,2,12002);state.controllers=['human','ultra'];ai.grounded=true;state.timer=25;
+  assert.equal(window.__craterCrew.applyAgentAction({type:'jump',direction:1,kind}),true);
+  assert.equal(ai.vx,kind==='forward'?135:-55);assert.equal(ai.vy,kind==='forward'?-320:-440);
+  assert.equal(state.agentUtilityCount,1);update(.02);assert.equal(state.phase,'reposition');
+  for(let i=0;i<150&&state.phase==='reposition';i++)update(.02);
+  assert.equal(state.phase,'ready');assert.ok(state.timer<25);assert.equal(state.agentJump,false);
+  delete state.controllers;
+ }
+});
+test('agent previews real attack damage without mutating the match and respects budget',()=>{
+ const {ai,player}=flatDuel(835,2,12003);state.controllers=['human','ultra'];ai.grounded=player.grounded=true;state.timer=25;
+ const before=JSON.stringify({worms:state.worms,props:state.props,ammo:state.ammo,stats:state.stats,turnLog:state.turnLog,draws:state.simDraws});
+ const action={type:'punch',direction:1,retreat_direction:0};
+ assert.equal(window.__craterCrew.applyAgentAction({type:'simulate',action}),true);
+ assert.equal(JSON.stringify({worms:state.worms,props:state.props,ammo:state.ammo,stats:state.stats,turnLog:state.turnLog,draws:state.simDraws}),before);
+ assert.equal(state.timer,25);assert.equal(state.projectiles.length,0);assert.ok(state.agentLastSimulation.result.enemyDmg>0);
+ assert.equal(window.__craterCrew.applyAgentAction({type:'simulate',action}),true);
+ assert.equal(window.__craterCrew.applyAgentAction({type:'simulate',action}),false);
+ state.agentSimulationCount=0;state.timer=7;assert.equal(window.__craterCrew.applyAgentAction({type:'simulate',action}),false);
+ delete state.controllers;
+});
+test('agent attack chooses retreat direction without a second attack',()=>{
+ const {ai}=flatDuel(1400,2,12004);state.controllers=['human','ultra'];ai.grounded=true;
+ assert.equal(window.__craterCrew.applyAgentAction({type:'dynamite',direction:1,retreat_direction:-1}),true);
+ assert.equal(state.phase,'retreat');assert.equal(state.aiRetreat,-1);assert.equal(state.projectiles.length,1);
+ assert.equal(window.__craterCrew.applyAgentAction({type:'jump',direction:1,kind:'forward'}),false);
+ delete state.controllers;
+});
+test('agent jetpack drops dynamite only at its requested time',()=>{
+ const {ai}=flatDuel(1400,2,12005);state.controllers=['human','ultra'];ai.grounded=true;
+ assert.equal(window.__craterCrew.applyAgentAction({type:'jetpack',target_x:1100,drop_after:.5}),true);
+ for(let i=0;i<20;i++)update(.02);assert.equal(state.jetDropped,false);
+ for(let i=0;i<8;i++)update(.02);assert.equal(state.jetDropped,true);assert.equal(state.projectiles.filter(p=>p.type==='dynamite').length,1);
+ delete state.controllers;
+});
