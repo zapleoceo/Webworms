@@ -5,7 +5,8 @@ import {drawHud} from './hud.js';
 import {weaponIcon} from './icons.js';
 import {makeBlast,drawBlast} from './effects.js';
 import {bakeBackground,drawBackdrop,drawAmbient,drawWater} from './scenery.js';
-import {brokerTurnOptions,brokerSnapshot} from './broker-ai.js';
+import {brokerTurnOptions,brokerSnapshot,brokerAgentSnapshot} from './broker-ai.js';
+import {OPEN_PROTOCOL,MAX_AGENT_STEPS,MAX_UTILITY_STEPS,validAgentAction} from './agent-contract.js';
 import {clearPendingTurn,savePendingTurn,readPendingTurn} from './broker-resume.js';
 import {JOURNAL_MAX,openTurn,noteAction,noteTarget,noteLanding,closeTurn,targetFromCandidate} from './journal.js';
 import {W,H,WATER,R,GRAVITY,WEAPONS,data,AI_PROFILES,clamp,seeded,createTerrain,solid,carve,groundY,blastDamage,selectShot,selectLob,AIM_MIN,AIM_MAX,aimAngle,VIEW_W,VIEW_H,spawnSpots,BODIES,stepBody,crawl,wormFits,wormGrounded,WALK_SPEED,wormDrowned} from './engine.js';
@@ -79,8 +80,8 @@ function buildTerrain(rect=null){if(state.sim)return;
 function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePending=false){
  state.localAiTeams=[false,false];
  if(pendingSettings){const s=pendingSettings;pendingSettings=null;useSettings(s)}
- stopVoices();if(!preservePending)clearPendingTurn();state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];state.brokerSequence=0;state.journal=[];state.turnLog=null;$('broker-panel').hidden=true;
- simRand=seeded((seed^0x9e3779b9)>>>0);visualRand=seeded((seed^0x7f4a7c15)>>>0);state.seed=seed;state.matchId=newMatchId();state.simDraws=0;state.map=map;state.difficulty=clamp(Number(difficulty)||0,0,2);state.musicStep=0;state.musicNextTime=0;state.terrain=createTerrain(map,seed);buildTerrain();state.worms=[];state.projectiles=[];state.particles=[];state.blasts=[];state.decor=[];state.active=null;state.phase='ready';state.timer=rules.turnTime;state.round=1;state.waterLevel=WATER;state.ended=false;state.running=true;state.used=false;state.shotgunLeft=0;state.grenadeFuse=3;state.grenadeBounce='high';state.strikeDir=1;state.playerGrenadeFuse=3;state.playerGrenadeBounce='high';state.playerStrikeDir=1;state.jetDropped=false;state.selected='bazooka';state.playerWeapon='bazooka';state.airTarget=null;state.aim=-.72;state.dir=1;state.power=.5;state.charging=false;state.keys={};state.aiTimer=0;state.resolveTimer=0;state.jetTime=0;state.jetPulse=0;state.rope=null;state.aiRope=null;state.shake=0;state.wind=(simRandom()-.5)*rules.windStart*2;state.crateHeal=rules.crateHeal;state.suddenDeathRound=rules.suddenDeathRound;state.windTarget=state.wind;state.aiMoves=0;state.aiTarget=0;state.aiMoveTime=0;state.aiRetreat=0;
+ stopVoices();if(!preservePending)clearPendingTurn();state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];state.brokerSequence=0;state.agentStepCount=0;state.agentUtilityCount=0;state.agentLastAction=null;state.aiUtilityUsed=false;state.aiFollowUp=false;state.journal=[];state.turnLog=null;$('broker-panel').hidden=true;
+ simRand=seeded((seed^0x9e3779b9)>>>0);visualRand=seeded((seed^0x7f4a7c15)>>>0);state.seed=seed;state.matchId=newMatchId();state.simDraws=0;state.map=map;state.difficulty=clamp(Number(difficulty)||0,0,2);state.musicStep=0;state.musicNextTime=0;state.terrain=createTerrain(map,seed);buildTerrain();state.worms=[];state.projectiles=[];state.particles=[];state.blasts=[];state.decor=[];state.active=null;state.phase='ready';state.timer=rules.turnTime;state.round=1;state.waterLevel=WATER;state.ended=false;state.running=true;state.used=false;state.shotgunLeft=0;state.grenadeFuse=3;state.grenadeBounce='high';state.strikeDir=1;state.playerGrenadeFuse=3;state.playerGrenadeBounce='high';state.playerStrikeDir=1;state.jetDropped=false;state.selected='bazooka';state.playerWeapon='bazooka';state.airTarget=null;state.aim=-.72;state.dir=1;state.power=.5;state.charging=false;state.keys={};state.aiTimer=0;state.resolveTimer=0;state.jetTime=0;state.jetPulse=0;state.rope=null;state.aiRope=null;state.shake=0;state.wind=(simRandom()-.5)*rules.windStart*2;state.agentRules={gravity:GRAVITY,waterRise:rules.waterRise,turnTime:rules.turnTime,walkSpeed:WALK_SPEED,windDrift:rules.windDrift,windCap:rules.windCap};state.crateHeal=rules.crateHeal;state.suddenDeathRound=rules.suddenDeathRound;state.windTarget=state.wind;state.aiMoves=0;state.aiTarget=0;state.aiMoveTime=0;state.aiRetreat=0;
  // Random level spots across the big map; teams alternate along it so rivals start within range.
  const spots=spawnSpots(state.terrain,seed);
  // The opening volley is a real edge (balance-sim.js: the side moving first won 55-62% of bot matches, and team 0 always
@@ -97,7 +98,7 @@ function newGame(map=0,difficulty=1,seed=Math.floor(Date.now()%1e9),preservePend
 }
 function living(team){return state.worms.filter(w=>w.team===team&&w.alive)}
 function beginTurn(team){
- if(state.ended)return;state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];clearPendingTurn();$('broker-panel').hidden=true;state.team=team;state.timer=rules.turnTime;state.phase='ready';state.used=false;state.shotgunLeft=0;state.jetDropped=false;state.charging=false;state.jetTime=0;state.aiMoves=0;state.aiMoveTime=0;state.aiRetreat=0;state.airTarget=null;if(isHuman(team)){state.selected=state.playerWeapon;state.grenadeFuse=state.playerGrenadeFuse;state.grenadeBounce=state.playerGrenadeBounce;state.strikeDir=state.playerStrikeDir}state.windTarget=clamp(state.wind+(simRandom()-.5)*rules.windDrift*2,-rules.windCap,rules.windCap);
+ if(state.ended)return;state.brokerController?.abort();state.brokerController=null;state.brokerTicket=null;state.brokerTurnId=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];clearPendingTurn();$('broker-panel').hidden=true;state.team=team;state.timer=state.agentRules?.turnTime??rules.turnTime;state.phase='ready';state.used=false;state.shotgunLeft=0;state.jetDropped=false;state.charging=false;state.jetTime=0;state.aiMoves=0;state.aiMoveTime=0;state.aiRetreat=0;state.airTarget=null;if(isHuman(team)){state.selected=state.playerWeapon;state.grenadeFuse=state.playerGrenadeFuse;state.grenadeBounce=state.playerGrenadeBounce;state.strikeDir=state.playerStrikeDir}state.windTarget=clamp(state.wind+(simRandom()-.5)*(state.agentRules?.windDrift??rules.windDrift)*2,-(state.agentRules?.windCap??rules.windCap),state.agentRules?.windCap??rules.windCap);
  state.worms.forEach(w=>w.active=false);
  const alive=living(team);if(!alive.length){finish(1-team);return}
  // Bots: the local algorithm always plays its sharpest profile; Broker levels name themselves in the prompt.
@@ -105,14 +106,14 @@ function beginTurn(team){
  const prior=state.lastActiveId[team];state.active=alive.find(w=>w.id>prior)||alive[0];state.active.active=true;state.lastActiveId[team]=state.active.id;state.dir=team? -1:1;state.aim=-.78;state.power=.55;state.turnLog=openTurn(state);
  updateUI();say(isBot(team)?thinkingText():(isBot(1-team)?'YOUR TURN · TAKE AIM':TEAM_NAMES[team]+' · YOUR TURN'),1.8,TEAM_COLORS[team]);voice(state.active,'turn');
  // The Broker model needs several seconds, so its request leaves the moment the AI turn starts.
- state.aiTimer=team?(usesBroker(state.team)?0:1.1):0;pickTarget(null);state.rope=null;state.aiRope=null;state.aiUtilityUsed=false;state.aiFollowUp=false;if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
+ state.aiTimer=team?(usesBroker(state.team)?0:1.1):0;pickTarget(null);state.rope=null;state.aiRope=null;state.aiUtilityUsed=false;state.aiFollowUp=false;state.agentStepCount=0;state.agentUtilityCount=0;state.agentLastAction=null;if(scheme.crateChance>0&&simRandom()<scheme.crateChance&&dropCrate(state,simRandom))say('HEALTH CRATE INCOMING!',1.4);
 }
 function finish(winner){clearPendingTurn();state.brokerController?.abort();state.brokerController=null;$('broker-panel').hidden=true;state.ended=true;state.running=false;state.phase='ended';state.musicNextTime=0;// Results read from the human's side; a bot-vs-bot match and a two-player match just name the winner.
  const solo=isHuman(0)!==isHuman(1),humanWon=solo&&winner!==2&&isHuman(winner),loser=TEAM_TITLES[1-winner];
  $('result-caption').textContent=winner===2?'THE ISLAND CLAIMS EVERYONE':TEAM_NAMES[winner]+' WIN';$('result-title').textContent=winner===2?'DRAW':!solo?TEAM_NAMES[winner]+'!':humanWon?'VICTORY!':'DEFEAT';$('result-text').textContent=winner===2?'Both teams went under. Try another island!':solo&&!humanWon?`The ${TEAM_TITLES[winner]} took this island. Try another tactic!`:`The ${loser} have been sent packing. The island is theirs!`;$('result-stats').innerHTML=resultStats(winner);$('result').classList.toggle('team-sky',winner===0);$('result').classList.toggle('team-dirt',winner===1);$('result').classList.add('open');music.setMood(winner!==2&&(isHuman(winner)||isBot(1-winner)&&isBot(winner))?'victory':'defeat');$('rematch').focus?.();tone(winner?180:600,.5,'sine',.1,winner?80:900);// The closing line speaks for the human side: cheers when a human team wins, "game over" when the bots win.
  const champ=state.worms.find(w=>w.alive&&w.team===winner);if(winner===2)voice(state.worms[0],'tie');else if(isBot(winner)&&isHuman(1-winner))voice({team:1-winner,id:0},'die');else if(champ&&isHuman(winner))voice(champ,'win')}// the win clips address a player ("you win"); a bot-vs-bot match ends on the fanfare alone
 function nextTurn(){if(state.ended)return;if(!state.sim&&state.turnLog){closeTurn(state.turnLog,state,state.journal??=[]);state.turnLog=null}const p=living(0).length,e=living(1).length;if(!p||!e){finish(!p&&!e?2:p?0:1);return}// A round is over once both teams have moved, whoever opened (state.firstTeam; a recovered old save has none: team 0).
- if(state.team!==(state.firstTeam??0)){state.round++;if(state.round>=rules.suddenDeathRound){state.waterLevel=Math.max(270,WATER-(state.round-rules.suddenDeathRound+1)*rules.waterRise);music.setMood('tense');say('SUDDEN DEATH · WATER RISING!',1.7)}}beginTurn(1-state.team)}
+ if(state.team!==(state.firstTeam??0)){state.round++;if(state.round>=(state.suddenDeathRound??rules.suddenDeathRound)){state.waterLevel=Math.max(270,WATER-(state.round-(state.suddenDeathRound??rules.suddenDeathRound)+1)*(state.agentRules?.waterRise??rules.waterRise));music.setMood('tense');say('SUDDEN DEATH · WATER RISING!',1.7)}}beginTurn(1-state.team)}
 function cycle(){if(!state.running||!isHuman(state.team)||state.used||state.shotgunLeft||state.phase!=='ready')return;const a=living(state.team),idx=a.indexOf(state.active);state.active.active=false;state.active=a[(idx+1)%a.length];state.active.active=true;state.lastActiveId[0]=state.active.id;updateUI();tone(450,.05)}
 function endTurn(){if(!state.running||!isHuman(state.team)||state.phase==='resolving')return;state.used=true;state.phase='resolving';state.resolveTimer=.5;state.charging=false;say('TURN PASSED',.8)}
 function emit(x,y,color,count=18,speed=180){if(state.sim)return;for(let i=0;i<count;i++){const a=visualRand()*Math.PI*2,v=speed*(.25+visualRand()*.9);state.particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-50,life:.35+visualRand()*.6,max:1,r:1.5+visualRand()*5,color});}}
@@ -296,15 +297,44 @@ function applyBrokerChoice(id){const choice=state.brokerOptions.find(o=>o.id===i
  // A utility combo: move first, then the local AI takes the follow-up shot (no second model call).
  if(a.utility){state.phase='ready';state.brokerTicket=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];clearPendingTurn();$('broker-panel').hidden=true;state.aiFollowUp=true;if(!startAiUtility(a.utility))state.aiTimer=.2;return true}
  state.brokerTicket=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];clearPendingTurn();$('broker-panel').hidden=true;noteTarget(state.turnLog,targetFromCandidate(id));applyAction(a);return true}
+// A model-selected control is checked again against the current local match before any side effect.
+// This is an action interface, not arbitrary code execution; Broker never gets filesystem/network tools.
+function applyAgentAction(a){
+ const w=state.active;
+ if(!validAgentAction(a)||!w?.alive||!isBot(state.team)||!usesBroker(state.team)||!['ready','broker-wait'].includes(state.phase))return false;
+ if((state.agentStepCount||0)>=MAX_AGENT_STEPS)return false;
+ if(state.shotgunLeft&&!(a.type==='pass'||a.type==='shoot'&&a.weapon==='shotgun'))return false;
+ const utility=['walk','teleport','rope'].includes(a.type);
+ if(utility&&(state.agentUtilityCount||0)>=MAX_UTILITY_STEPS)return false;
+ if('target_x' in a&&(a.target_x<R||a.target_x>W-R))return false;
+ if(a.type==='airstrike'&&(!(state.ammo?.[w.team]?.airstrike>0)||a.target_x<75||a.target_x>W-75))return false;
+ if(a.type==='jetpack'&&w.jetUsed)return false;
+ if(a.type==='teleport'&&(!(state.ammo?.[w.team]?.teleport>0)||a.x<R||a.x>W-R||a.y<R||a.y>state.waterLevel-40||!wormFits(state.terrain,a.x,a.y)))return false;
+ // Reaching the decision bound is an explicit pass, not a hidden local-AI substitute.
+ state.agentStepCount=(state.agentStepCount||0)+1;
+ if(utility)state.agentUtilityCount=(state.agentUtilityCount||0)+1;
+ state.agentLastAction={...a};state.aiFollowUp=false;
+ state.phase='ready';state.brokerTicket=null;state.brokerRequest=null;state.brokerSavedAt=null;state.brokerOptions=[];clearPendingTurn();$('broker-panel').hidden=true;
+ if(a.type==='pass'){startResolution(.5);return true}
+ if(a.type==='walk'){state.aiTarget=a.target_x;state.aiMoveTime=Math.min(a.seconds,Math.max(.1,state.timer));state.phase='reposition';state.aiMoves++;return true}
+ if(a.type==='teleport'){state.selected='teleport';state.airTarget=a.x;state.airTargetY=a.y;fire();state.aiTimer=.3;return true}
+ if(a.type==='rope'){
+  state.selected='rope';state.dir=a.direction;state.aim=a.angle_deg*Math.PI/180;w.face=state.dir;fire();
+  state.aiRope={plan:{agent:true,swing:a.swing,reel:a.reel,releaseAt:a.release_after},t:0};return true;
+ }
+ if(a.type==='shoot'){applyAction({weapon:a.weapon,aim:a.angle_deg*Math.PI/180,dir:a.direction,power:a.power/100,fuse:a.fuse,bounce:a.bounce});return true}
+ applyAction({weapon:a.type,dir:a.direction,strikeDir:a.direction,targetX:a.target_x});return true;
+}
 function brokerWait(ms,signal){return new Promise((resolve,reject)=>{if(signal.aborted){reject(Error('aborted'));return}const timer=setTimeout(resolve,ms);signal.addEventListener('abort',()=>{clearTimeout(timer);reject(Error('aborted'))},{once:true})})}
 async function requestBrokerTurn(resume=false){
  if(!state.running||!isBot(state.team)||!usesBroker(state.team)||!['ready','broker-error'].includes(state.phase))return;
  if(!resume||!state.brokerRequest){
-  state.brokerOptions=withSimText(rankOptions(brokerTurnOptions(state,{windBlind:ctrl(state.team)==='hard'})));
+  if((state.agentStepCount||0)>=MAX_AGENT_STEPS){say('AGENT DECISION LIMIT · TURN ENDED',1.2);startResolution(.5);return}
+  state.brokerOptions=[];
   state.brokerTurnId=`t${state.matchId}_${state.round}_${state.active.id}_${++state.brokerSequence}`;
   // PC GOD is ultra plus the match journal (after the snapshot and candidates, see api/ai/turn.mjs).
   const god=ctrl(state.team)==='god';
-  state.brokerRequest={turnId:state.brokerTurnId,difficulty:god?3:state.difficulty,snapshot:brokerSnapshot(state,{windBlind:ctrl(state.team)==='hard'}),candidates:state.brokerOptions.map(({id,description})=>({id,description})),...(god?{history:(state.journal||[]).slice(-JOURNAL_MAX)}:{})};
+  state.brokerRequest={protocol:OPEN_PROTOCOL,turnId:state.brokerTurnId,difficulty:god?3:state.difficulty,snapshot:brokerAgentSnapshot(state,{windBlind:ctrl(state.team)==='hard'}),...(god?{history:(state.journal||[]).slice(-JOURNAL_MAX)}:{})};
   state.brokerTicket=null;state.brokerSavedAt=Date.now();
  }
  const turnId=state.brokerTurnId,activeId=state.active.id,controller=new AbortController();
@@ -335,7 +365,7 @@ async function requestBrokerTurn(resume=false){
   }
   if(result?.status!=='done')throw Error('Broker is taking too long. Retry to read the same job.');
   if(!current())return;
-  if(result.turnId!==turnId||!applyBrokerChoice(result.candidateId))throw Error('Broker returned an invalid move.');
+  if(result.turnId!==turnId||!(state.brokerRequest?.protocol===OPEN_PROTOCOL?applyAgentAction(result.action):applyBrokerChoice(result.candidateId)))throw Error('Broker returned an invalid move.');
  }catch(error){if(current())brokerFailure(error.name==='AbortError'?'Broker timed out. Retry this turn.':error.name==='SyntaxError'?'Broker endpoint unavailable on this server.':String(error.message||'Broker unavailable.').slice(0,140))}
  finally{clearTimeout(deadline);if(state.brokerController===controller)state.brokerController=null}
 }
@@ -344,7 +374,7 @@ function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);cons
  if(state.rope&&state.active===w){
   const rp=state.rope,k=state.keys,ai=isBot(state.team)?state.aiRope:null;
   // The AI replays the rope plan it simulated: swing toward the target, maybe reel in, let go on time.
-  if(ai){if(rp.state==='attached')ai.t+=dt;const inp=executeRopeInputs(ai.plan,ai.t);if(inp.release||ai.t>4){releaseRope(w,rp);state.rope=null;state.aiRope=null;w.grounded=false;state.aiTimer=Math.max(state.aiTimer,.5)}else stepRope(state.terrain,w,rp,dt,inp)}
+  if(ai){if(rp.state==='attached')ai.t+=dt;const inp=ai.plan.agent?{left:ai.plan.swing<0,right:ai.plan.swing>0,up:ai.plan.reel<0,down:ai.plan.reel>0,release:ai.t>=ai.plan.releaseAt}:executeRopeInputs(ai.plan,ai.t);if(inp.release||ai.t>4){releaseRope(w,rp);state.rope=null;state.aiRope=null;w.grounded=false;state.aiTimer=Math.max(state.aiTimer,.5)}else stepRope(state.terrain,w,rp,dt,inp)}
   else stepRope(state.terrain,w,rp,dt,{left:!!(k.KeyA||k.ArrowLeft||k.left),right:!!(k.KeyD||k.ArrowRight||k.right),up:!!(k.KeyW||k.ArrowUp||k.jump),down:!!(k.KeyS||k.ArrowDown)});
   if(rp.state==='missed'){state.rope=null;state.aiRope=null;say('ROPE MISSED',.8)}
   else if(rp.state==='attached'){w.grounded=false;w.sliding=false;if(Math.abs(w.vx)>20)w.face=Math.sign(w.vx);if(wormDrowned(w,state.waterLevel)){w.hp=0;kill(w);say(w.name.toUpperCase()+' TOOK A SWIM!',1.4)}return}
@@ -401,7 +431,9 @@ function updateProjectile(p,dt){const oldFuse=p.fuse;p.fuse-=dt;if(p.type==='dyn
 function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musicTick();if(isBot(state.team)&&usesBroker(state.team)&&['broker-wait','broker-error'].includes(state.phase)){if(state.phase==='broker-wait'){state.brokerElapsed=(state.brokerElapsed||0)+dt;setText($('message'),thinkingText(Math.floor(state.brokerElapsed)))}updateUI();return}state.wind+=(state.windTarget-state.wind)*dt*.08;state.shake=Math.max(0,state.shake-25*dt);if(state.messageTimer>0){state.messageTimer-=dt;if(state.messageTimer<=0)$('message').textContent=''}
  if(state.phase==='ready'||state.phase==='jetpack'||state.phase==='reposition'){{const before=state.timer;state.timer-=dt;if(before>5&&state.timer<=5&&state.active?.alive)voice(state.active,'hurry')}if(state.timer<=0){state.timer=0;say('TIME IS UP!',1);startResolution(.7)}if(state.phase==='jetpack'){state.jetTime-=dt;state.jetPulse=(state.jetPulse||0)-dt;if(state.jetPulse<=0){noise(.19,.018,1800);state.jetPulse=.44}if(state.jetTime<=0)startResolution(.8)}if(state.phase==='reposition'){state.aiMoveTime-=dt;if(state.aiMoveTime<=0||Math.abs(state.active.x-state.aiTarget)<20){state.phase='ready';state.aiTimer=.25}}}
  if(isBot(state.team)&&state.phase==='ready'&&!state.sim){state.aiTimer-=dt;if(state.aiTimer<=0)aiAct()}
- if(isBot(state.team)&&state.phase==='jetpack'&&!state.jetDropped&&state.active?.alive){const w=state.active;const target=living(1-w.team).find(f=>Math.abs(f.x-w.x)<62&&f.y-w.y>45);if(target&&living(w.team).every(f=>f===w||Math.hypot(f.x-w.x,f.y-w.y)>125))dropDynamite()}
+ // requestBrokerTurn freezes and saves synchronously. Do not advance this same frame after the snapshot.
+ if(isBot(state.team)&&usesBroker(state.team)&&['broker-wait','broker-error'].includes(state.phase)){updateUI();return}
+ if(isBot(state.team)&&state.phase==='jetpack'&&!state.jetDropped&&state.active?.alive&&!(usesBroker(state.team)&&state.agentLastAction?.type==='jetpack')){const w=state.active;const target=living(1-w.team).find(f=>Math.abs(f.x-w.x)<62&&f.y-w.y>45);if(target&&living(w.team).every(f=>f===w||Math.hypot(f.x-w.x,f.y-w.y)>125))dropDynamite()}
  if(state.charging){state.power+=state.chargeDir*dt*.85;if(state.power>=1){state.power=1;state.chargeDir=-1}else if(state.power<=.18){state.power=.18;state.chargeDir=1}}
  if(isHuman(state.team)&&state.phase==='ready'){if(state.keys.aimleft||state.keys.KeyQ)state.aim=clamp(state.aim-.95*dt,AIM_MIN,AIM_MAX);if(state.keys.aimright||state.keys.KeyE)state.aim=clamp(state.aim+.95*dt,AIM_MIN,AIM_MAX)}
  for(const w of state.worms)updateWorm(w,dt);
@@ -645,15 +677,20 @@ function restorePendingBrokerTurn(record){
   // Rebuild deterministic art metadata (also for old saves), but keep every saved crater.
   // createTerrain also restores the map-specific world dimensions before physics/ranking.
   Object.assign(state,values);state.terrain={...createTerrain(values.map,values.seed),...terrain};state.worms=worms;state.active=worms[activeId];
-  state.worms.forEach(w=>w.active=w===state.active);state.team=1;state.aiDriver='broker';state.running=true;state.ended=false;
+  state.worms.forEach(w=>w.active=w===state.active);state.team=state.active.team;state.aiDriver='broker';state.running=true;state.ended=false;
   state.projectiles=[];state.particles=[];state.blasts=[];state.brokerController=null;state.brokerRequest=record.request;
   state.brokerTurnId=record.request.turnId;state.brokerTicket=record.ticket;state.brokerSavedAt=record.savedAt;
   simRand=seeded((state.seed^0x9e3779b9)>>>0);for(let i=0;i<state.simDraws;i++)simRand();
-  state.brokerOptions=withSimText(rankOptions(brokerTurnOptions(state,{windBlind:ctrl(state.team)==='hard'})));
-  const offered=state.brokerOptions.map(({id,description})=>({id,description}));
-  if(JSON.stringify(offered)!==JSON.stringify(record.request.candidates)||JSON.stringify(brokerSnapshot(state,{windBlind:ctrl(state.team)==='hard'}))!==JSON.stringify(record.request.snapshot))throw Error('stale pending state');
+  if(record.request.protocol===OPEN_PROTOCOL){
+   state.brokerOptions=[];
+   if(JSON.stringify(brokerAgentSnapshot(state,{windBlind:ctrl(state.team)==='hard'}))!==JSON.stringify(record.request.snapshot))throw Error('stale pending state');
+  }else{
+   state.brokerOptions=withSimText(rankOptions(brokerTurnOptions(state,{windBlind:ctrl(state.team)==='hard'})));
+   const offered=state.brokerOptions.map(({id,description})=>({id,description}));
+   if(JSON.stringify(offered)!==JSON.stringify(record.request.candidates)||JSON.stringify(brokerSnapshot(state,{windBlind:ctrl(state.team)==='hard'}))!==JSON.stringify(record.request.snapshot))throw Error('stale pending state');
+  }
   simRand=seeded((state.seed^0x9e3779b9)>>>0);for(let i=0;i<state.simDraws;i++)simRand();
-  buildTerrain();state.turnLog=openTurn(state);state.phase='broker-error';state.brokerError='Pending Broker turn recovered. Retry to read the same job.';
+  buildTerrain();state.turnLog=record.request.protocol===OPEN_PROTOCOL?record.game.turnLog:openTurn(state);state.phase='broker-error';state.brokerError='Pending Broker turn recovered. Retry to read the same job.';
   $('broker-error').textContent=state.brokerError;$('broker-panel').hidden=false;$('intro').classList.remove('open');updateUI();return true;
  }catch{clearPendingTurn();return false}
 }
@@ -684,5 +721,5 @@ globalThis.fetch?.('api/settings').then(r=>r.ok?r.json():null).then(s=>{if(s)app
 const pendingOnLoad=readPendingTurn();
 newGame(0,1,undefined,Boolean(pendingOnLoad));
 if(!restorePendingBrokerTurn(pendingOnLoad)){state.running=false;$('intro').classList.add('open')}
-window.__craterCrew={simulateAction,rankOptions,chooseController,scheme,rules,knock,applySettings,state,newGame,nextTurn,fire,explosion,finish,beginTurn,update,render,cycle,aimAt,aiAct,requestBrokerTurn,restorePendingBrokerTurn,setGrenadeFuse,toggleGrenadeBounce,toggleStrikeDirection,dropDynamite};
+window.__craterCrew={applyAgentAction,simulateAction,rankOptions,chooseController,scheme,rules,knock,applySettings,state,newGame,nextTurn,fire,explosion,finish,beginTurn,update,render,cycle,aimAt,aiAct,requestBrokerTurn,restorePendingBrokerTurn,setGrenadeFuse,toggleGrenadeBounce,toggleStrikeDirection,dropDynamite};
 

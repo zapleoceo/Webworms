@@ -36,3 +36,24 @@ Choose **Local algorithm** to play offline, or **Broker LLM** to ask a model to 
 - [x] Manual Chrome playthrough to victory on round eight, rematch, three map views and live jetpack movement; the later art/aim pass also checked a downward rocket crater and the two shotgun shots. No browser console errors or warnings.
 
 No third-party art, audio, fonts, scripts or runtime dependencies.
+
+## Open Broker agent
+
+New Broker turns use `open-v1`: the model receives the match's rules, available controls,
+state and (for God) the last 40 completed turns, then chooses its own action to win.
+It no longer receives ranked candidate moves or precomputed shot outcomes. It can set
+weapon, angle, direction, power, grenade fuse/bounce, airstrike position, or move using
+walk, teleport and rope controls. These are validated JSON game commands, not shell,
+browser or network tools. After a utility move or the first shotgun shot, Broker sees
+the updated state and chooses again; the local AI does not pick the follow-up shot.
+
+Context includes a 96×48 occupancy grid (air/mixed/solid), not a pixel-perfect map.
+Mixed cells may hide narrow collision geometry. Up to 200 nearby props are included;
+`propsTotal` and `propsTruncated` report any omitted props. Hard has hidden wind, Ultra
+observes wind, and God adds history. Rule values such as crate healing come from the
+current match rather than hardcoded prompt defaults.
+
+There are at most six decisions and three utility actions per turn. Invalid actions
+fail visibly without silently switching to the local bot. The existing Retry, Pass,
+and explicit Local AI controls remain. Pending jobs keep their ID and signed ticket
+on retry/reload. Older candidate-protocol pending jobs can still finish unchanged.
