@@ -157,7 +157,7 @@ test('Broker mode applies a validated free action from mocked job polling',async
  const prior=globalThis.fetch;let selectedId,turnId,postCount=0;
  globalThis.fetch=async (_url,options)=>{if(options?.method==='POST'){postCount++;const body=JSON.parse(options.body);turnId=body.turnId;assert.equal(body.protocol,'open-v1');assert.equal(body.candidates,undefined);return new Response(JSON.stringify({status:'pending',ticket:'mock-ticket',pollAfter:0}),{status:202})}return new Response(JSON.stringify({status:'done',turnId,action:{type:'airstrike',target_x:1200,direction:1}}),{status:200})};
  try{newGame(0,2,982);state.aiDriver='broker';beginTurn(1);aiAct();assert.equal(state.phase,'broker-wait');for(const end=Date.now()+10000;state.phase==='broker-wait'&&Date.now()<end;)await new Promise(resolve=>setTimeout(resolve,50));// wait for the answer, not a fixed time (slow under a parallel run)
-  assert.equal(postCount,1);assert.equal(state.selected,'airstrike');assert.equal(state.projectiles.length,5);assert.equal(state.phase,'resolving');
+  assert.equal(postCount,1);assert.equal(state.selected,'airstrike');assert.equal(state.projectiles.length,5);assert.equal(state.phase,'retreat');
  }finally{state.brokerController?.abort();state.aiDriver='local';globalThis.fetch=prior;newGame(0,1,983)}
 });
 
@@ -431,7 +431,7 @@ test('AI takes a bounded safer walking position for a better shot',()=>{
  // with the player ~950 px to the right on the inland ridge.
  flatDuel(1250);state.terrain=createTerrain(0,42);state.wind=0;state.windTarget=0;state.difficulty=1;const ai=state.active,player=state.worms[0];ai.x=300;ai.y=groundY(state.terrain,300)-17;player.y=groundY(state.terrain,1250)-17;
  aiAct();assert.equal(state.phase,'reposition');assert.equal(state.aiMoves,1);const initial=ai.x;
- for(let i=0;i<100;i++)update(.04);
+ for(let i=0;i<100&&state.phase==='reposition';i++)update(.04);
  assert.ok(ai.x>initial+15);assert.notEqual(state.phase,'reposition');
 });
 
@@ -600,10 +600,10 @@ test('after a shot the turn waits for a flying and skidding worm, the camera fol
  assert.ok(maxGap<VIEW_W/state.cam.zoom/2,`moving worm kept in view (max offset ${maxGap.toFixed(0)} px)`);
 });
 
-test('a body that never settles cannot hold the turn past the safety cap',()=>{
+test('the camera never hands over while a body is still moving, even beyond eight seconds',()=>{
  const {foe}=aftermath();const dt=1/30;let t=0;
  while(state.team===0&&t<12){foe.x=900;foe.y=PLAIN-200;foe.vx=0;foe.vy=0;foe.grounded=false;update(dt);t+=dt}
- assert.equal(state.team,1,'turn handed over');assert.ok(t>=8-1e-6&&t<8.2,`handed over after ${t.toFixed(2)} s`);
+ assert.equal(state.team,0,'movement still holds the turn');foe.grounded=true;foe.y=PLAIN-R-1;for(let i=0;i<120&&state.team===0;i++)update(dt);assert.equal(state.team,1,'handover after actual settling');
 });
 test('the match journal records the action and the real outcome of a turn: a punch that drowns the rival',()=>{
  newGame(0,2,4243);state.controllers=['human','easy'];flatten(state.terrain,PLAIN);for(let x=1100;x<W;x++){state.terrain.top[x]=H;for(let y=0;y<H;y++)state.terrain.mask[y*W+x]=0}
