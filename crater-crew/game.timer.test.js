@@ -168,3 +168,35 @@ test('camera holds the last impact through aftermath, even with no surviving mov
  const team=state.team;run(.7);assert.equal(state.team,team,'full explosion aftermath remains visible');
  beginTurn(1-team);assert.equal(state.camImpact,null,'next turn releases impact focus');
 });
+
+test('human can retreat during projectile flight but not shoot again; explosion closes movement',()=>{
+ delete state.controllers;newGame(0,1,8121);flatten(state.terrain);const w=state.active;
+ w.x=900;w.y=PLAIN-R-1;w.grounded=true;state.selected='grenade';state.aim=-1.2;state.dir=1;state.grenadeFuse=3;
+ fire(.8);assert.equal(state.phase,'retreat');const x=w.x;state.keys.left=true;run(.5);
+ assert.ok(w.x<x-20,'walking while grenade is in flight');const count=state.projectiles.length;fire();assert.equal(state.projectiles.length,count,'second attack disabled');
+ explosion(1800,PLAIN-20,40,10,w.id);assert.equal(state.phase,'resolving');state.keys={};
+});
+
+test('dynamite escape lasts until detonation, and submerged shots also finish retreat',()=>{
+ delete state.controllers;newGame(0,1,8122);flatten(state.terrain);const w=state.active;w.x=900;w.y=PLAIN-R-1;w.grounded=true;
+ state.selected='dynamite';state.dir=1;fire();state.keys.left=true;run(2);assert.equal(state.phase,'retreat');assert.ok(w.x<800);
+ run(1.1);assert.equal(state.phase,'resolving');state.keys={};
+ beginTurn(0);state.selected='bazooka';fire();assert.equal(state.phase,'retreat');state.projectiles.forEach(p=>p.y=state.waterLevel+1);update(.02);assert.equal(state.phase,'resolving');
+});
+
+test('AI jetpack brakes horizontally at its requested destination',()=>{
+ newGame(0,1,8123);state.controllers=['human','easy'];flatten(state.terrain);beginTurn(1);
+ const w=state.active;w.x=1000;w.y=PLAIN-200;w.grounded=false;w.vx=180;w.vy=0;state.aiTarget=1000;state.selected='jetpack';fire();update(.02);
+ assert.ok(w.vx<180,'horizontal inertia reduced inside target tolerance');delete state.controllers;
+});
+
+test('model rope action attaches, swings and reels, then releases without consuming the attack',()=>{
+ newGame(0,1,8124);state.controllers=['human','ultra'];flatten(state.terrain);beginTurn(1);const w=state.active;
+ for(let y=PLAIN-420;y<PLAIN-380;y++)state.terrain.mask.fill(1,y*W+300,y*W+1300);
+ w.x=700;w.y=PLAIN-R-1;w.grounded=true;const x=w.x;
+ assert.equal(window.__craterCrew.applyAgentAction({type:'rope',angle_deg:-70,direction:1,swing:1,reel:-1,release_after:.6}),true);
+ // Drive physics only; suppress the next model request after release.
+ state.aiTimer=100;run(1,()=>state.rope?.state==='attached');assert.equal(state.rope?.state,'attached');
+ const length=state.rope.len;run(.3);assert.ok(w.x>x,'swing changes position');assert.ok(state.rope.len<length,'reels in');
+ run(.5,()=>!state.rope);assert.equal(state.rope,null);assert.equal(state.phase,'ready');assert.equal(state.used,false);delete state.controllers;
+});

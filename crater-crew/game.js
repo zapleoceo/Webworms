@@ -156,16 +156,17 @@ const propApi={explode:(x,y,r,d)=>explosion(x,y,r,d,-1),heal:(w,a)=>{w.hp+=a;w.f
 const wormMoving=w=>w.alive&&(!w.grounded||w.sliding&&Math.abs(w.vx)>18);
 // After a shot the turn waits until nothing moves: no ordnance in flight, no prop rolling or ticking, no worm
 // flying, skidding or sinking; then a short beat so the aftermath is seen. A body that never quite settles
-// cannot hold the match: past SETTLE_CAP seconds of waiting the turn hands over anyway.
-const SETTLE_PAUSE=.6,SETTLE_CAP=8;
+// keeps the camera until its actual movement settles; elapsed time is not proof of a finished turn.
+const SETTLE_PAUSE=.6;
 function settled(dt){
  const busy=state.projectiles.length>0||propsBusy(state)||state.worms.some(wormMoving);
  state.calm=busy?0:(state.calm||0)+dt;
  if(state.resolveTimer>0)return false;state.settleWait=(state.settleWait||0)+dt;
  if(state.projectiles.length||state.props.some(p=>p.armed||p.boom>0)||state.blasts.some(b=>b.t<1.3))return false;
- return state.calm>0&&(state.sim||state.calm>=SETTLE_PAUSE-1e-9)||state.settleWait>=SETTLE_CAP;
+ return state.calm>0&&(state.sim||state.calm>=SETTLE_PAUSE-1e-9);
 }
 function startResolution(wait=1){if(['broker-wait','broker-error'].includes(state.phase)){state.brokerController?.abort();state.brokerController=null;state.brokerTurnId=null;state.brokerTicket=null;state.brokerRequest=null;clearPendingTurn();$('broker-panel').hidden=true}if(state.rope&&state.active){releaseRope(state.active,state.rope);state.active.grounded=false}state.rope=null;state.shotgunLeft=0;state.phase='resolving';state.resolveTimer=wait;state.used=true;state.charging=false}
+function startRetreat(){state.phase='retreat';state.used=true;state.charging=false;state.resolveTimer=0;state.calm=0;state.settleWait=0;state.aiRetreat=-state.dir}
 function setGrenadeFuse(value){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeFuse=clamp(Number(value)||3,1,5);state.playerGrenadeFuse=state.grenadeFuse;updateUI();tone(620,.05,'triangle',.025)}
 function toggleGrenadeBounce(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='grenade')return;state.grenadeBounce=state.grenadeBounce==='high'?'low':'high';state.playerGrenadeBounce=state.grenadeBounce;updateUI();tone(540,.07,'triangle',.025)}
 function toggleStrikeDirection(){if(!state.running||!isHuman(state.team)||state.phase!=='ready'||state.selected!=='airstrike')return;state.strikeDir*=-1;state.playerStrikeDir=state.strikeDir;updateUI();tone(460,.07,'triangle',.025)}
@@ -188,10 +189,10 @@ function fire(power=state.power){if(!state.running||state.phase!=='ready'||!stat
  if(weapon==='jetpack'){state.phase='jetpack';state.used=true;state.jetTime=4;if(isBot(state.team))w.jetUsed=true;say('JETPACK · STEER TO FLY',1.4);tone(480,.2,'sawtooth',.04,170);updateUI();return}
  if(weapon==='punch'){let hit=false;for(const target of state.worms){if(!target.alive||target.team===w.team)continue;const dx=target.x-w.x,dy=target.y-w.y;if(Math.abs(dx)<65&&Math.abs(dy)<48&&Math.sign(dx)===state.dir){{const before=target.hp;target.hp=Math.max(0,target.hp-data.punch.damage);record(target,before-target.hp,w.id)}target.vx=state.dir*knock.punchX;target.vy=-knock.punchY;target.grounded=false;target.flash=.7;wormCry();voice(target,'hurt');emit(target.x,target.y,'#ffda8d',18,170);if(!target.hp)kill(target);hit=true;break}}carve(state.terrain,w.x+state.dir*39,w.y-3,24);buildTerrain();say(hit?'WHAM!':'SWUNG AND MISSED!',1.3);if(!hit)voice(w,'miss');tone(hit?190:350,.12,'square',.08);startResolution(1.3);updateUI();return}
  if(weapon==='shotgun'){if(!state.shotgunLeft)state.shotgunLeft=2;let hits=0;const chips=[];for(let i=0;i<5;i++){const a=state.aim+(simRandom()-.5)*.24,dir={x:Math.cos(a)*state.dir,y:Math.sin(a)},origin={x:w.x+dir.x*22,y:w.y-7+dir.y*22};for(let dist=0;dist<450;dist+=5){const x=origin.x+dir.x*dist,y=origin.y+dir.y*dist;if(x<0||x>=W||y<0||y>=H)break;if(solid(state.terrain,x,y)){chips.push([x,y]);break}let done=false;for(const target of state.worms){if(!target.alive||target===w)continue;if(Math.hypot(x-target.x,y-target.y)<R){{const before=target.hp;target.hp=Math.max(0,target.hp-5);record(target,before-target.hp,w.id)}target.vx+=dir.x*32;target.vy-=24;target.flash=.6;hits++;if(!target.hp)kill(target);done=true;break}}if(done)break;}state.particles.push({x:origin.x,y:origin.y,vx:dir.x*340,vy:dir.y*340,life:.15,max:.15,r:2,color:'#fff3c9'});}for(const [x,y]of chips)carve(state.terrain,x,y,3);if(chips.length)buildTerrain();emit(w.x+v.x*25,w.y-7+v.y*25,'#ffda80',17,100);tone(180,.23,'sawtooth',.09,55);const result=hits?`${hits*5} DAMAGE`:'MISSED';if(!hits)voice(w,'miss');if(hits)wormCry();state.shotgunLeft--;if(state.shotgunLeft){say(`SHOTGUN · ${result} · SECOND SHOT!`,1.2);state.aiTimer=.4}else{say(`SHOTGUN · ${result}`,1.2);startResolution(1.2)}updateUI();return}
- if(weapon==='dynamite'){state.projectiles.push({type:'dynamite',x:w.x+state.dir*22,y:w.y-4,vx:0,vy:0,fuse:3,r:9,bounces:0,source:w.id,trail:[]});say('DYNAMITE · TAKE COVER!',1.6);tone(280,.1);state.phase='retreat';state.used=true;state.resolveTimer=3.6;state.aiRetreat=-state.dir;updateUI();return}
- if(weapon==='airstrike'){const ammo=state.ammo?.[w.team];if(ammo&&!(ammo.airstrike>0)){say('NO AIRSTRIKES LEFT',1.2);return}if(ammo)ammo.airstrike--;let tx=state.airTarget??clamp(w.x+state.dir*320,80,W-80);tx=clamp(tx,75,W-75);for(let i=0;i<5;i++)state.projectiles.push({type:'airstrike',x:clamp(tx-state.strikeDir*130+(i-2)*35,5,W-5),y:-170-i*90,vx:state.strikeDir*160,vy:370,fuse:6+i*.2,r:6,source:w.id,trail:[]});say('INCOMING AIRSTRIKE!',1.5);tone(600,.3,'sawtooth',.05,180);startResolution(4.3);updateUI();return}
+ if(weapon==='dynamite'){state.projectiles.push({type:'dynamite',x:w.x+state.dir*22,y:w.y-4,vx:0,vy:0,fuse:3,r:9,bounces:0,source:w.id,trail:[]});say('DYNAMITE · TAKE COVER!',1.6);tone(280,.1);startRetreat();updateUI();return}
+ if(weapon==='airstrike'){const ammo=state.ammo?.[w.team];if(ammo&&!(ammo.airstrike>0)){say('NO AIRSTRIKES LEFT',1.2);return}if(ammo)ammo.airstrike--;let tx=state.airTarget??clamp(w.x+state.dir*320,80,W-80);tx=clamp(tx,75,W-75);for(let i=0;i<5;i++)state.projectiles.push({type:'airstrike',x:clamp(tx-state.strikeDir*130+(i-2)*35,5,W-5),y:-170-i*90,vx:state.strikeDir*160,vy:370,fuse:6+i*.2,r:6,source:w.id,trail:[]});say('INCOMING AIRSTRIKE!',1.5);tone(600,.3,'sawtooth',.05,180);startRetreat();updateUI();return}
  const speed=(weapon==='grenade'?300:370)+(weapon==='grenade'?280:390)*power;
- state.projectiles.push({type:weapon,x:w.x+v.x*24,y:w.y-9+v.y*22,vx:v.x*speed,vy:v.y*speed,fuse:weapon==='grenade'?state.grenadeFuse:7,bounceFactor:weapon==='grenade'?(state.grenadeBounce==='high'?.55:.32):.48,r:weapon==='grenade'?8:6,source:w.id,trail:[]});emit(w.x+v.x*30,w.y-8+v.y*20,'#fff6bb',9,70);tone(weapon==='grenade'?330:130,.15,'sawtooth',.08,80);say(weapon==='grenade'?'GRENADE AWAY!':'ROCKET AWAY!',1);startResolution(weapon==='grenade'?state.grenadeFuse+.7:1.8);updateUI();
+ state.projectiles.push({type:weapon,x:w.x+v.x*24,y:w.y-9+v.y*22,vx:v.x*speed,vy:v.y*speed,fuse:weapon==='grenade'?state.grenadeFuse:7,bounceFactor:weapon==='grenade'?(state.grenadeBounce==='high'?.55:.32):.48,r:weapon==='grenade'?8:6,source:w.id,trail:[]});emit(w.x+v.x*30,w.y-8+v.y*20,'#fff6bb',9,70);tone(weapon==='grenade'?330:130,.15,'sawtooth',.08,80);say(weapon==='grenade'?'GRENADE AWAY!':'ROCKET AWAY!',1);startRetreat();updateUI();
 }
 function safeWalk(a,b){const dir=Math.sign(b-a),t=state.terrain;if(!dir)return true;let prior=groundY(t,a);for(let x=a+dir*18;dir>0?x<=b:x>=b;x+=dir*18){const y=groundY(t,x);// Climbs must stay within what crawl() can manage; drops can be steeper.
  if(y>state.waterLevel-40||prior-y>30||y-prior>50)return false;prior=y}return groundY(t,b)<state.waterLevel-40}
@@ -397,7 +398,7 @@ async function requestBrokerTurn(resume=false){
  }catch(error){if(current()&&!controller.signal.aborted){diagnostic('failed');brokerFailure(String(error.message||'Broker unavailable.').slice(0,140))}}
  finally{clearTimeout(deadline);clearInterval(checkpoint);if(state.brokerController===controller)state.brokerController=null}
 }
-function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);const player=isHuman(state.team)&&state.active===w&&state.running&&(state.phase==='ready'||state.phase==='jetpack'||state.phase==='retreat');const ai=isBot(state.team)&&state.active===w&&['reposition','jetpack','retreat'].includes(state.phase);const aiDir=state.phase==='retreat'?state.aiRetreat:Math.sign(state.aiTarget-w.x);const aiDrive=ai&&Math.abs(state.aiTarget-w.x)>18||ai&&state.phase==='retreat';const aiLeft=aiDrive&&aiDir<0,aiRight=aiDrive&&aiDir>0;const ahead=w.x+aiDir*35,aiCliff=ai&&aiDir!==0&&(groundY(state.terrain,ahead)>state.waterLevel-25||groundY(state.terrain,ahead)-groundY(state.terrain,w.x)>55);const left=player&&(state.keys.left||state.keys.KeyA||state.keys.ArrowLeft)||aiLeft,right=player&&(state.keys.right||state.keys.KeyD||state.keys.ArrowRight)||aiRight,jump=player&&(state.keys.jump||state.keys.KeyW||state.keys.ArrowUp)||aiCliff&&state.phase!=='retreat';
+function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);const player=isHuman(state.team)&&state.active===w&&state.running&&(state.phase==='ready'||state.phase==='jetpack'||state.phase==='retreat');const ai=isBot(state.team)&&state.active===w&&['reposition','jetpack','retreat'].includes(state.phase);const aiDir=state.phase==='retreat'?state.aiRetreat:Math.sign(state.aiTarget-w.x);const aiDrive=ai&&(state.phase==='retreat'?safeWalk(w.x,w.x+aiDir*35)&&!state.props.some(p=>p.kind==='mine'&&Math.hypot(p.x-(w.x+aiDir*35),p.y-w.y)<62):Math.abs(state.aiTarget-w.x)>18);const aiLeft=aiDrive&&aiDir<0,aiRight=aiDrive&&aiDir>0;const ahead=w.x+aiDir*35,aiCliff=ai&&aiDir!==0&&(groundY(state.terrain,ahead)>state.waterLevel-25||groundY(state.terrain,ahead)-groundY(state.terrain,w.x)>55);const left=player&&(state.keys.left||state.keys.KeyA||state.keys.ArrowLeft)||aiLeft,right=player&&(state.keys.right||state.keys.KeyD||state.keys.ArrowRight)||aiRight,jump=player&&(state.keys.jump||state.keys.KeyW||state.keys.ArrowUp)||aiCliff&&state.phase!=='retreat';
  // Ninja rope: while the hook flies the worm keeps its normal physics; once hooked it swings on the rope.
  if(state.rope&&state.active===w){
   const rp=state.rope,k=state.keys,ai=isBot(state.team)?state.aiRope:null;
@@ -419,7 +420,7 @@ function updateWorm(w,dt){if(!w.alive)return;w.flash=Math.max(0,w.flash-dt);cons
   if(w.walking&&w.stepClock===0){tone(135,.035,'triangle',.018,85);w.stepClock=.27}
  }
  if(!w.grounded||jet){
-  if(jet){if(dir){w.vx=clamp(w.vx+dir*700*dt,-180,180);w.face=dir}const thrust=player?jump:(w.y>groundY(t,w.x)-85||aiCliff);if(thrust){w.vy-=850*dt;emit(w.x,w.y+14,'#ffd47b',1,70)}}
+  if(jet){if(ai&&!dir)w.vx*=Math.max(0,1-10*dt);if(dir){w.vx=clamp(w.vx+dir*700*dt,-180,180);w.face=dir}const thrust=player?jump:(w.y>groundY(t,w.x)-85||aiCliff);if(thrust){w.vy-=850*dt;emit(w.x,w.y+14,'#ffd47b',1,70)}}
   w.vy+=GRAVITY*dt;w.vy=clamp(w.vy,-600,750);w.grounded=false;
   for(let k=0;k<14&&!wormFits(t,w.x,w.y);k++)w.y--;
   const steps=Math.max(1,Math.ceil(Math.hypot(w.vx,w.vy)*dt/3));
@@ -468,6 +469,8 @@ function update(dt){if(!state.running)return;if(!state.sim)updateCamera(dt);musi
  for(const w of state.worms)updateWorm(w,dt);
  for(const p of state.projectiles)if(!p.dead){updateProjectile(p,dt);if(p.dead&&!state.sim)noteLanding(state.turnLog,p)}state.projectiles=state.projectiles.filter(p=>!p.dead);
  updateProps(state,dt,propApi);
+ // A missed or submerged shot also closes the escape window. No second attack or Broker request.
+ if(state.phase==='retreat'&&(!state.active?.alive||state.projectiles.length===0))startResolution(.6);
  for(const p of state.particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=350*dt;p.life-=dt}state.particles=state.particles.filter(p=>p.life>0);state.blasts=state.blasts.filter(b=>(b.t+=dt)<1.3);
  // The turn resolves at once when its worm is gone mid-move (jetpack, AI walk); kill() covers 'ready'.
  if((state.phase==='jetpack'||state.phase==='reposition')&&!state.active?.alive){state.phase='resolving';state.resolveTimer=1.5}
