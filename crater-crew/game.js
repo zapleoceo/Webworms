@@ -668,7 +668,7 @@ for(const b of document.querySelectorAll('[data-hold]')){const k=b.dataset.hold;
 window.addEventListener('keydown',e=>{
  // Menus, dialogs and form fields keep their own keys; the battlefield takes them only in play.
  const el=e.target,field=el?.closest?.('input:not([type=checkbox]):not([type=range]),select,textarea,[contenteditable="true"]'),modal=document.querySelector?.('.modal.open');
- if(!state.running||modal||field||(e.code==='Enter'&&el?.closest?.('button')))return;
+ if(!state.running||modal||field||el?.closest?.('#help-panel')||(e.code==='Enter'&&el?.closest?.('button')))return;
  if(['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','PageDown','PageUp','Tab','Backspace'].includes(e.code))e.preventDefault();
  if(e.repeat&&['Space','Tab','KeyX'].includes(e.code))return;
  state.keys[e.code]=true;

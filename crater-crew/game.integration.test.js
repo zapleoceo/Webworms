@@ -949,3 +949,15 @@ test('agent jetpack drops dynamite only at its requested time',()=>{
  for(let i=0;i<8;i++)update(.02);assert.equal(state.jetDropped,true);assert.equal(state.projectiles.filter(p=>p.type==='dynamite').length,1);
  delete state.controllers;
 });
+
+ test('field manual keeps scroll and navigation keys without firing or switching worms',()=>{
+ newGame(0,1,117);const active=state.active;
+ const target={closest:selector=>selector==='#help-panel'?{}:null};
+ for(const code of ['ArrowDown','PageDown','Space','Tab']){
+  let prevented=false;window.listeners.keydown({target,code,repeat:false,preventDefault(){prevented=true}});
+  assert.equal(prevented,false,code+' remains native');assert.equal(state.keys[code],undefined);
+  assert.equal(state.charging,false);assert.equal(state.active,active);
+  window.listeners.keyup({target,code});
+ }
+ assert.equal(state.projectiles.length,0);
+});
