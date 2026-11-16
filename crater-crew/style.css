@@ -115,3 +115,19 @@ html,body{overflow-anchor:none}.weapon-options{min-height:44px}
 .sponsor-banner[hidden]{display:none}.sponsor-banner img{max-height:30px;max-width:150px;object-fit:contain}.sponsor-banner[href]:hover,.sponsor-banner[href]:focus-visible{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold)}
 
 .ai-hint:empty{display:none}
+
+/* Setup stays usable on short screens; the guide never covers the battlefield. */
+#intro{overflow-y:auto;align-items:flex-start}
+#intro .modal-card{margin-block:auto;padding:24px 28px}
+#intro h1{font-size:48px;margin:12px 0}
+#intro p{margin:12px auto 16px}
+#intro .tip{margin-top:12px;line-height:1.6}
+.game-guide{margin-top:16px;text-align:left;border-top:1px solid #ffffff30;padding-top:12px}
+.game-guide summary{cursor:pointer;color:var(--gold);font-size:13px;font-weight:900;padding:5px 0}
+.game-guide summary:focus-visible,#start:focus-visible{outline:3px solid #fff;outline-offset:4px}
+.game-guide h2{font-size:16px;color:var(--gold);margin:18px 0 6px}
+#intro .game-guide p{font-size:13px;line-height:1.6;max-width:none;margin:6px 0 12px}
+@media(max-width:480px){#intro{padding:12px}#intro .modal-card{padding:20px 16px}#intro h1{font-size:40px}#intro .eyebrow{font-size:9px;letter-spacing:2px}}
+
+/* Keep camera, audio and help reachable on narrow phones. */
+@media(max-width:480px){.top{height:auto;min-height:70px;flex-wrap:wrap;gap:8px;padding-block:10px}.top-right{width:100%;justify-content:space-between;gap:6px}.top-right .wind{padding:7px;font-size:8px}}
