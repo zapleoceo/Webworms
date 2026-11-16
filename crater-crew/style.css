@@ -131,3 +131,24 @@ html,body{overflow-anchor:none}.weapon-options{min-height:44px}
 
 /* Keep camera, audio and help reachable on narrow phones. */
 @media(max-width:480px){.top{height:auto;min-height:70px;flex-wrap:wrap;gap:8px;padding-block:10px}.top-right{width:100%;justify-content:space-between;gap:6px}.top-right .wind{padding:7px;font-size:8px}}
+
+/* Small screens: keep every action reachable and separate status from the field. */
+.touch-controls{gap:4px}
+.touch-controls>div{flex:1;min-width:0;gap:4px}
+.touch-controls button{flex:1;min-width:0;width:100%}
+.help-panel{top:12px;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow-y:auto;overscroll-behavior:contain}
+.help-panel #close-help{position:sticky;top:0;z-index:1;min-width:32px;min-height:32px;background:var(--panel);border-radius:6px}
+.help-panel:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.modal{overflow-y:auto;align-items:flex-start}
+.modal-card{margin-block:auto}
+@media(min-width:701px){.arena-wrap{width:min(100%,calc((100vh - var(--chrome,272px))*2))}}
+@media(max-width:700px){
+ .arena-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;aspect-ratio:auto;background:var(--panel)}
+ .arena-wrap canvas{grid-column:1/-1;grid-row:1;width:100%;height:auto;aspect-ratio:2/1}
+ .arena-wrap .message{position:static;grid-column:1;grid-row:2;transform:none;align-self:center;min-width:0;padding:7px 8px;font-size:12px;line-height:1.4;letter-spacing:0;white-space:normal;overflow-wrap:anywhere;text-shadow:0 2px 0 var(--ink)}
+ .arena-wrap .power-wrap{position:static;grid-column:2;grid-row:2;transform:none;align-self:center;margin:4px 6px 4px 0;gap:5px;padding:5px;font-size:8px}
+ .arena-wrap .power-meter{width:56px}
+ .bottom{flex-wrap:wrap}.map-info{white-space:normal;flex-wrap:wrap}
+}
+/* Keep the sticky close control out of the scrolling text column. */
+.help-panel p{padding-right:28px}
