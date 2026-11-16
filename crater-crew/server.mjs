@@ -7,7 +7,7 @@ import brokerHealth from './api/ai/health.mjs';
 import adminApi from './lib/admin-api.mjs';
 import {createFileStore,setStore} from './lib/store.mjs';
 const root = process.cwd();
-const types = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.svg':'image/svg+xml', '.png':'image/png', '.jpg':'image/jpeg', '.webp':'image/webp', '.json':'application/json' };
+const types = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.svg':'image/svg+xml', '.png':'image/png', '.jpg':'image/jpeg', '.webp':'image/webp', '.json':'application/json', '.txt':'text/plain; charset=utf-8', '.xml':'application/xml; charset=utf-8' };
 export async function serve(req,res){
   const pathname=new URL(req.url,'http://localhost').pathname;
   if(pathname==='/api/ai/turn'||pathname==='/api/ai/health'){
